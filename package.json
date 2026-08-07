@@ -1,0 +1,52 @@
+{
+  "name": "@ciel/monorepo",
+  "version": "0.0.0",
+  "workspaces": [
+    "core",
+    "webui"
+  ],
+  "type": "module",
+  "scripts": {
+    "ready": "vp check && vp run -r test && vp run -r build",
+    "prepare": "vp config"
+  },
+  "devDependencies": {
+    "@vitejs/devtools-oxc": "^0.4.12",
+    "@vitejs/devtools-vite": "^0.4.12",
+    "typescript": "^7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "overrides": {
+    "@vue/compat": "rc",
+    "@vue/compiler-core": "rc",
+    "@vue/compiler-dom": "rc",
+    "@vue/compiler-sfc": "rc",
+    "@vue/compiler-ssr": "rc",
+    "@vue/compiler-vapor": "rc",
+    "@vue/reactivity": "rc",
+    "@vue/runtime-core": "rc",
+    "@vue/runtime-dom": "rc",
+    "@vue/runtime-vapor": "rc",
+    "@vue/server-renderer": "rc",
+    "@vue/shared": "rc",
+    "typescript": "npm:typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2",
+    "vite": "catalog:",
+    "vue": "rc"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "bun",
+      "version": "1.3.14",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "catalog": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.8",
+    "vite-plus": "0.2.8",
+    "@types/node": "^26.1.1"
+  }
+}
