@@ -1,14 +1,15 @@
-import { createNanoEvents } from 'nanoevents';
-
+import { NanoEvents } from '#/events/index.ts';
 import { Photon, Echo } from '#signals';
 
-export class Stimulus {
-  private readonly emitter = createNanoEvents<{
-    photon(data: Photon): void;
-    echo(data: Echo): void;
-  }>();
+export interface StimulusEventMap {
+  photon(data: Photon): void;
+  echo(data: Echo): void;
+}
 
-  on = this.emitter.on.bind(this.emitter);
+export abstract class Stimulus extends NanoEvents<StimulusEventMap> {
+  abstract start(): void | Promise<void>;
+}
 
+export class BliveStimulus extends Stimulus {
   start() {}
 }

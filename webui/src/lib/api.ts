@@ -1,5 +1,5 @@
+import type { App, Message } from '@ciel/core';
 import { treaty } from '@elysia/eden';
-import type { App, Message } from 'ciel';
 import { createNanoEvents } from 'nanoevents';
 import { onBeforeUnmount } from 'vue';
 

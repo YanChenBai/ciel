@@ -27,6 +27,7 @@
     "nanoevents",
     "ntvs",
     "onnx",
+    "oxlint",
     "typebox",
     "voidzero",
     "webui",

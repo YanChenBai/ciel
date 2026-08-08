@@ -38,7 +38,6 @@ export class Hearing {
     this.content = options.content;
     this.startAt = options.startAt;
     this.endAt = options.endAt;
-
     this.speaker = options.speaker;
     this.confidence = options.confidence;
   }

@@ -1,9 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { createNanoEvents } from 'nanoevents';
 import sharp from 'sharp';
 
+import { NanoEvents } from '#/events/index.ts';
 import { DEFAULT_OCULUS_OUTPUT_DIR } from '#constants';
 import { Sight } from '#perceptions';
 import type { Photon } from '#signals';
@@ -20,11 +20,11 @@ export interface OculusOptions {
   outputDir: string;
 }
 
-export class Oculus {
-  private readonly emitter = createNanoEvents<{
-    sight(data: Sight): void;
-  }>();
+export interface OculusEventMap {
+  sight(data: Sight): void;
+}
 
+export class Oculus extends NanoEvents<OculusEventMap> {
   static readonly COLS = 3;
   static readonly ROWS = 2;
 
@@ -39,6 +39,7 @@ export class Oculus {
   private photons: Photon[] = [];
 
   constructor(options: OculusOptions) {
+    super();
     this.sampleInterval = options.sampleInterval;
     this.outputDir = options.outputDir ?? DEFAULT_OCULUS_OUTPUT_DIR;
   }
@@ -59,7 +60,7 @@ export class Oculus {
     const photons = this.photons.splice(0, Oculus.FRAME_COUNT);
 
     void this.createSight(photons).then(sight => {
-      this.emitter.emit('sight', sight);
+      this.emit('sight', sight);
     });
   }
 
@@ -124,6 +125,4 @@ export class Oculus {
       endAt,
     });
   }
-
-  on = this.emitter.on.bind(this.emitter);
 }

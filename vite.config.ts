@@ -12,6 +12,9 @@ export default defineConfig({
     arrowParens: 'avoid',
     embeddedLanguageFormatting: 'auto',
   },
+  test: {
+    projects: ['./webui', './core'],
+  },
   lint: {
     jsPlugins: [
       {
