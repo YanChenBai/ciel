@@ -741,4 +741,98 @@ declare module 'sherpa-onnx-node' {
   export type DisplayObject = {
     handle: DisplayHandle;
   };
+
+  export class OnlineStream {
+    readonly handle: OnlineStreamHandle;
+    acceptWaveform(waveform: Waveform): void;
+    inputFinished(): void;
+  }
+
+  export class OnlineRecognizer {
+    readonly config: OnlineRecognizerConfig;
+    constructor(config: OnlineRecognizerConfig);
+    createStream(): OnlineStream;
+    isReady(stream: OnlineStream): boolean;
+    decode(stream: OnlineStream): void;
+    isEndpoint(stream: OnlineStream): boolean;
+    reset(stream: OnlineStream): void;
+    getResult(stream: OnlineStream): OnlineRecognizerResult;
+  }
+
+  export class OfflineStream {
+    readonly handle: OfflineStreamHandle;
+    acceptWaveform(waveform: Waveform): void;
+    setOption(key: string, value: string): void;
+  }
+
+  export class OfflineRecognizer {
+    readonly config: OfflineRecognizerConfig;
+    constructor(config: OfflineRecognizerConfig);
+    static createAsync(config: OfflineRecognizerConfig): Promise<OfflineRecognizer>;
+    createStream(hotwords?: string): OfflineStream;
+    setConfig(config: OfflineRecognizerConfig): void;
+    decode(stream: OfflineStream): void;
+    decodeAsync(stream: OfflineStream): Promise<OfflineRecognizerResult>;
+    getResult(stream: OfflineStream): OfflineRecognizerResult;
+  }
+
+  export class CircularBuffer {
+    constructor(capacity: number);
+    push(samples: Float32Array): void;
+    get(startIndex: number, n: number, enableExternalBuffer?: boolean): Float32Array;
+    pop(n: number): void;
+    size(): number;
+    head(): number;
+    reset(): void;
+  }
+
+  export class Vad {
+    readonly config: VadConfig;
+    constructor(config: VadConfig, bufferSizeInSeconds: number);
+    acceptWaveform(samples: Float32Array): void;
+    isEmpty(): boolean;
+    isDetected(): boolean;
+    pop(): void;
+    clear(): void;
+    front(enableExternalBuffer?: boolean): SpeechSegment;
+    reset(): void;
+    flush(): void;
+  }
+
+  export class SpeakerEmbeddingExtractor {
+    readonly config: SpeakerEmbeddingExtractorConfig;
+    readonly dim: number;
+    constructor(config: SpeakerEmbeddingExtractorConfig);
+    createStream(): OnlineStream;
+    isReady(stream: OnlineStream): boolean;
+    compute(stream: OnlineStream, enableExternalBuffer?: boolean): Float32Array;
+  }
+
+  export class SpeakerEmbeddingManager {
+    readonly dim: number;
+    constructor(dim: number);
+    add(entry: SpeakerEmbeddingEntry): boolean;
+    addMulti(entry: { name: string; v: Float32Array[] }): boolean;
+    remove(name: string): boolean;
+    search(options: SpeakerEmbeddingManagerSearchObj): string;
+    verify(options: SpeakerEmbeddingManagerVerifyObj): boolean;
+    contains(name: string): boolean;
+    getNumSpeakers(): number;
+    getAllSpeakerNames(): string[];
+  }
+
+  export function readWave(filename: string): WaveObject;
+  export function writeWave(filename: string, wave: WaveObject): void;
+
+  const sherpaOnnx: {
+    CircularBuffer: typeof CircularBuffer;
+    OfflineRecognizer: typeof OfflineRecognizer;
+    OnlineRecognizer: typeof OnlineRecognizer;
+    SpeakerEmbeddingExtractor: typeof SpeakerEmbeddingExtractor;
+    SpeakerEmbeddingManager: typeof SpeakerEmbeddingManager;
+    Vad: typeof Vad;
+    readWave: typeof readWave;
+    writeWave: typeof writeWave;
+  };
+  export default sherpaOnnx;
 }

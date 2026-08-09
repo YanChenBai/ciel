@@ -1,0 +1,29 @@
+packages:
+  - packages/*
+  - apps/*
+
+catalog:
+  '@types/node': ^24.13.3
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.8
+  vite-plus: 0.2.8
+
+overrides:
+  '@vue/compat': rc
+  '@vue/compiler-core': rc
+  '@vue/compiler-dom': rc
+  '@vue/compiler-sfc': rc
+  '@vue/compiler-ssr': rc
+  '@vue/compiler-vapor': rc
+  '@vue/reactivity': rc
+  '@vue/runtime-core': rc
+  '@vue/runtime-dom': rc
+  '@vue/runtime-vapor': rc
+  '@vue/server-renderer': rc
+  '@vue/shared': rc
+  typescript: npm:typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2
+  vite: 'catalog:'
+  vue: rc
+
+peerDependencyRules:
+  allowedVersions:
+    vite: 0.2.8

@@ -4,12 +4,12 @@ export interface EchoSegment {
   endAt: Date;
 }
 
-export class Echo {
+export abstract class Echo {
   readonly type = 'echo' as const;
-
-  data: Buffer;
-  startAt: Date;
-  endAt: Date;
+  readonly data: Buffer;
+  readonly startAt: Date;
+  readonly endAt: Date;
+  static readonly prompt: string;
 
   constructor(readonly segment: EchoSegment) {
     this.data = segment.data;
@@ -17,3 +17,5 @@ export class Echo {
     this.endAt = segment.endAt;
   }
 }
+
+export class BliveEcho extends Echo {}

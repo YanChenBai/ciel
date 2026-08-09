@@ -1,15 +1,14 @@
 import { NanoEvents } from '#/events/index.ts';
-import { Photon, Echo } from '#signals';
+import type { Echo, Script, Photon } from '#signals';
 
 export interface StimulusEventMap {
   photon(data: Photon): void;
   echo(data: Echo): void;
+  script(data: Script): void;
 }
 
 export abstract class Stimulus extends NanoEvents<StimulusEventMap> {
+  abstract readonly prompt: string;
   abstract start(): void | Promise<void>;
-}
-
-export class BliveStimulus extends Stimulus {
-  start() {}
+  abstract stop(): void | Promise<void>;
 }

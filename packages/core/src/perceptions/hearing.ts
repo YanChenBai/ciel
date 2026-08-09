@@ -1,3 +1,9 @@
+export interface HearingToken {
+  content: string;
+  startAt: Date;
+  endAt: Date;
+}
+
 export interface HearingOptions {
   /**
    * ASR 转写文本
@@ -23,6 +29,11 @@ export interface HearingOptions {
    * 音频片段结束时间
    */
   endAt: Date;
+
+  /**
+   * Token 级转写时间戳
+   */
+  tokens?: readonly HearingToken[];
 }
 
 export class Hearing {
@@ -33,6 +44,7 @@ export class Hearing {
   readonly confidence?: number;
   readonly startAt: Date;
   readonly endAt: Date;
+  readonly tokens?: readonly HearingToken[];
 
   constructor(options: HearingOptions) {
     this.content = options.content;
@@ -40,5 +52,6 @@ export class Hearing {
     this.endAt = options.endAt;
     this.speaker = options.speaker;
     this.confidence = options.confidence;
+    this.tokens = options.tokens;
   }
 }

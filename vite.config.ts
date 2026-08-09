@@ -5,6 +5,7 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   fmt: {
+    ignorePatterns: ['AGENTS.md', 'CLAUDE.md'],
     singleQuote: true,
     sortImports: true,
     sortTailwindcss: true,
@@ -13,7 +14,7 @@ export default defineConfig({
     embeddedLanguageFormatting: 'auto',
   },
   test: {
-    projects: ['./webui', './core'],
+    projects: ['./apps/webui', './packages/core'],
   },
   lint: {
     jsPlugins: [
@@ -32,5 +33,15 @@ export default defineConfig({
   },
   run: {
     cache: true,
+    tasks: {
+      'auris:install': {
+        command: 'node ./packages/core/scripts/install-auris-models.ts',
+        cache: false,
+      },
+      'auris:voiceprint': {
+        command: 'node ./packages/core/scripts/create-voiceprint.ts',
+        cache: false,
+      },
+    },
   },
 });

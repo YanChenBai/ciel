@@ -3,8 +3,8 @@ import path from 'node:path';
 
 import sharp from 'sharp';
 
+import { DEFAULT_OCULUS_OUTPUT_DIR } from '#/constants/index.ts';
 import { NanoEvents } from '#/events/index.ts';
-import { DEFAULT_OCULUS_OUTPUT_DIR } from '#constants';
 import { Sight } from '#perceptions';
 import type { Photon } from '#signals';
 
@@ -44,7 +44,7 @@ export class Oculus extends NanoEvents<OculusEventMap> {
     this.outputDir = options.outputDir ?? DEFAULT_OCULUS_OUTPUT_DIR;
   }
 
-  observe(photon: Photon) {
+  async observe(photon: Photon) {
     if (photon.capturedAt.getTime() - this.lastSampleAt < this.sampleInterval) {
       return;
     }
@@ -59,7 +59,7 @@ export class Oculus extends NanoEvents<OculusEventMap> {
 
     const photons = this.photons.splice(0, Oculus.FRAME_COUNT);
 
-    void this.createSight(photons).then(sight => {
+    await this.createSight(photons).then(sight => {
       this.emit('sight', sight);
     });
   }

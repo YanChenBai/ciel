@@ -3,11 +3,11 @@ export interface PhotonFrame {
   capturedAt: Date;
 }
 
-export class Photon {
+export abstract class Photon {
   readonly type = 'photon' as const;
-
-  data: Buffer;
-  capturedAt: Date;
+  readonly data: Buffer;
+  readonly capturedAt: Date;
+  static readonly prompt: string;
 
   constructor(readonly frame: PhotonFrame) {
     this.data = frame.data;
