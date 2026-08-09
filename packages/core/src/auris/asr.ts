@@ -9,10 +9,10 @@ import type {
   Vad as VadInstance,
 } from 'sherpa-onnx-node';
 
-import { NanoEvents } from '#/events/index.ts';
 import { Hearing } from '#perceptions';
 import type { HearingToken } from '#perceptions';
 import type { Echo } from '#signals';
+import { NanoEvents } from '#src/events/index.ts';
 
 import {
   AURIS_SAMPLE_RATE,

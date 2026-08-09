@@ -6,9 +6,9 @@ import { parseArgs } from 'node:util';
 import sherpaOnnx from 'sherpa-onnx-node';
 import type { SpeakerEmbeddingExtractor as SpeakerEmbeddingExtractorInstance } from 'sherpa-onnx-node';
 
-import { AURIS_SAMPLE_RATE } from '../src/auris/constants.ts';
-import { createAurisModelConfig } from '../src/auris/models.ts';
-import { averageEmbeddings, writeVoiceprint } from '../src/auris/voiceprint.ts';
+import { AURIS_SAMPLE_RATE } from '#src/auris/constants.ts';
+import { createAurisModelConfig } from '#src/auris/models.ts';
+import { averageEmbeddings, writeVoiceprint } from '#src/auris/voiceprint.ts';
 
 const { SpeakerEmbeddingExtractor, readWave } = sherpaOnnx;
 const args = process.argv.slice(2);

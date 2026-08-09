@@ -16,6 +16,12 @@
     "dist"
   ],
   "type": "module",
+  "imports": {
+    "#constants": "./src/constants/index.ts",
+    "#perceptions": "./src/perceptions/index.ts",
+    "#signals": "./src/signals/index.ts",
+    "#src/*": "./src/*"
+  },
   "exports": {
     ".": "./dist/index.d.mts",
     "./package.json": "./package.json"

@@ -7,6 +7,7 @@
     "prepare": "vp config"
   },
   "devDependencies": {
+    "@oxc-node/cli": "^0.1.0",
     "@vitejs/devtools-oxc": "^0.4.12",
     "@vitejs/devtools-vite": "^0.4.12",
     "typescript": "^7.0.2",

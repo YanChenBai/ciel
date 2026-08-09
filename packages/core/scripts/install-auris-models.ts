@@ -8,7 +8,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
 
-import { DATA_PATH } from '../src/constants/path.ts';
+import { DATA_PATH } from '#src/constants/path.ts';
 
 const RELEASE = 'https://github.com/k2-fsa/sherpa-onnx/releases/download';
 const ASR_ARCHIVE = 'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2';

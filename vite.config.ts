@@ -35,11 +35,11 @@ export default defineConfig({
     cache: true,
     tasks: {
       'auris:install': {
-        command: 'node ./packages/core/scripts/install-auris-models.ts',
+        command: 'oxnode ./packages/core/scripts/install-auris-models.ts',
         cache: false,
       },
       'auris:voiceprint': {
-        command: 'node ./packages/core/scripts/create-voiceprint.ts',
+        command: 'oxnode ./packages/core/scripts/create-voiceprint.ts',
         cache: false,
       },
     },

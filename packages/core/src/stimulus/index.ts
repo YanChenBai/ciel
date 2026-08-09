@@ -1,5 +1,5 @@
-import { NanoEvents } from '#/events/index.ts';
 import type { Echo, Script, Photon } from '#signals';
+import { NanoEvents } from '#src/events/index.ts';
 
 export interface StimulusEventMap {
   photon(data: Photon): void;

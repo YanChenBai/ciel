@@ -3,10 +3,10 @@ import path from 'node:path';
 
 import sharp from 'sharp';
 
-import { DEFAULT_OCULUS_OUTPUT_DIR } from '#/constants/index.ts';
-import { NanoEvents } from '#/events/index.ts';
 import { Sight } from '#perceptions';
 import type { Photon } from '#signals';
+import { DEFAULT_OCULUS_OUTPUT_DIR } from '#src/constants/index.ts';
+import { NanoEvents } from '#src/events/index.ts';
 
 export interface OculusOptions {
   /**

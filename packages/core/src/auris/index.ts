@@ -1,6 +1,6 @@
-import { NanoEvents } from '#/events/index.ts';
 import { Hearing } from '#perceptions';
 import type { Echo } from '#signals';
+import { NanoEvents } from '#src/events/index.ts';
 
 import { ASR } from './asr.ts';
 import type { ASROptions } from './types.ts';
