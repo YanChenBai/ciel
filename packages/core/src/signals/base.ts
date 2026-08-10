@@ -11,6 +11,15 @@ export abstract class SignalBase {
   static readonly meta: SignalMeta;
 
   /**
+   * 校验具体信号提供了可用于上下文与感官绑定的语义信息。
+   */
+  static assertMeta(): void {
+    if (!this.meta?.name || !this.meta.description) {
+      throw new Error(`${this.name} must define non-empty context meta`);
+    }
+  }
+
+  /**
    * 判断构造器是否属于当前信号基类，并保留静态 this 的精确类型收窄
    */
   static is<TSignalBase extends SignalConstructor>(

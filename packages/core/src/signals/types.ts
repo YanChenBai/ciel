@@ -26,4 +26,5 @@ export type SignalConstructor<TSignal extends Signal = Signal> = (abstract new (
   ...args: any[]
 ) => TSignal) & {
   readonly meta: SignalMeta;
+  assertMeta(): void;
 };

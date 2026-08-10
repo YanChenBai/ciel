@@ -38,7 +38,7 @@ class OtherEcho extends Echo.WithMeta({
 
 describe('Auris', () => {
   it('requires a signal created with metadata', () => {
-    expect(() => new Auris(Echo)).toThrow('Auris signal must be created from Echo.WithMeta(...)');
+    expect(() => new Auris(Echo)).toThrow('Echo must define non-empty context meta');
   });
 
   it('wraps ASR results as Hearing with Echo metadata', () => {

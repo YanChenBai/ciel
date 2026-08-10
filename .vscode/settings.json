@@ -20,6 +20,7 @@
     "source.fixAll.oxc": "explicit"
   },
   "cSpell.words": [
+    "AISDK",
     "Auris",
     "bumpp",
     "ciel",
@@ -28,6 +29,7 @@
     "dotenv",
     "elysia",
     "Lectio",
+    "libsql",
     "nanoevents",
     "njsproj",
     "ntvs",

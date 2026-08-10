@@ -191,6 +191,11 @@ interface StimulusEventMap {
 const signals = [LiveEcho, LivePhoton, DanmuScript] as const;
 
 class LiveStimulus extends Stimulus<typeof signals> {
+  static readonly meta = {
+    name: 'Bilibili 直播间',
+    description: '一个持续发生视听与弹幕互动的直播场景',
+  };
+
   readonly signals = signals;
 
   async start() {
@@ -229,7 +234,100 @@ await ciel.stop();
 - `Photon` 子类创建独立的 `Oculus`；
 - `Script` 子类创建独立的 `Lectio`，对齐为 `Reading` 后再通过 Ciel 的 `data` 事件发送。
 
-Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧集合。Ciel 只负责 Stimulus 与 Sensus 的生命周期和事件桥接；信号路由、错误处理、flush 与能力释放均由 Sensus 统一负责。
+Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧集合。Ciel 还会为每个 Stimulus 维护独立 Context，使用 `getContext(stimulus)` 可取得对应场景上下文。
+
+### Context、Memory 与 Nucleus
+
+Context 负责组合完整 Prompt。身份、人格、行为规则、扩展区块、`Stimulus.meta`、`Signal.meta` 和 `context.define()` 会进入 system；情景记忆与感官处理后的实时 Percept 按时间放入本轮多模态 user message：
+
+```text
+# 身份
+
+你是夏尔。
+
+# 人格
+
+理性、温和，只有在互动有价值时才主动发言。
+
+# 基础定义
+
+## Bilibili 直播间
+一个持续发生视听与弹幕互动的直播场景
+
+## 直播弹幕
+观众实时发送的弹幕
+
+# 情景记忆
+
+[情景]
+[2026-08-11T12:29:00.000Z] 用户此前正在检查直播画面。
+
+# 基础数据
+
+[直播弹幕]
+[2026-08-11T12:30:00.000Z] 右边是不是漏了？
+```
+
+一个 Ciel 只拥有一个 Nucleus，Nucleus 内部只创建一个 AI SDK v7 `ToolLoopAgent`。应用只配置模型、分区 Prompt、行动工具、结构化输出和记忆窗口：
+
+```ts
+import { Ciel } from '@ciels/core';
+import { isStepCount, jsonSchema, Output, tool } from 'ai';
+
+const stimulus = new LiveStimulus();
+
+const ciel = new Ciel({
+  context: { perceptWindow: 60_000 },
+  nucleus: {
+    model,
+    prompt: {
+      identity: '你是夏尔，是长期陪伴用户的自主智能。',
+      personality: '理性、温和、好奇，不为了刷存在感而打断用户。',
+      rules: ['区分事实与推测', '只有在互动有价值时才主动发言'],
+      sections: [{ name: '世界观', content: '你通过多个感官持续观察当前场景。' }],
+    },
+    tools: {
+      sendMessage: tool({
+        description: '向当前场景发送一条消息',
+        inputSchema: jsonSchema<{ content: string }>({
+          type: 'object',
+          properties: { content: { type: 'string' } },
+          required: ['content'],
+          additionalProperties: false,
+        }),
+        execute: ({ content }) => liveRoom.sendMessage(content),
+      }),
+    },
+    output: Output.object({ schema: DecisionSchema }),
+    stopWhen: isStepCount(8),
+    memory: {
+      path: '.ciel-data/memory.db',
+      longTermLimit: 8,
+      episodicLimit: 8,
+    },
+    minThinkInterval: 10_000,
+    maxThinkInterval: 60_000,
+  },
+}).use(stimulus);
+
+await ciel.start();
+const nucleus = ciel.getNucleus();
+```
+
+记忆工具由 Nucleus 私有管理，不需要也不允许应用注入。`memory_remember` 保存 main Agent 筛选出的稳定事实、偏好和经验；`memory_record_episode` 由 main Agent 在每轮结束前生成“当时发生了什么”的情景摘要；`memory_recall` 提供 Mastra 原生历史浏览。记忆以追加方式写入本地 LibSQL，`longTermLimit` 和 `episodicLimit` 只控制每轮注入窗口，不会覆盖旧数据。Nucleus 停止时会关闭自己的 Memory。
+
+`minThinkInterval` 限制活跃时的思考频率；`maxThinkInterval` 在没有新感知时仍会给 Nucleus 一次主动判断的机会，但不强制对外输出。
+Context 会把 `percept`、`interval` 与 `manual` 三种触发原因放入本轮输入，main Agent 可以据此判断是否需要主动互动。
+
+上下文可从不同层扩充：
+
+- `prompt.identity`、`prompt.personality`、`prompt.rules`：夏尔的稳定设定；
+- `prompt.sections`：世界观、能力边界等自定义 system 区块；
+- `context.define()`：当前目标、场景补充与临时语义定义；
+- `messages`：本轮外部任务、会话历史或其他 `ModelMessage`；
+- `tools`：真实行动能力；具有外部副作用的工具应按需配置 AI SDK `toolApproval`。
+
+`Stimulus.meta`、`Signal.meta`、`context.define()` 和 `prompt` 都会进入 system，因此只应接收受信任的应用定义；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 作为本轮消息注入，避免把外部文本提升为系统规则。
 
 ### Sensus
 
@@ -460,7 +558,8 @@ Percept.type = hearing | reading | sight
 ├── downloads/            # 临时模型下载
 ├── models/               # ASR、VAD、说话人模型
 ├── voiceprints/          # 已创建的声纹
-└── sights/               # Oculus 视觉快照
+├── sights/               # Oculus 视觉快照
+└── memories/             # Nucleus 长期记忆
 ```
 
 该目录已加入 `.gitignore`。
@@ -479,10 +578,12 @@ Percept.type = hearing | reading | sight
 | 模型安装与声纹创建脚本   | 已实现   |
 | WebSocket 基础服务       | 初步实现 |
 | WebUI                    | 初步实现 |
-| Context 聚合             | 规划中   |
-| 长期记忆                 | 规划中   |
-| 多模态推理               | 规划中   |
-| 自主决策与行动           | 规划中   |
+| Context 聚合             | 已实现   |
+| Mastra Memory 与 LibSQL  | 已实现   |
+| Nucleus 思考调度         | 已实现   |
+| 本地持久化与历史召回     | 基础实现 |
+| AI SDK 多模态推理        | 基础实现 |
+| AI SDK 自主决策与行动    | 基础实现 |
 
 ## 开发
 
@@ -511,8 +612,8 @@ Ciel 当前解决的是“如何让 Agent 感受到世界”。后续可以继�
 ```text
 Percepts
   → Context
-  → Archive (Memory)
-  → Cortex (Reasoning)
+  → Memory
+  → Nucleus (Cognition)
   → Will (Decision)
 ```
 

@@ -15,9 +15,6 @@ export default defineConfig({
     tailwindcss(),
     vueDevTools(),
   ]),
-  devtools: {
-    enabled: true,
-  },
   resolve: {
     tsconfigPaths: true,
   },

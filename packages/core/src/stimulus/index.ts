@@ -23,15 +23,34 @@ export type StimulusSignal<TSignals extends readonly SignalConstructor[]> = Inst
   TSignals[number]
 >;
 
+export type StimulusConstructor<TStimulus extends Stimulus = Stimulus> = (abstract new (
+  ...args: any[]
+) => TStimulus) & {
+  readonly meta: StimulusMeta;
+  assertMeta(): void;
+};
+
+/**
+ * 外部场景的刺激源。一个 Stimulus 声明它可能产生的信号，并负责自身生命周期。
+ */
 export abstract class Stimulus<
   TSignals extends readonly SignalConstructor[] = readonly SignalConstructor[],
 > extends EventHost<StimulusEventMap<StimulusSignal<TSignals>>> {
   static meta: StimulusMeta;
 
-  /** Concrete signal classes this stimulus is allowed to send. */
+  /** 该刺激源允许发送的具体信号类型。 */
   abstract readonly signals: TSignals;
   abstract start(): void | Promise<void>;
   abstract stop(): void | Promise<void>;
+
+  /**
+   * 校验具体刺激源提供了可用于上下文的语义信息。
+   */
+  static assertMeta(): void {
+    if (!this.meta?.name || !this.meta.description) {
+      throw new Error(`${this.name} must define non-empty context meta`);
+    }
+  }
 
   protected async send(signal: StimulusSignal<TSignals>): Promise<void> {
     const value = signal as Signal;
@@ -40,7 +59,7 @@ export abstract class Stimulus<
       throw new Error(`${Signal.name} is not declared in stimulus.signals`);
     }
 
-    // Signal carries its own discriminant; consumers can route the aggregated stream by type.
+    // Signal 自带类型判别字段，聚合流的消费者可以直接按类型路由。
     await this.emitAsync('data', signal);
   }
 

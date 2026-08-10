@@ -1,3 +1,4 @@
+import { MockLanguageModelV3 } from 'ai/test';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
 import { Reading } from '#src/percepts/index.ts';
@@ -52,6 +53,20 @@ vi.mock('#sensus', async () => {
 
 const { Ciel } = await import('./index.ts');
 
+function createModel(text = '保持安静'): MockLanguageModelV3 {
+  return new MockLanguageModelV3({
+    doGenerate: {
+      content: [{ type: 'text', text }],
+      finishReason: { unified: 'stop', raw: undefined },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+      warnings: [],
+    },
+  });
+}
+
 class TestEcho extends Echo.WithMeta({
   name: 'Test audio',
   description: 'Audio emitted by a test stimulus',
@@ -70,6 +85,11 @@ class TestScript extends Script.WithMeta({
 const testSignals = [TestEcho, TestPhoton, TestScript] as const;
 
 class TestStimulus extends Stimulus<typeof testSignals> {
+  static readonly meta = {
+    name: 'Test scene',
+    description: 'Scene emitted by a test stimulus',
+  };
+
   readonly signals = testSignals;
   started = false;
   stopped = false;
@@ -113,6 +133,7 @@ describe('Ciel', () => {
       content: 'hello',
       originSignal: TestScript,
     });
+    expect(ciel.getContext(stimulus).snapshot(new Date(1)).data).toHaveLength(1);
 
     await ciel.stop();
     expect(stimulus.stopped).toBe(true);
@@ -127,5 +148,42 @@ describe('Ciel', () => {
 
     expect(processorState.sensusSignals).toEqual([testSignals, testSignals]);
     await ciel.stop();
+  });
+
+  it('keeps a separate context for each stimulus', () => {
+    const first = new TestStimulus();
+    const second = new TestStimulus();
+    const ciel = new Ciel().use(first).use(second);
+
+    expect(ciel.getContext(first)).not.toBe(ciel.getContext(second));
+  });
+
+  it('owns one Nucleus and forwards its thoughts', async () => {
+    const stimulus = new TestStimulus();
+    const model = createModel();
+    const ciel = new Ciel({
+      context: { perceptWindow: Number.MAX_SAFE_INTEGER },
+      nucleus: { model },
+    }).use(stimulus);
+    const thoughts: unknown[] = [];
+    ciel.on('thought', output => {
+      thoughts.push(output);
+    });
+
+    await ciel.start();
+    const nucleus = ciel.getNucleus();
+    await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(1));
+
+    expect(nucleus).toBe(ciel.getNucleus());
+    expect(thoughts).toContain('保持安静');
+
+    await ciel.stop();
+  });
+
+  it('rejects Nucleus access when it is not configured', () => {
+    const stimulus = new TestStimulus();
+    const ciel = new Ciel().use(stimulus);
+
+    expect(() => ciel.getNucleus()).toThrow('Ciel has no Nucleus configuration');
   });
 });

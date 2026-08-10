@@ -16,9 +16,7 @@ class OtherScript extends Script.WithMeta({
 
 describe('Lectio', () => {
   it('requires a signal created with metadata', () => {
-    expect(() => new Lectio(Script)).toThrow(
-      'Lectio signal must be created from Script.WithMeta(...)',
-    );
+    expect(() => new Lectio(Script)).toThrow('Script must define non-empty context meta');
   });
 
   it('aligns Script as Reading with its signal metadata', () => {

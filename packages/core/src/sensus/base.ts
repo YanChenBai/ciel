@@ -14,11 +14,7 @@ export abstract class SensusBase<TSignal extends Signal, TData> extends EventHos
 
   protected constructor(signal: SignalConstructor<TSignal>) {
     super();
-    if (!signal.meta?.name || !signal.meta.description) {
-      throw new Error(
-        `${new.target.name} signal must be created from ${signal.name}.WithMeta(...)`,
-      );
-    }
+    signal.assertMeta();
     this.signal = signal;
   }
 
