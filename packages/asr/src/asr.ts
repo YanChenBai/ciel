@@ -1,6 +1,6 @@
 // @env node
 
-import { EventEmitter } from '@ciels/event';
+import { EventEmitter, toError } from '@ciels/event';
 import type { Unsubscribe } from '@ciels/event';
 import sherpaOnnx from 'sherpa-onnx-node';
 import type {
@@ -214,8 +214,4 @@ function validateOptions(options: ASROptions): void {
   ) {
     throw new Error('maxSpeakers must be a positive integer');
   }
-}
-
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }

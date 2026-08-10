@@ -26,11 +26,11 @@ export class SpeakerTracker {
     for (const profile of profiles) {
       if (!profile.name.trim()) throw new Error('Speaker name cannot be empty');
       if (this.centers.some(center => center.label === profile.name)) {
-        throw new Error('Duplicate speaker name: ' + profile.name);
+        throw new Error(`Duplicate speaker name: ${profile.name}`);
       }
       const embedding = readVoiceprint(profile.file);
       if (embedding.length !== extractor.dim) {
-        throw new Error('Voiceprint dimensions do not match speaker model: ' + profile.file);
+        throw new Error(`Voiceprint dimensions do not match speaker model: ${profile.file}`);
       }
       this.centers.push({
         embedding,

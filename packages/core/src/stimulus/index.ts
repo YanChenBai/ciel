@@ -1,16 +1,21 @@
 import { EventHost } from '@ciels/event';
 
-import type { Echo, Photon, Script, Signal, SignalConstructor } from '#signals';
-import { WithMeta } from '#src/utils/index.ts';
+import type { Signal, SignalConstructor } from '#signals';
+import { WithMeta } from '#utils';
 
-export interface StimulusEventMap {
-  photon(data: Photon): void;
-  echo(data: Echo): void;
-  script(data: Script): void;
+export interface StimulusEventMap<TSignal extends Signal = Signal> {
+  data(data: TSignal): void;
 }
 
 export interface StimulusMeta {
-  title: string;
+  /**
+   * 刺激源在上下文中的语义名称
+   */
+  name: string;
+
+  /**
+   * 刺激源在上下文中的语义描述
+   */
   description: string;
 }
 
@@ -20,8 +25,9 @@ export type StimulusSignal<TSignals extends readonly SignalConstructor[]> = Inst
 
 export abstract class Stimulus<
   TSignals extends readonly SignalConstructor[] = readonly SignalConstructor[],
-> extends EventHost<StimulusEventMap> {
+> extends EventHost<StimulusEventMap<StimulusSignal<TSignals>>> {
   static meta: StimulusMeta;
+
   /** Concrete signal classes this stimulus is allowed to send. */
   abstract readonly signals: TSignals;
   abstract start(): void | Promise<void>;
@@ -31,21 +37,11 @@ export abstract class Stimulus<
     const value = signal as Signal;
     const Signal = value.constructor as SignalConstructor;
     if (!this.signals.includes(Signal)) {
-      throw new Error(Signal.name + ' is not declared in stimulus.signals');
+      throw new Error(`${Signal.name} is not declared in stimulus.signals`);
     }
 
-    // Async emission gives Ciel backpressure while retaining the typed event map.
-    switch (value.type) {
-      case 'echo':
-        await this.emitAsync('echo', value);
-        break;
-      case 'photon':
-        await this.emitAsync('photon', value);
-        break;
-      case 'script':
-        await this.emitAsync('script', value);
-        break;
-    }
+    // Signal carries its own discriminant; consumers can route the aggregated stream by type.
+    await this.emitAsync('data', signal);
   }
 
   static WithMeta<const TMeta extends StimulusMeta>(meta: TMeta) {

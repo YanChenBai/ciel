@@ -20,7 +20,9 @@
       "#src/*": ["./src/*"],
       "#constants": ["./src/constants/index.ts"],
       "#signals": ["./src/signals/index.ts"],
-      "#perceptions": ["./src/perceptions/index.ts"]
+      "#percepts": ["./src/percepts/index.ts"],
+      "#sensus": ["./src/sensus/index.ts"],
+      "#utils": ["./src/utils/index.ts"]
     }
   }
 }

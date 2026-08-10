@@ -6,16 +6,15 @@ Ciel 是一个面向 AI Agent 的认知核心系统。
 [**利姆鲁**](https://baike.baidu.com/item/%E5%88%A9%E5%A7%86%E9%B2%81%C2%B7%E7%89%B9%E6%81%A9%E4%BD%A9%E6%96%AF%E7%89%B9/22945511?fromModule=lemma_inlink)
 的技能“智慧之王／夏尔（Ciel）”。这个名字表达了项目的长期目标：构建一个能够接收感官信息、形成上下文，并逐步拥有记忆、推理与行动能力的 Agent 核心。
 
-对于视觉和听觉，Ciel 不会先把外部世界统一转换成文本，而是让 Agent 从原始刺激中形成自己的感知；对于外部已经提供的符号信息，则允许 `Script` 直接进入大脑上下文：
+对于视觉和听觉，Ciel 不会先把外部世界统一转换成文本，而是让 Agent 从原始刺激中形成自己的感知；外部已经提供的符号信息则由 `Lectio` 对齐为 `Reading`，不再执行额外的内容理解：
 
 ```text
 World
   → Stimulus
-      ├─ Raw Sensory Signals
-      │    → Perception
-      │    → Context
-      └─ Script
-           → Context
+      → Signals
+      → Sensus
+      → Percepts
+      → Context
   → Memory / Reasoning
   → Response
 ```
@@ -34,16 +33,20 @@ Ciel 严格分离四种职责：
 ```text
 Sensory Path:
 Raw Signal
-  → Perception Module
+  → Sensus
+  → Percept
   → LLM-ready Context
   → Ciel Core
 
 Symbolic Path:
 Script
+  → Sensus
+  → Lectio
+  → Reading
   → Ciel Core
 ```
 
-`Photon` 和 `Echo` 必须经过 Oculus、Auris 等感知器官转换；`Script` 已经是外部世界提供的符号信息，因此不再经过视觉或听觉理解，直接进入 Ciel Core 的上下文。感知器官不负责最终推理，高层认知也不直接处理媒体编码细节。
+`Sensus` 是所有信号统一进入感知层的入口。`Photon`、`Echo` 和 `Script` 分别交由 Oculus、Auris、Lectio 转换；`Script` 已经是外部世界提供的符号信息，因此 Lectio 只将其对齐为 `Reading`，不再执行额外的内容理解。感知层不负责最终推理，高层认知也不直接处理媒体编码细节。
 
 项目遵循以下原则：
 
@@ -56,23 +59,26 @@ Script
 ## 整体架构
 
 ```text
-Live Stream / External World
-            │
-            ▼
-        Stimulus
-      ┌─────┼───────────┐
-      ▼     ▼           ▼
-   Photon  Echo       Script
-      │     │           │
-      ▼     ▼           │
-   Oculus  Auris        │
-      │     │           │
-      ▼     ▼           │
-    Sight Hearing       │
-      └─────┼───────────┘
-            ▼
-   Ciel Context / Core
-            ▼
+  Live Stream / External World
+                │
+                ▼
+            Stimulus
+    ┌───────────┼───────────┐
+    ▼           ▼           ▼
+ Photon       Echo       Script
+    └───────────┼───────────┘
+                ▼
+             Sensus
+    ┌───────────┼───────────┐
+    ▼           ▼           ▼
+ Oculus       Auris      Lectio
+    │           │           │
+    ▼           ▼           ▼
+  Sight      Hearing     Reading
+    └───────────┼───────────┘
+                ▼
+      Ciel Context / Core
+                ▼
    Memory / Reasoning / Agent
 ```
 
@@ -98,9 +104,8 @@ ciel/
 packages/core/src/
 ├── signals/              # Photon、Echo、Script
 ├── stimulus/             # 外部刺激输入契约
-├── perceptions/          # Sight、Hearing
-├── oculus/               # 视觉感知
-├── auris/                # Auris 听觉适配层
+├── percepts/             # Sight、Hearing、Reading 感知产物
+├── sensus/               # Auris、Oculus、Lectio 感官处理层
 ├── constants/
 └── utils/
 ```
@@ -153,10 +158,13 @@ interface ScriptData {
 
 文字信号与音频转写结果保持独立：
 
-- `Script` 是外部世界直接提供给大脑的文字输入；
+- `Script` 是外部世界直接提供的文字信号；
+- `Reading` 是 `Script` 经 Lectio 统一包装后的符号感知；
 - `Hearing` 是 `Echo` 经 Auris 处理后形成的听觉感知。
 
-`Script` 不进入 Oculus 或 Auris，也不需要再次执行 ASR 或视觉理解。Stimulus 发出 `script` 事件后，未来的 Context／Ciel Core 可以直接消费其内容。
+`Percept` 是 `Hearing | Reading | Sight` 的联合类型。每种感知产物都通过单个 `originSignal: SignalConstructor` 标明其原始信号类型。
+
+`Script` 不进入 Oculus 或 Auris，也不需要再次执行 ASR 或视觉理解。Stimulus 通过统一的 `data` 事件发出自带 `type: 'script'` 的信号后，Sensus 将其交给 Lectio 对齐为 `Reading`，再发送至 Context／Ciel Core。
 
 ### Stimulus
 
@@ -171,15 +179,13 @@ interface ScriptData {
 
 ```ts
 interface StimulusEventMap {
-  photon(data: Photon): void;
-  echo(data: Echo): void;
-  script(data: Script): void;
+  data(data: Echo | Photon | Script): void;
 }
 ```
 
 `Stimulus` 不理解内容，也不产生 `Sight` 或 `Hearing`。
 
-每个刺激源通过 `signals` 显式声明可能发送的具体信号类型，并继续使用事件发送信号：
+每个刺激源通过 `signals` 显式声明可能发送的具体信号类型，并通过聚合的 `data` 事件发送信号。消费者根据信号自带的 `type` 字段区分 `echo`、`photon` 与 `script`：
 
 ```ts
 const signals = [LiveEcho, LivePhoton, DanmuScript] as const;
@@ -195,7 +201,7 @@ class LiveStimulus extends Stimulus<typeof signals> {
 }
 ```
 
-`send()` 会拒绝未在 `signals` 中声明的实例，并通过 `@ciels/event` 的异步事件等待 Ciel 完成对应处理队列。
+`send()` 会拒绝未在 `signals` 中声明的实例，并通过 `@ciels/event` 的异步事件等待 Ciel 完成对应的感官处理。
 
 ### Ciel
 
@@ -217,13 +223,23 @@ await ciel.start();
 await ciel.stop();
 ```
 
-启动时，Ciel 根据 `Signal.prototype` 自动匹配处理器：
+启动时，Ciel 为每个 Stimulus 创建一个独立的 `Sensus`。Sensus 接收该 Stimulus 声明的全部 Signal class，并自动匹配感官能力：
 
 - `Echo` 子类创建独立的 `Auris`；
 - `Photon` 子类创建独立的 `Oculus`；
-- `Script` 子类直接作为 Ciel 的 `script` 事件发送。
+- `Script` 子类创建独立的 `Lectio`，对齐为 `Reading` 后再通过 Ciel 的 `data` 事件发送。
 
-处理器以“Stimulus 实例 + 具体 Signal class”为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧队列。Ciel 会先完成处理器创建和事件订阅，再启动刺激源；停止时则先停止刺激源，等待异步队列清空，最后 flush 和释放处理器。
+Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧集合。Ciel 只负责 Stimulus 与 Sensus 的生命周期和事件桥接；信号路由、错误处理、flush 与能力释放均由 Sensus 统一负责。
+
+### Sensus
+
+`Sensus` 是统一的感知入口。它接收全部已声明的 Signal class，创建对应的 Auris／Oculus／Lectio 能力，并将信号转换或对齐为 Percept。调用 `process(signal)` 会等待真实的同步或异步处理完成，不额外维护任务队列；调用 `close()` 会 flush 并释放内部能力。
+
+单项感官能力统一继承 `SensusBase<TSignal, TData>`，并通过 `SensusEventMap<TData>` 暴露 `data` 与 `error` 事件。构造函数统一采用 `(signal, options)`，由泛型决定输入 Signal 和输出 data 类型；Sensus 继续通过 `data` 发送 `Percept`，消费者使用其 `type` 区分 `hearing`、`reading` 或 `sight`。
+
+### Lectio
+
+`Lectio` 是 Ciel 的阅读感官。它不执行额外的内容理解，只校验收到的 `Script` 是否属于其绑定的信号类型，并将内容、时间及原始信号元数据对齐为 `Reading`。
 
 ### Oculus
 
@@ -366,12 +382,11 @@ interface ASROptions {
 import { Auris, Echo } from '@ciels/core';
 
 class MyEcho extends Echo.WithMeta({
-  title: 'Microphone',
+  name: 'Microphone',
   description: 'Primary microphone audio',
 }) {}
 
-const auris = new Auris({
-  signal: MyEcho,
+const auris = new Auris(MyEcho, {
   bufferSeconds: 30,
   speaker: [
     {
@@ -381,7 +396,7 @@ const auris = new Auris({
   ],
 });
 
-auris.on('hearing', hearing => {
+auris.on('data', hearing => {
   console.log('[' + hearing.speaker + '] ' + hearing.content);
 });
 
@@ -389,7 +404,7 @@ auris.on('error', error => {
   console.error(error);
 });
 
-auris.observe(echo);
+auris.process(echo);
 auris.flush();
 ```
 
@@ -405,7 +420,7 @@ interface Hearing {
   readonly startAt: Date;
   readonly endAt: Date;
   readonly tokens?: readonly HearingToken[];
-  readonly signal: SignalConstructor;
+  readonly originSignal: SignalConstructor;
 }
 
 interface HearingToken {
@@ -421,14 +436,14 @@ interface HearingToken {
 
 ### Events
 
-Ciel 使用轻量事件驱动通信。感知器官消费信号并发送感知结果：
+Ciel 使用轻量事件驱动通信。Sensus 统一消费信号并发送结果：
 
 ```text
-Oculus emits sight(Sight)
-Auris  emits hearing(Hearing)
+Sensus emits data(Percept)
+Percept.type = hearing | reading | sight
 ```
 
-这种方式使信号生产者、感知器官和后续认知模块保持独立。
+这种方式使信号生产者、具体感官能力和后续认知模块保持独立。
 
 ### Bridge 与 WebUI
 
@@ -494,13 +509,13 @@ vp dev
 Ciel 当前解决的是“如何让 Agent 感受到世界”。后续可以继续扩展记忆、推理与决策能力：
 
 ```text
-Perception
+Percepts
   → Context
   → Archive (Memory)
   → Cortex (Reasoning)
   → Will (Decision)
 ```
 
-这些模块应消费 `Sight`、`Hearing` 等感知对象和可直接进入大脑的 `Script`，而不是直接依赖直播流、图片 Buffer 或音频编码。
+这些模块应消费 `Sight`、`Hearing`、`Reading` 等感知对象，而不是直接依赖直播流、图片 Buffer、音频编码或原始 `Script`。
 
 最终目标是让 AI Agent 能够持续地看见、听见、记住并理解它所处的世界。

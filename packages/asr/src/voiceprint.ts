@@ -13,7 +13,7 @@ export function resolveVoiceprintPath(file: string): string {
   const target = path.resolve(root, file);
   const relative = path.relative(root, target);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error('Voiceprint must be inside ' + root + ': ' + file);
+    throw new Error(`Voiceprint must be inside ${root}: ${file}`);
   }
   return target;
 }
@@ -24,12 +24,12 @@ export function readVoiceprint(file: string): Float32Array {
     data.length < HEADER_SIZE ||
     data.subarray(0, VOICEPRINT_MAGIC.length).toString() !== VOICEPRINT_MAGIC
   ) {
-    throw new Error('Invalid voiceprint file: ' + file);
+    throw new Error(`Invalid voiceprint file: ${file}`);
   }
 
   const dimensions = data.readUInt32LE(VOICEPRINT_MAGIC.length);
   if (data.length !== HEADER_SIZE + dimensions * Float32Array.BYTES_PER_ELEMENT) {
-    throw new Error('Invalid voiceprint dimensions: ' + file);
+    throw new Error(`Invalid voiceprint dimensions: ${file}`);
   }
 
   const embedding = new Float32Array(dimensions);

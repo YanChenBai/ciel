@@ -1,16 +1,16 @@
 # @ciels/core
 
-Signals, stimuli, perception processors, and runtime orchestration for Ciel.
+Signals, stimuli, percepts, sensory processors, and runtime orchestration for Ciel.
 
 ## Runtime
 
-A stimulus declares every concrete signal class it can emit. `Ciel` discovers those classes when it starts and creates one isolated processor for each stimulus/signal pair.
+A stimulus declares every concrete signal class it can emit. `Ciel` creates one isolated `Sensus` for the stimulus, and `Sensus` binds every declared signal to its sensory capability.
 
 ```ts
 import { Ciel, Echo, Stimulus } from '@ciels/core';
 
 class MicrophoneEcho extends Echo.WithMeta({
-  title: 'Microphone',
+  name: 'Microphone',
   description: 'Primary microphone audio',
 }) {}
 
@@ -32,21 +32,24 @@ ciel.use(new MicrophoneStimulus());
 await ciel.start();
 ```
 
-Signal matching is automatic:
+Signal matching inside `Sensus` is automatic:
 
 - `Echo` subclasses use an `Auris` processor.
 - `Photon` subclasses use an `Oculus` processor.
-- `Script` subclasses are emitted directly as Ciel `script` events.
+- `Script` subclasses use a `Lectio` processor that aligns them as `Reading` percepts and emits them through Ciel's `data` event.
 
-`Ciel.stop()` stops stimuli, waits for asynchronous processor queues, flushes stateful processors, and removes subscriptions.
+`Ciel.stop()` stops stimuli, removes subscriptions, and closes each `Sensus`. Closing flushes stateful capabilities and releases their event listeners.
 
 ## Exports
 
 - `Ciel`: stimulus registration and lifecycle orchestration.
+- `Sensus`: unified signal routing, sensory capability, events, and lifecycle.
+- `SensusBase<TSignal, TData>`: common signal binding and `data/error` event contract for sensory capabilities.
 - `Stimulus`: typed event source with explicit `signals` and async `send()`.
 - `Echo`, `Photon`, `Script`: immutable signal bases with static metadata.
-- `Auris`, `Oculus`: signal-bound perception processors.
-- `Hearing`, `Sight`: perception results retaining their signal class.
+- `Auris`, `Oculus`, `Lectio`: lower-level signal-bound sensory capabilities.
+- `Percept`: the `Hearing | Reading | Sight` result union.
+- `Hearing`, `Reading`, `Sight`: percepts retaining their single origin signal constructor.
 
 ## Development
 

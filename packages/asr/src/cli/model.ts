@@ -84,7 +84,7 @@ async function installFile(url: string, target: string, force: boolean): Promise
 async function download(url: string, target: string): Promise<void> {
   const response = await fetch(url, { redirect: 'follow' });
   if (!response.ok || !response.body) {
-    throw new Error('Download failed with HTTP ' + response.status + ': ' + url);
+    throw new Error(`Download failed with HTTP ${response.status}: ${url}`);
   }
 
   const name = path.basename(target).replace(/\.part$/, '');
@@ -124,7 +124,7 @@ async function extractArchive(archive: string, target: string): Promise<void> {
       child.once('error', reject);
       child.once('close', code => {
         if (code === 0) resolve();
-        else reject(new Error('tar exited with status ' + code));
+        else reject(new Error(`tar exited with status ${code}`));
       });
     });
   } finally {

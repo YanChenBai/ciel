@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vite-plus/test';
 
-import { EventEmitter, EventHost } from '../src/index.ts';
+import { EventEmitter, EventHost, toError } from '../src/index.ts';
 
 interface TestEvents {
   value(value: number): void;
 }
+
+describe('toError', () => {
+  it('preserves errors and converts other thrown values', () => {
+    const error = new Error('failed');
+
+    expect(toError(error)).toBe(error);
+    expect(toError('failed')).toEqual(new Error('failed'));
+  });
+});
 
 describe('EventEmitter', () => {
   it('subscribes and unsubscribes listeners', () => {
@@ -58,5 +67,21 @@ describe('EventHost', () => {
     host.publish(1);
 
     expect(values).toEqual([1]);
+  });
+
+  it('removes all event listeners', () => {
+    class Host extends EventHost<TestEvents> {
+      publish(value: number): void {
+        this.emit('value', value);
+      }
+    }
+
+    const host = new Host();
+    const values: number[] = [];
+    host.on('value', value => values.push(value));
+    host.clearAllEvents();
+    host.publish(1);
+
+    expect(values).toEqual([]);
   });
 });

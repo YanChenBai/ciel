@@ -61,12 +61,12 @@ function computeEmbedding(
 ): Float32Array {
   const wave = readWave(file);
   if (wave.sampleRate !== AURIS_SAMPLE_RATE) {
-    throw new Error(file + ' must use a 16000 Hz sample rate');
+    throw new Error(`${file} must use a 16000 Hz sample rate`);
   }
   const stream = extractor.createStream();
   stream.acceptWaveform(wave);
   if (!extractor.isReady(stream)) {
-    throw new Error(file + ' is too short to create a voiceprint');
+    throw new Error(`${file} is too short to create a voiceprint`);
   }
   return extractor.compute(stream);
 }

@@ -1,32 +1,21 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { EventHost } from '@ciels/event';
 import sharp from 'sharp';
 
-import { Sight } from '#perceptions';
+import { Sight } from '#percepts';
 import type { Photon } from '#signals';
 import { DEFAULT_OCULUS_OUTPUT_DIR } from '#src/constants/index.ts';
 
-export interface OculusOptions {
-  signal: typeof Photon;
+import { SensusBase } from './base.ts';
+import type { OculusOptions } from './types.ts';
 
-  /**
-   * 两次采样之间的最小时间间隔，单位 ms
-   */
-  sampleInterval: number;
+export type { OculusEventMap, OculusOptions } from './types.ts';
 
-  /**
-   * Sight 持久化目录
-   */
-  outputDir: string;
-}
-
-export interface OculusEventMap {
-  sight(data: Sight): void;
-}
-
-export class Oculus extends EventHost<OculusEventMap> {
+/**
+ * 接收 Photon 并形成 Sight 的视觉感官
+ */
+export class Oculus extends SensusBase<Photon, Sight> {
   static readonly COLS = 3;
   static readonly ROWS = 2;
 
@@ -37,39 +26,37 @@ export class Oculus extends EventHost<OculusEventMap> {
   private lastSampleAt = 0;
   private readonly sampleInterval: number;
   private readonly outputDir: string;
-  private readonly signal: typeof Photon;
-
   private photons: Photon[] = [];
 
-  constructor(options: OculusOptions) {
-    super();
-    validateSignal(options.signal);
-    this.signal = options.signal;
-    this.sampleInterval = options.sampleInterval;
+  constructor(signal: typeof Photon, options: OculusOptions = {}) {
+    super(signal);
+    this.sampleInterval = options.sampleInterval ?? 1_000;
     this.outputDir = options.outputDir ?? DEFAULT_OCULUS_OUTPUT_DIR;
   }
 
-  async observe(photon: Photon) {
-    if (!(photon instanceof this.signal)) {
-      throw new Error('Oculus can only observe Photon instances from its bound signal');
+  async process(photon: Photon): Promise<void> {
+    try {
+      this.assertSignal(photon);
+
+      if (photon.timestamp.getTime() - this.lastSampleAt < this.sampleInterval) {
+        return;
+      }
+
+      this.lastSampleAt = photon.timestamp.getTime();
+
+      this.photons.push(photon);
+
+      if (this.photons.length < Oculus.FRAME_COUNT) {
+        return;
+      }
+
+      const photons = this.photons.splice(0, Oculus.FRAME_COUNT);
+      const sight = await this.createSight(photons);
+
+      this.emitData(sight);
+    } catch (error) {
+      this.emitError(error);
     }
-    if (photon.timestamp.getTime() - this.lastSampleAt < this.sampleInterval) {
-      return;
-    }
-
-    this.lastSampleAt = photon.timestamp.getTime();
-
-    this.photons.push(photon);
-
-    if (this.photons.length < Oculus.FRAME_COUNT) {
-      return;
-    }
-
-    const photons = this.photons.splice(0, Oculus.FRAME_COUNT);
-
-    await this.createSight(photons).then(sight => {
-      this.emit('sight', sight);
-    });
   }
 
   private async createSight(photons: Photon[]): Promise<Sight> {
@@ -131,13 +118,7 @@ export class Oculus extends EventHost<OculusEventMap> {
       path: outputPath,
       startAt,
       endAt,
-      signal: this.signal,
+      originSignal: this.signal,
     });
-  }
-}
-
-function validateSignal(signal: typeof Photon): void {
-  if (!signal.meta?.title || !signal.meta.description) {
-    throw new Error('Oculus signal must be created from Photon.WithMeta(...)');
   }
 }

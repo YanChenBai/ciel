@@ -1,18 +1,12 @@
 {
   "name": "@ciels/core",
   "version": "0.0.0",
-  "description": "Ciel signals, stimuli, perception processors, and runtime orchestration.",
+  "description": "Ciel signals, stimuli, percepts, sensory processors, and runtime orchestration.",
   "license": "MIT",
   "files": [
     "dist"
   ],
   "type": "module",
-  "imports": {
-    "#constants": "./src/constants/index.ts",
-    "#perceptions": "./src/perceptions/index.ts",
-    "#signals": "./src/signals/index.ts",
-    "#src/*": "./src/*"
-  },
   "exports": {
     ".": "./dist/index.mjs",
     "./package.json": "./package.json"

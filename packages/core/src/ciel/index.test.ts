@@ -1,53 +1,50 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 
+import { Reading } from '#src/percepts/index.ts';
 import { Echo, Photon, Script } from '#src/signals/index.ts';
 import { Stimulus } from '#src/stimulus/index.ts';
 
 const processorState = vi.hoisted(() => ({
-  aurisSignals: [] as unknown[],
+  closes: 0,
   echoes: [] as unknown[],
-  flushes: 0,
-  oculusSignals: [] as unknown[],
   photons: [] as unknown[],
+  sensusSignals: [] as (readonly unknown[])[],
 }));
 
-vi.mock('../auris/index.ts', async () => {
+vi.mock('#sensus', async () => {
   const { EventHost } = await import('@ciels/event');
   return {
-    Auris: class extends EventHost<{
+    Sensus: class extends EventHost<{
+      data(data: unknown): void;
       error(error: Error): void;
-      hearing(data: unknown): void;
     }> {
-      constructor(options: { signal: unknown }) {
+      constructor(options: { signals: readonly unknown[] }) {
         super();
-        processorState.aurisSignals.push(options.signal);
+        processorState.sensusSignals.push(options.signals);
       }
 
-      observe(signal: unknown): void {
-        processorState.echoes.push(signal);
+      async process(signal: unknown): Promise<void> {
+        const value = signal as { type: string };
+        if (value.type === 'echo') {
+          processorState.echoes.push(signal);
+        } else if (value.type === 'photon') {
+          await Promise.resolve();
+          processorState.photons.push(signal);
+        } else if (value.type === 'script') {
+          const script = signal as Script;
+          this.emit(
+            'data',
+            new Reading({
+              content: script.content,
+              timestamp: script.timestamp,
+              originSignal: script.constructor as typeof Script,
+            }),
+          );
+        }
       }
 
-      flush(): void {
-        processorState.flushes += 1;
-      }
-    },
-  };
-});
-
-vi.mock('../oculus/index.ts', async () => {
-  const { EventHost } = await import('@ciels/event');
-  return {
-    Oculus: class extends EventHost<{
-      sight(data: unknown): void;
-    }> {
-      constructor(options: { signal: unknown }) {
-        super();
-        processorState.oculusSignals.push(options.signal);
-      }
-
-      async observe(signal: unknown): Promise<void> {
-        await Promise.resolve();
-        processorState.photons.push(signal);
+      close(): void {
+        processorState.closes += 1;
       }
     },
   };
@@ -56,17 +53,17 @@ vi.mock('../oculus/index.ts', async () => {
 const { Ciel } = await import('./index.ts');
 
 class TestEcho extends Echo.WithMeta({
-  title: 'Test audio',
+  name: 'Test audio',
   description: 'Audio emitted by a test stimulus',
 }) {}
 
 class TestPhoton extends Photon.WithMeta({
-  title: 'Test video',
+  name: 'Test video',
   description: 'Video emitted by a test stimulus',
 }) {}
 
 class TestScript extends Script.WithMeta({
-  title: 'Test text',
+  name: 'Test text',
   description: 'Text emitted by a test stimulus',
 }) {}
 
@@ -98,33 +95,37 @@ class TestStimulus extends Stimulus<typeof testSignals> {
 describe('Ciel', () => {
   it('discovers signals and routes emitted instances to automatic processors', async () => {
     const stimulus = new TestStimulus();
-    const scripts: Script[] = [];
+    const readings: Reading[] = [];
     const ciel = new Ciel().use(stimulus);
-    ciel.on('script', script => scripts.push(script));
+    ciel.on('data', percept => {
+      if (percept.type === 'reading') {
+        readings.push(percept);
+      }
+    });
 
     await ciel.start();
 
     expect(stimulus.started).toBe(true);
-    expect(processorState.aurisSignals).toEqual([TestEcho]);
-    expect(processorState.oculusSignals).toEqual([TestPhoton]);
+    expect(processorState.sensusSignals).toEqual([testSignals]);
     expect(processorState.echoes[0]).toBeInstanceOf(TestEcho);
     expect(processorState.photons[0]).toBeInstanceOf(TestPhoton);
-    expect(scripts[0]).toBeInstanceOf(TestScript);
+    expect(readings[0]).toMatchObject({
+      content: 'hello',
+      originSignal: TestScript,
+    });
 
     await ciel.stop();
     expect(stimulus.stopped).toBe(true);
-    expect(processorState.flushes).toBe(1);
+    expect(processorState.closes).toBe(1);
   });
 
-  it('creates isolated processors for each stimulus binding', async () => {
-    processorState.aurisSignals.length = 0;
-    processorState.oculusSignals.length = 0;
+  it('creates an isolated Sensus for each stimulus', async () => {
+    processorState.sensusSignals.length = 0;
     const ciel = new Ciel().use(new TestStimulus()).use(new TestStimulus());
 
     await ciel.start();
 
-    expect(processorState.aurisSignals).toEqual([TestEcho, TestEcho]);
-    expect(processorState.oculusSignals).toEqual([TestPhoton, TestPhoton]);
+    expect(processorState.sensusSignals).toEqual([testSignals, testSignals]);
     await ciel.stop();
   });
 });
