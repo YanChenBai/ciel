@@ -1,5 +1,5 @@
 {
-  "name": "@ciel/webui",
+  "name": "@ciels/webui",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,10 +8,8 @@
     "preview": "vp preview"
   },
   "dependencies": {
-    "@ciel/core": "workspace:*",
-    "@elysia/eden": "^1.4.10",
+    "@ciels/bridge": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
-    "nanoevents": "^10.0.0",
     "pinia": "^4.0.2",
     "tailwindcss": "^4.3.3",
     "vue": "rc"
@@ -24,7 +22,7 @@
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
     "elysia": "^1.4.29",
-    "typescript": "~6.0.0",
+    "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plugin-vue-devtools": "^8.1.5",
     "vite-plus": "catalog:",

@@ -83,7 +83,10 @@ ciel/
 ├── apps/
 │   └── webui/            # Vue 管理与展示界面
 ├── packages/
-│   └── core/             # 感知核心、领域对象与服务
+│   ├── core/             # 通用信号、感知结果与视觉处理
+│   ├── asr/              # ASR、VAD、说话人识别与 CLI
+│   ├── event/            # 支持同步与异步监听的类型化事件包
+│   └── bridge/           # WebSocket 服务和客户端桥接
 ├── .ciel-data/           # 模型、声纹和感知产物，不提交到 Git
 ├── vite.config.ts        # 工具链和项目任务
 └── package.json
@@ -97,12 +100,9 @@ packages/core/src/
 ├── stimulus/             # 外部刺激输入契约
 ├── perceptions/          # Sight、Hearing
 ├── oculus/               # 视觉感知
-├── auris/                # 听觉感知、ASR、VAD、说话人识别
-├── context/              # 认知上下文，当前为占位实现
-├── events/               # 事件基础设施
-├── server/               # Elysia WebSocket 服务
+├── auris/                # Auris 听觉适配层
 ├── constants/
-└── types/
+└── utils/
 ```
 
 ## 模块职责
@@ -120,7 +120,7 @@ packages/core/src/
 ```ts
 interface PhotonFrame {
   data: Buffer;
-  capturedAt: Date;
+  timestamp: Date;
 }
 ```
 
@@ -147,7 +147,7 @@ interface EchoSegment {
 ```ts
 interface ScriptData {
   content: string;
-  capturedAt: Date;
+  timestamp: Date;
 }
 ```
 
@@ -178,6 +178,52 @@ interface StimulusEventMap {
 ```
 
 `Stimulus` 不理解内容，也不产生 `Sight` 或 `Hearing`。
+
+每个刺激源通过 `signals` 显式声明可能发送的具体信号类型，并继续使用事件发送信号：
+
+```ts
+const signals = [LiveEcho, LivePhoton, DanmuScript] as const;
+
+class LiveStimulus extends Stimulus<typeof signals> {
+  readonly signals = signals;
+
+  async start() {
+    await this.send(new LiveEcho(audioSegment));
+  }
+
+  async stop() {}
+}
+```
+
+`send()` 会拒绝未在 `signals` 中声明的实例，并通过 `@ciels/event` 的异步事件等待 Ciel 完成对应处理队列。
+
+### Ciel
+
+`Ciel` 负责绑定刺激源、发现信号、自动创建处理器和管理生命周期：
+
+```ts
+const ciel = new Ciel({
+  auris: {
+    bufferSeconds: 30,
+  },
+  oculus: {
+    sampleInterval: 1_000,
+  },
+});
+
+ciel.use(new LiveStimulus());
+
+await ciel.start();
+await ciel.stop();
+```
+
+启动时，Ciel 根据 `Signal.prototype` 自动匹配处理器：
+
+- `Echo` 子类创建独立的 `Auris`；
+- `Photon` 子类创建独立的 `Oculus`；
+- `Script` 子类直接作为 Ciel 的 `script` 事件发送。
+
+处理器以“Stimulus 实例 + 具体 Signal class”为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧队列。Ciel 会先完成处理器创建和事件订阅，再启动刺激源；停止时则先停止刺激源，等待异步队列清空，最后 flush 和释放处理器。
 
 ### Oculus
 
@@ -214,9 +260,9 @@ interface SightOptions {
 
 `Oculus` 不调用视觉 LLM，也不生成图片语义描述。后续视觉分析器应消费 `Sight`，而不是侵入 `Oculus`。
 
-### Auris
+### ASR / Auris
 
-`Auris` 是 Ciel 的听觉感知器官。
+`@ciels/asr` 提供底层语音识别能力；`@ciels/core` 中的 `Auris` 是面向 `Echo`、产出 `Hearing` 的上层封装。
 
 当前已经支持：
 
@@ -248,13 +294,13 @@ Echo (16 kHz mono s16le)
 #### 安装模型
 
 ```powershell
-vp run auris:install
+vp run asr:install
 ```
 
 强制重新安装：
 
 ```powershell
-vp run auris:install -- --force
+vp run asr:install -- --force
 ```
 
 模型会写入：
@@ -275,7 +321,7 @@ vp run auris:install -- --force
 输入文件必须为单声道、16 kHz WAV。同一说话人可以提供多个样本：
 
 ```powershell
-vp run auris:voiceprint -- `
+vp run asr:voiceprint -- `
   --output alice.voiceprint `
   ./samples/alice-1.wav `
   ./samples/alice-2.wav
@@ -317,9 +363,15 @@ interface ASROptions {
 #### 使用
 
 ```ts
-import { Auris } from '@ciel/core';
+import { Auris, Echo } from '@ciels/core';
+
+class MyEcho extends Echo.WithMeta({
+  title: 'Microphone',
+  description: 'Primary microphone audio',
+}) {}
 
 const auris = new Auris({
+  signal: MyEcho,
   bufferSeconds: 30,
   speaker: [
     {
@@ -353,6 +405,7 @@ interface Hearing {
   readonly startAt: Date;
   readonly endAt: Date;
   readonly tokens?: readonly HearingToken[];
+  readonly signal: SignalConstructor;
 }
 
 interface HearingToken {
@@ -377,9 +430,9 @@ Auris  emits hearing(Hearing)
 
 这种方式使信号生产者、感知器官和后续认知模块保持独立。
 
-### Server 与 WebUI
+### Bridge 与 WebUI
 
-`packages/core/src/server` 当前提供基于 Elysia 的 WebSocket 入口和连接管理。
+`packages/bridge` 提供基于 Elysia 的 WebSocket 服务、协议类型以及浏览器和 Vue 客户端。
 
 `apps/webui` 是 Vue 应用，用于后续展示感知结果、运行状态和 Agent 交互。目前二者仍处于基础设施阶段，不属于已经完成的认知核心。
 
@@ -411,7 +464,7 @@ Auris  emits hearing(Hearing)
 | 模型安装与声纹创建脚本   | 已实现   |
 | WebSocket 基础服务       | 初步实现 |
 | WebUI                    | 初步实现 |
-| Context 聚合             | 占位实现 |
+| Context 聚合             | 规划中   |
 | 长期记忆                 | 规划中   |
 | 多模态推理               | 规划中   |
 | 自主决策与行动           | 规划中   |

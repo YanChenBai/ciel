@@ -14,7 +14,7 @@ export default defineConfig({
     embeddedLanguageFormatting: 'auto',
   },
   test: {
-    projects: ['./apps/webui', './packages/core'],
+    projects: ['./apps/*', './packages/*'],
   },
   lint: {
     jsPlugins: [
@@ -34,12 +34,12 @@ export default defineConfig({
   run: {
     cache: true,
     tasks: {
-      'auris:install': {
-        command: 'oxnode ./packages/core/scripts/install-auris-models.ts',
+      'asr:install': {
+        command: 'oxnode ./packages/asr/src/cli/index.ts model',
         cache: false,
       },
-      'auris:voiceprint': {
-        command: 'oxnode ./packages/core/scripts/create-voiceprint.ts',
+      'asr:voiceprint': {
+        command: 'oxnode ./packages/asr/src/cli/index.ts voiceprint',
         cache: false,
       },
     },

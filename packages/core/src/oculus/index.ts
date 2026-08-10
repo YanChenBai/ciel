@@ -1,14 +1,16 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { EventHost } from '@ciels/event';
 import sharp from 'sharp';
 
 import { Sight } from '#perceptions';
 import type { Photon } from '#signals';
 import { DEFAULT_OCULUS_OUTPUT_DIR } from '#src/constants/index.ts';
-import { NanoEvents } from '#src/events/index.ts';
 
 export interface OculusOptions {
+  signal: typeof Photon;
+
   /**
    * 两次采样之间的最小时间间隔，单位 ms
    */
@@ -24,7 +26,7 @@ export interface OculusEventMap {
   sight(data: Sight): void;
 }
 
-export class Oculus extends NanoEvents<OculusEventMap> {
+export class Oculus extends EventHost<OculusEventMap> {
   static readonly COLS = 3;
   static readonly ROWS = 2;
 
@@ -35,21 +37,27 @@ export class Oculus extends NanoEvents<OculusEventMap> {
   private lastSampleAt = 0;
   private readonly sampleInterval: number;
   private readonly outputDir: string;
+  private readonly signal: typeof Photon;
 
   private photons: Photon[] = [];
 
   constructor(options: OculusOptions) {
     super();
+    validateSignal(options.signal);
+    this.signal = options.signal;
     this.sampleInterval = options.sampleInterval;
     this.outputDir = options.outputDir ?? DEFAULT_OCULUS_OUTPUT_DIR;
   }
 
   async observe(photon: Photon) {
-    if (photon.capturedAt.getTime() - this.lastSampleAt < this.sampleInterval) {
+    if (!(photon instanceof this.signal)) {
+      throw new Error('Oculus can only observe Photon instances from its bound signal');
+    }
+    if (photon.timestamp.getTime() - this.lastSampleAt < this.sampleInterval) {
       return;
     }
 
-    this.lastSampleAt = photon.capturedAt.getTime();
+    this.lastSampleAt = photon.timestamp.getTime();
 
     this.photons.push(photon);
 
@@ -94,8 +102,8 @@ export class Oculus extends NanoEvents<OculusEventMap> {
       recursive: true,
     });
 
-    const startAt = photons[0]!.capturedAt;
-    const endAt = photons.at(-1)!.capturedAt;
+    const startAt = photons[0]!.timestamp;
+    const endAt = photons.at(-1)!.timestamp;
 
     const filename = `${startAt.getTime()}-${endAt.getTime()}.jpg`;
 
@@ -123,6 +131,13 @@ export class Oculus extends NanoEvents<OculusEventMap> {
       path: outputPath,
       startAt,
       endAt,
+      signal: this.signal,
     });
+  }
+}
+
+function validateSignal(signal: typeof Photon): void {
+  if (!signal.meta?.title || !signal.meta.description) {
+    throw new Error('Oculus signal must be created from Photon.WithMeta(...)');
   }
 }

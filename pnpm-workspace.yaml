@@ -6,6 +6,8 @@ catalog:
   '@types/node': ^24.13.3
   vite: npm:@voidzero-dev/vite-plus-core@0.2.8
   vite-plus: 0.2.8
+  typescript: 7.0.2
+  '@oxc-node/cli': ^0.1.0
 
 overrides:
   '@vue/compat': rc

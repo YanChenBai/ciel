@@ -7,11 +7,7 @@ export default defineConfig({
   resolve: {
     tsconfigPaths: true,
   },
-  pack: {
-    dts: {
-      emitDtsOnly: true,
-    },
-  },
+  pack: {},
   lint: {
     options: {
       typeAware: true,

@@ -1,16 +1,28 @@
+import { WithMeta } from '#src/utils/index.ts';
+
 export interface PhotonFrame {
   data: Buffer;
-  capturedAt: Date;
+  timestamp: Date;
+}
+
+export interface PhotonMeta {
+  title: string;
+  description: string;
 }
 
 export abstract class Photon {
+  static meta: PhotonMeta;
+
   readonly type = 'photon' as const;
   readonly data: Buffer;
-  readonly capturedAt: Date;
-  static readonly prompt: string;
+  readonly timestamp: Date;
 
   constructor(readonly frame: PhotonFrame) {
     this.data = frame.data;
-    this.capturedAt = frame.capturedAt;
+    this.timestamp = frame.timestamp;
+  }
+
+  static WithMeta<const TMeta extends PhotonMeta>(meta: TMeta) {
+    return WithMeta(Photon, meta);
   }
 }

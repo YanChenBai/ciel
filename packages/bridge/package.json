@@ -1,0 +1,42 @@
+{
+  "name": "@ciels/bridge",
+  "version": "0.0.0",
+  "description": "Typed WebSocket server and clients for Ciel.",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./client": "./dist/client.mjs",
+    "./protocol": "./dist/protocol.mjs",
+    "./vue": "./dist/vue.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check",
+    "prepublishOnly": "vp run build"
+  },
+  "dependencies": {
+    "@ciels/event": "workspace:*",
+    "@elysia/eden": "^1.4.10",
+    "elysia": "^1.4.29"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "bumpp": "^11.1.0",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "optionalDependencies": {
+    "vue": ">=3.6.0"
+  }
+}

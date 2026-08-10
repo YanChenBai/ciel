@@ -1,3 +1,5 @@
+import type { SignalConstructor } from '../signals/types.ts';
+
 export interface HearingToken {
   content: string;
   startAt: Date;
@@ -34,6 +36,8 @@ export interface HearingOptions {
    * Token 级转写时间戳
    */
   tokens?: readonly HearingToken[];
+
+  signal: SignalConstructor;
 }
 
 export class Hearing {
@@ -45,6 +49,7 @@ export class Hearing {
   readonly startAt: Date;
   readonly endAt: Date;
   readonly tokens?: readonly HearingToken[];
+  readonly signal: HearingOptions['signal'];
 
   constructor(options: HearingOptions) {
     this.content = options.content;
@@ -53,5 +58,6 @@ export class Hearing {
     this.speaker = options.speaker;
     this.confidence = options.confidence;
     this.tokens = options.tokens;
+    this.signal = options.signal;
   }
 }

@@ -1,17 +1,8 @@
 {
-  "name": "@ciel/core",
+  "name": "@ciels/core",
   "version": "0.0.0",
-  "description": "A starter for creating a TypeScript package.",
-  "homepage": "https://github.com/author/library#readme",
-  "bugs": {
-    "url": "https://github.com/author/library/issues"
-  },
+  "description": "Ciel signals, stimuli, perception processors, and runtime orchestration.",
   "license": "MIT",
-  "author": "Author Name <author.name@mail.com>",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/author/library.git"
-  },
   "files": [
     "dist"
   ],
@@ -23,7 +14,7 @@
     "#src/*": "./src/*"
   },
   "exports": {
-    ".": "./dist/index.d.mts",
+    ".": "./dist/index.mjs",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -37,15 +28,14 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "elysia": "^1.4.29",
-    "nanoevents": "^10.0.0",
-    "sharp": "^0.35.3",
-    "sherpa-onnx-node": "^1.13.4"
+    "@ciels/asr": "workspace:*",
+    "@ciels/event": "workspace:*",
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "bumpp": "^11.1.0",
-    "typescript": "^7.0.2",
+    "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "engines": {
