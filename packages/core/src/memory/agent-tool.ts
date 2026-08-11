@@ -1,8 +1,6 @@
 import { jsonSchema, tool } from 'ai';
 import type { Tool } from 'ai';
 
-import type { ContextSnapshot, ContextTime } from '#src/context/index.ts';
-
 import type { Memory } from './memory.ts';
 
 /**
@@ -70,26 +68,6 @@ interface RecallMemoryInput {
    * 返回精简或完整消息内容。
    */
   detail?: 'low' | 'high';
-}
-
-/**
- * main Agent 在每轮结束前生成的情景摘要。
- */
-interface RecordEpisodeInput {
-  /**
-   * 对这一轮实际发生内容的简洁过去时摘要。
-   */
-  summary: string;
-}
-
-function getEpisodeTime(context: ContextSnapshot): ContextTime {
-  if (context.data.length === 0) {
-    return { startAt: context.createdAt, endAt: context.createdAt };
-  }
-  return {
-    startAt: new Date(Math.min(...context.data.map(data => data.time.startAt.getTime()))),
-    endAt: new Date(Math.max(...context.data.map(data => data.time.endAt.getTime()))),
-  };
 }
 
 /**
@@ -190,46 +168,11 @@ function createRecallMemoryTool(memory: Memory): Tool<RecallMemoryInput, unknown
 }
 
 /**
- * 创建由 main Agent 每轮调用一次的情景记忆写入工具。
- */
-function createRecordEpisodeTool(
-  memory: Memory,
-  context: ContextSnapshot,
-): Tool<RecordEpisodeInput, { recorded: true }> {
-  return tool({
-    description:
-      '记录本轮实际发生了什么。每轮结束前调用一次，只总结事实与行动，不写推测或长期规律。',
-    inputSchema: jsonSchema<RecordEpisodeInput>({
-      type: 'object',
-      properties: {
-        summary: {
-          type: 'string',
-          minLength: 1,
-          description: '使用过去时概括本轮观察、决策、工具行动及结果',
-        },
-      },
-      required: ['summary'],
-      additionalProperties: false,
-    }),
-    execute: async input => {
-      await memory.rememberEpisode({
-        name: '情景',
-        description: 'main Agent 对当时发生内容的总结',
-        time: getEpisodeTime(context),
-        content: { type: 'text', text: input.summary },
-      });
-      return { recorded: true };
-    },
-  });
-}
-
-/**
  * 创建由 Nucleus 内置 Agent 独占的记忆工具集合。
  */
-export function createMemoryTools(memory: Memory, context: ContextSnapshot) {
+export function createMemoryTools(memory: Memory) {
   return {
     memory_recall: createRecallMemoryTool(memory),
-    memory_record_episode: createRecordEpisodeTool(memory, context),
     memory_remember: createRememberMemoryTool(memory),
   };
 }

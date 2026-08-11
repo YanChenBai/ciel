@@ -3,20 +3,16 @@ import { EventHost, toError } from '@ciels/event';
 
 import { Sensus } from '#sensus';
 import type { SensusLectioOptions, SensusOculusOptions } from '#sensus';
-import { ContextCollection } from '#src/context/collection.ts';
-import { Context } from '#src/context/index.ts';
-import type { ContextOptions } from '#src/context/index.ts';
 import { Nucleus } from '#src/nucleus/index.ts';
-import type { NucleusInput, NucleusOptions } from '#src/nucleus/index.ts';
+import type { NucleusContext, NucleusInput, NucleusOptions } from '#src/nucleus/index.ts';
 import type { Percept } from '#src/percepts/index.ts';
 import type { Signal } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
 
-export type CielNucleusOptions<TOutput = string> = Omit<NucleusOptions<TOutput>, 'context'>;
+export type CielNucleusOptions<TOutput = string> = NucleusOptions<TOutput>;
 
 export interface CielOptions<TOutput = string> {
   auris?: ASROptions;
-  context?: ContextOptions;
   lectio?: SensusLectioOptions;
   nucleus?: CielNucleusOptions<TOutput>;
   oculus?: SensusOculusOptions;
@@ -36,8 +32,6 @@ interface StimulusRuntime {
 
   sensus: Sensus;
 
-  context: Context;
-
   /**
    * Stimulus 到 Ciel 的事件订阅清理函数
    */
@@ -54,8 +48,6 @@ type CielState = 'idle' | 'starting' | 'running' | 'stopping';
 export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   private readonly options: CielOptions<TOutput>;
   private readonly stimuli: Stimulus[] = [];
-  private readonly contexts = new Map<Stimulus, Context>();
-  private readonly contextCollection = new ContextCollection();
   private readonly nucleus?: Nucleus<TOutput>;
   private runtimes: StimulusRuntime[] = [];
   private nucleusStarted = false;
@@ -65,7 +57,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     super();
     this.options = options;
     if (options.nucleus) {
-      this.nucleus = new Nucleus({ context: this.contextCollection, ...options.nucleus });
+      this.nucleus = new Nucleus(options.nucleus);
       this.nucleus.on('thought', (output, input) => this.emit('thought', output, input));
       this.nucleus.on('error', error => this.emit('error', error));
     }
@@ -81,19 +73,13 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     }
 
     this.stimuli.push(stimulus);
-    const context = new Context(stimulus, this.options.context);
-    this.contexts.set(stimulus, context);
-    this.contextCollection.add(context);
+    this.nucleus?.register(stimulus);
 
     return this;
   }
 
-  getContext(stimulus: Stimulus): Context {
-    const context = this.contexts.get(stimulus);
-    if (!context) {
-      throw new Error('Stimulus is not registered');
-    }
-    return context;
+  getContext(): Promise<NucleusContext> {
+    return this.getNucleus().getContext();
   }
 
   getNucleus(): Nucleus<TOutput> {
@@ -112,8 +98,6 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
 
     try {
       this.runtimes = [];
-      this.contexts.forEach(context => context.clear());
-
       for (const stimulus of this.stimuli) {
         this.runtimes.push(this.createRuntime(stimulus));
       }
@@ -147,7 +131,6 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   }
 
   private createRuntime(stimulus: Stimulus): StimulusRuntime {
-    const context = this.getContext(stimulus);
     return {
       stimulus,
       sensus: new Sensus({
@@ -156,7 +139,6 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
         oculus: this.options.oculus,
         signals: stimulus.signals,
       }),
-      context,
       unsubscribers: [],
       started: false,
     };
@@ -165,7 +147,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   private subscribe(runtime: StimulusRuntime): void {
     runtime.unsubscribers.push(
       runtime.sensus.on('data', percept => {
-        runtime.context.ingest(percept);
+        this.nucleus?.ingest(runtime.stimulus, percept);
         this.emit('data', percept);
       }),
       runtime.sensus.on('error', error => this.emit('error', error)),

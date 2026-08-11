@@ -133,8 +133,6 @@ describe('Ciel', () => {
       content: 'hello',
       originSignal: TestScript,
     });
-    expect(ciel.getContext(stimulus).snapshot(new Date(1)).data).toHaveLength(1);
-
     await ciel.stop();
     expect(stimulus.stopped).toBe(true);
     expect(processorState.closes).toBe(1);
@@ -150,20 +148,36 @@ describe('Ciel', () => {
     await ciel.stop();
   });
 
-  it('keeps a separate context for each stimulus', () => {
+  it('merges every stimulus into the Nucleus context', async () => {
     const first = new TestStimulus();
     const second = new TestStimulus();
-    const ciel = new Ciel().use(first).use(second);
+    const ciel = new Ciel({
+      nucleus: {
+        context: { perceptWindow: Number.MAX_SAFE_INTEGER },
+        memory: { path: ':memory:' },
+        model: createModel(),
+      },
+    })
+      .use(first)
+      .use(second);
 
-    expect(ciel.getContext(first)).not.toBe(ciel.getContext(second));
+    await ciel.start();
+    const context = await ciel.getContext();
+    expect(context.definitions.filter(definition => definition.kind === 'scene')).toHaveLength(1);
+    expect(context.data).toHaveLength(2);
+    expect(context.data.map(data => data.stimulus)).toEqual([first, second]);
+    await ciel.stop();
   });
 
   it('owns one Nucleus and forwards its thoughts', async () => {
     const stimulus = new TestStimulus();
     const model = createModel();
     const ciel = new Ciel({
-      context: { perceptWindow: Number.MAX_SAFE_INTEGER },
-      nucleus: { model },
+      nucleus: {
+        context: { perceptWindow: Number.MAX_SAFE_INTEGER },
+        memory: { path: ':memory:' },
+        model,
+      },
     }).use(stimulus);
     const thoughts: unknown[] = [];
     ciel.on('thought', output => {

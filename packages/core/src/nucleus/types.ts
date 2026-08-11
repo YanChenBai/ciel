@@ -1,122 +1,135 @@
 import type { LanguageModel, ModelMessage, Output, ToolLoopAgentSettings, ToolSet } from 'ai';
 
-import type { ContextPromptProfile, ContextSnapshot, ContextSource } from '#src/context/index.ts';
 import type { MemoryEntry, MemoryOptions } from '#src/memory/index.ts';
+import type { Percept } from '#src/percepts/index.ts';
+import type { Stimulus } from '#src/stimulus/index.ts';
 
 type MaybePromise<T> = T | Promise<T>;
 
 export type NucleusTrigger = 'manual' | 'percept' | 'interval';
 
-/**
- * Nucleus 一次思考所需的完整输入。
- */
-export interface NucleusInput {
-  /**
-   * 本次思考由手动调用、新感知或最大等待时间触发。
-   */
-  readonly trigger: NucleusTrigger;
+export interface NucleusContextOptions {
+  /** 每次组装 Context 时保留的最近感知时长，单位为毫秒。 */
+  perceptWindow?: number;
 
-  /**
-   * 当前感知窗口的不可变快照。
-   */
-  readonly context: ContextSnapshot;
+  /** 单次模型输入最多携带多少张最近的实时图片。 */
+  maxImages?: number;
 
-  /**
-   * 已按类型和配置限制数量的长期记忆与情景记忆。
-   */
+  /** 附加到场景与信号语义之前的基础定义。 */
+  definitions?: readonly ContextDefinitionInput[];
+}
+
+export interface ContextDefinitionInput {
+  readonly name: string;
+  readonly description: string;
+}
+
+export type ContextDefinitionKind = 'custom' | 'scene' | 'signal';
+
+export interface ContextDefinition extends ContextDefinitionInput {
+  readonly kind: ContextDefinitionKind;
+}
+
+export interface ContextTime {
+  readonly startAt: Date;
+  readonly endAt: Date;
+}
+
+export interface ContextTextContent {
+  readonly type: 'text';
+  readonly text: string;
+  readonly speaker?: string;
+}
+
+export interface ContextImageContent {
+  readonly type: 'image';
+  readonly path: string;
+}
+
+export type ContextContent = ContextTextContent | ContextImageContent;
+
+export interface ContextData {
+  readonly stimulus: Stimulus;
+  readonly scene: ContextDefinition;
+  readonly signal: ContextDefinition;
+  readonly time: ContextTime;
+  readonly content: ContextContent;
+  readonly percept: Percept;
+}
+
+/** Nucleus 中尚未加入 Memory 的实时状态。 */
+export interface NucleusContextSnapshot {
+  readonly createdAt: Date;
+  readonly definitions: readonly ContextDefinition[];
+  readonly data: readonly ContextData[];
+}
+
+/** Nucleus 当前可用于思考的完整实时数据与记忆。 */
+export interface NucleusContext extends NucleusContextSnapshot {
   readonly memories: readonly MemoryEntry[];
-
-  /**
-   * Memory 生成、应放入 system prompt 的长期上下文。
-   */
   readonly memoryInstructions?: string;
 }
 
-/**
- * 可在实时感知消息之后追加的 AI SDK 消息。
- */
+/** Nucleus 一次思考所需的完整输入。 */
+export interface NucleusInput extends NucleusContext {
+  readonly trigger: NucleusTrigger;
+}
+
+export type NucleusPromptPart =
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'image'; readonly path: string };
+
+export interface NucleusPrompt {
+  readonly system: readonly string[];
+  readonly input: readonly NucleusPromptPart[];
+}
+
+/** 可在实时感知消息之后追加的 AI SDK 消息。 */
 export type NucleusMessage = (
   input: NucleusInput,
 ) => MaybePromise<ModelMessage | readonly ModelMessage[]>;
 
-/**
- * Nucleus 内置 Memory 的配置，模型始终与 Agent 共用。
- */
+/** Nucleus 内置 Memory 的配置，模型始终与 Nucleus 共用。 */
 export type NucleusMemoryOptions = Omit<MemoryOptions, 'model'> & {
-  /**
-   * 每轮最多注入的长期记忆数量。
-   */
-  longTermLimit?: number;
-
-  /**
-   * 每轮最多注入的近期情景记忆数量。
-   */
-  episodicLimit?: number;
+  readonly longTermLimit?: number;
+  readonly episodicLimit?: number;
+  readonly episode?: NucleusEpisodeOptions;
 };
 
-/**
- * Nucleus 的调度与依赖配置。
- */
-export interface NucleusOptions<TOutput = string> {
-  /**
-   * Ciel 汇总后的上下文来源。
-   */
-  context: ContextSource;
+export interface NucleusEpisodeOptions {
+  /** 最后一条 Percept 后多久自动结束 Episode。 */
+  readonly idleTimeout?: number;
+  /** 摘要最多使用多少张有效 Sight 拼图。 */
+  readonly maxImages?: number;
+  /** 缓存达到多少张 Sight 时，在本轮思考后结束 Episode。 */
+  readonly maxBufferedImages?: number;
+  /** 缓存的文字与运行轨迹达到多少字符时结束 Episode。 */
+  readonly maxTextChars?: number;
+  /** 单轮模型实际输入达到多少 token 时结束 Episode。 */
+  readonly maxInputTokens?: number;
+  /** Sight 灰度熵低于该值时视为没有有效画面内容。 */
+  readonly minVisualEntropy?: number;
+}
 
-  /**
-   * 内置 ToolLoopAgent 使用的模型。
-   */
-  model: LanguageModel;
+/** Nucleus 的模型与调用配置。 */
+export interface NucleusGenerationOptions<TOutput = string> {
+  readonly model: LanguageModel;
+  readonly system?: readonly string[];
+  readonly messages?: readonly NucleusMessage[];
+  readonly tools?: ToolSet;
+  readonly output?: Output.Output<TOutput>;
+  readonly stopWhen?: ToolLoopAgentSettings<never, ToolSet>['stopWhen'];
+}
 
-  /**
-   * 由 Context 分区组合的身份、人格、规则与扩展提示词。
-   */
-  prompt?: ContextPromptProfile;
-
-  /**
-   * 在实时感知之后追加的本轮消息。
-   */
-  messages?: readonly NucleusMessage[];
-
-  /**
-   * 应用提供的行动工具；记忆工具由 Nucleus 自动加入。
-   */
-  tools?: ToolSet;
-
-  /**
-   * 可选的结构化输出定义；未提供时输出文本。
-   */
-  output?: Output.Output<TOutput>;
-
-  /**
-   * ToolLoopAgent 的停止条件。
-   */
-  stopWhen?: ToolLoopAgentSettings<never, ToolSet>['stopWhen'];
-
-  /**
-   * 启用并配置内置 Memory；未提供时不启用记忆。
-   */
-  memory?: NucleusMemoryOptions;
-
-  /**
-   * 新感知连续到达时，两次思考之间的最短间隔。
-   */
-  minThinkInterval?: number;
-
-  /**
-   * 没有新感知时，触发主动思考的最长等待时间。
-   */
-  maxThinkInterval?: number;
+/** Nucleus 的 Context、Memory 与调度配置。 */
+export interface NucleusOptions<TOutput = string> extends NucleusGenerationOptions<TOutput> {
+  readonly context?: NucleusContextOptions;
+  readonly memory: NucleusMemoryOptions;
+  readonly minThinkInterval?: number;
+  readonly maxThinkInterval?: number;
 }
 
 export interface NucleusEventMap<TOutput = string> {
-  /**
-   * 一次思考成功完成。
-   */
   thought(output: TOutput, input: NucleusInput): void;
-
-  /**
-   * 召回或思考失败。
-   */
   error(error: Error): void;
 }

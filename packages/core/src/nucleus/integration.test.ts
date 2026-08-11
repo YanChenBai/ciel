@@ -7,14 +7,11 @@ import path from 'node:path';
 import { MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
-import { Context } from '#src/context/index.ts';
-import { Memory } from '#src/memory/index.ts';
 import { Reading, Sight } from '#src/percepts/index.ts';
 import { Photon, Script } from '#src/signals/index.ts';
 import { Stimulus } from '#src/stimulus/index.ts';
 
-import { runNucleusAgent } from './agent.ts';
-import type { NucleusInput } from './types.ts';
+import { Nucleus } from './nucleus.ts';
 
 class TestPhoton extends Photon.WithMeta({ name: '画面', description: '最新视觉观察' }) {}
 class TestScript extends Script.WithMeta({ name: '对话', description: '场景中的消息' }) {}
@@ -49,19 +46,30 @@ afterEach(async () => {
   );
 });
 
-describe('Nucleus 内置 Agent', () => {
+describe('Nucleus Prompt', () => {
   it('把定义放入 system，并把实时感知作为多模态本轮输入', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'ciel-context-'));
     temporaryDirectories.push(directory);
     const imagePath = path.join(directory, 'scene.png');
     await writeFile(imagePath, Buffer.from([1, 2, 3]));
 
-    const context = new Context(new TestStimulus());
-    context.define({ name: '目标', description: '判断是否需要互动' });
-    context.ingest(
+    const stimulus = new TestStimulus();
+    const model = createModel();
+    const nucleus = new Nucleus({
+      context: { perceptWindow: Number.MAX_SAFE_INTEGER },
+      memory: { path: ':memory:' },
+      model,
+      system: ['# 自定义设定\n\n你是夏尔。'],
+      messages: [() => ({ role: 'user', content: '当前任务' })],
+    });
+    nucleus.register(stimulus);
+    nucleus.define({ name: '目标', description: '判断是否需要互动' });
+    nucleus.ingest(
+      stimulus,
       new Reading({ content: '你好', timestamp: new Date(1), originSignal: TestScript }),
     );
-    context.ingest(
+    nucleus.ingest(
+      stimulus,
       new Sight({
         path: imagePath,
         startAt: new Date(2),
@@ -69,56 +77,40 @@ describe('Nucleus 内置 Agent', () => {
         originSignal: TestPhoton,
       }),
     );
-    const input: NucleusInput = {
-      trigger: 'percept',
-      context: context.snapshot(new Date(3)),
-      memories: [],
-      memoryInstructions: '长期记忆生成的系统上下文',
-    };
-    const model = createModel();
-
-    const output = await runNucleusAgent(input, {
-      context,
-      model,
-      prompt: { identity: '你是夏尔。' },
-      messages: [() => ({ role: 'user', content: '当前任务' })],
-    });
+    const output = await nucleus.think();
 
     expect(output).toBe('回应');
     const call = model.doGenerateCalls[0];
     const serialized = JSON.stringify(call);
     expect(serialized).toContain('你是夏尔。');
-    expect(serialized).toContain('长期记忆生成的系统上下文');
     expect(serialized).toContain('## 直播间');
     expect(serialized).toContain('## 画面');
     expect(serialized).toContain('## 目标');
-    expect(serialized).toContain('[对话]');
+    expect(serialized).toContain('[直播间 / 对话]');
     expect(serialized).toContain('当前任务');
+    expect(serialized.indexOf('## 直播间')).toBeLessThan(serialized.indexOf('你是夏尔。'));
+    expect(serialized.indexOf('[直播间 / 对话]')).toBeLessThan(serialized.indexOf('当前任务'));
     expect(call?.prompt.some(message => message.role === 'user')).toBe(true);
+    await nucleus.getMemory().close();
   });
 
-  it('启用 Memory 时自动提供记忆工具，并保护内置工具名称', async () => {
-    const context = new Context(new TestStimulus());
+  it('自动提供记忆工具，并保护内置工具名称', async () => {
     const model = createModel();
-    const memory = new Memory({ path: ':memory:', model });
-    const input: NucleusInput = {
-      trigger: 'manual',
-      context: context.snapshot(),
-      memories: [],
-    };
 
-    await runNucleusAgent(input, { context, model }, memory);
+    const nucleus = new Nucleus({ memory: { path: ':memory:' }, model });
+    await nucleus.think();
     expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).toContain('memory_remember');
     expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).toContain('memory_recall');
-    expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).toContain('memory_record_episode');
+    expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).not.toContain('memory_record_episode');
 
-    await expect(
-      runNucleusAgent(
-        input,
-        { context, model, tools: { memory_remember: { inputSchema: {} as never } } },
-        memory,
-      ),
-    ).rejects.toThrow('reserved by Nucleus');
-    await memory.close();
+    expect(
+      () =>
+        new Nucleus({
+          memory: { path: ':memory:' },
+          model,
+          tools: { memory_remember: { inputSchema: {} as never } },
+        }),
+    ).toThrow('reserved by Nucleus');
+    await nucleus.getMemory().close();
   });
 });

@@ -1,5 +1,4 @@
 export * from './ciel/index.ts';
-export * from './context/index.ts';
 export * from './memory/index.ts';
 export * from './nucleus/index.ts';
 export * from './percepts/index.ts';

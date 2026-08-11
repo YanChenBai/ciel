@@ -1,4 +1,4 @@
-import type { ContextContent, ContextTime } from '#src/context/index.ts';
+import type { ContextContent, ContextTime } from '#src/nucleus/types.ts';
 
 export type MemoryKind = 'long-term' | 'episodic';
 
@@ -12,7 +12,7 @@ export interface MemoryEntry {
   readonly id?: string;
 
   /**
-   * 长期记忆或 Agent 总结的情景记忆。
+   * 长期记忆或 Nucleus 总结的情景记忆。
    */
   readonly kind: MemoryKind;
 

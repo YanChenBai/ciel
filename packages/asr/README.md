@@ -1,8 +1,8 @@
 # @ciels/asr
 
-Streaming speech recognition for Ciel, built on `sherpa-onnx-node`.
+Streaming speech perception for Ciel, built on `sherpa-onnx-node`.
 
-The package owns PCM buffering, Silero VAD, online recognition, token timestamps, speaker embeddings, registered voiceprints, and anonymous speaker clustering. It accepts raw audio segments and returns ASR results without depending on Ciel signal or perception classes.
+The package owns PCM buffering, TEN-VAD segmentation, offline SenseVoiceSmall recognition, token timestamps, speaker embeddings, registered voiceprints, and anonymous speaker clustering. It accepts raw audio segments and returns ASR results without depending on Ciel signal or perception classes.
 
 ## API
 
@@ -38,6 +38,7 @@ vp run asr:voiceprint -- --output alice.voiceprint ./samples/alice.wav
 ```
 
 Models and voiceprints are stored below `.ciel-data` unless `CIEL_DATA_DIR` is set.
+The installer uses the INT8 multilingual SenseVoiceSmall model with inverse text normalization and Sherpa's metadata-enhanced INT8 TEN-VAD model. TEN-VAD supports only 16 kHz audio; review its upstream license before commercial use.
 
 ## Development
 

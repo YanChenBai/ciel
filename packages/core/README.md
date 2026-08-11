@@ -48,20 +48,23 @@ Signal matching inside `Sensus` is automatic:
 ## Exports
 
 - `Ciel`: stimulus registration and lifecycle orchestration.
-- `Context`: per-stimulus definitions, percept windows, snapshots, and prompt composition.
 - `Memory`: Mastra-backed memory using local LibSQL persistence or `:memory:` mode, without a required embedding model.
-- `Nucleus<TOutput>`: the single built-in AI SDK `ToolLoopAgent`, memory owner, and min/max thought scheduler.
+- `Nucleus<TOutput>`: the many-stimuli cognition runtime, unified realtime Context, memory owner, tool runner, and min/max thought scheduler.
 - `Sensus`: unified signal routing, sensory capability, events, and lifecycle.
 - `SensusBase<TSignal, TData>`: common signal binding and `data/error` event contract for sensory capabilities.
 - `Stimulus`: typed event source with explicit `signals` and async `send()`.
 
-Pass `nucleus` to `Ciel` to create its single lifecycle-managed `Nucleus`. It observes a
-merged view of every registered stimulus Context, forwards `thought` and `error` events,
-and is exposed through `getNucleus()`.
+Pass `nucleus` to `Ciel` to create its single lifecycle-managed `Nucleus`. Every registered
+Stimulus feeds the same Nucleus while each Context entry retains its source Stimulus. Ciel
+forwards `thought` and `error` events and exposes the runtime through `getNucleus()` and its
+assembled realtime-plus-memory state through `getContext()`.
 
-When Memory is enabled, Nucleus privately adds tools for long-term writes, history recall,
-and per-turn episodic summaries. Applications only provide the model, prompt profile, and
-domain action tools.
+Nucleus privately adds tools for long-term writes and history recall, plus runtime-managed episodic
+summaries. A quiet period, buffered image/text pressure, actual input-token pressure, explicit
+flush, or shutdown closes the current episode. Valid Oculus JPEGs are sent directly to the
+multimodal model while the live context keeps only a configured number of recent images and blank
+images are skipped. Applications provide the model, custom system/messages, and domain action
+tools.
 
 - `Echo`, `Photon`, `Script`: immutable signal bases with static metadata.
 - `Auris`, `Oculus`, `Lectio`: lower-level signal-bound sensory capabilities.

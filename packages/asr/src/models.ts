@@ -13,25 +13,24 @@ export function createAurisModelConfig(): AurisModelConfig {
         featureDim: 80,
       },
       modelConfig: {
-        transducer: {
-          encoder: path.join(AURIS_MODEL_PATHS.asr, 'encoder-epoch-99-avg-1.onnx'),
-          decoder: path.join(AURIS_MODEL_PATHS.asr, 'decoder-epoch-99-avg-1.onnx'),
-          joiner: path.join(AURIS_MODEL_PATHS.asr, 'joiner-epoch-99-avg-1.onnx'),
+        senseVoice: {
+          model: path.join(AURIS_MODEL_PATHS.asr, 'model.int8.onnx'),
+          language: 'auto',
+          useInverseTextNormalization: 1,
         },
         tokens: path.join(AURIS_MODEL_PATHS.asr, 'tokens.txt'),
         numThreads: 2,
         provider: 'cpu',
       },
-      enableEndpoint: true,
     },
     vad: {
-      sileroVad: {
+      tenVad: {
         model: AURIS_MODEL_PATHS.vad,
-        threshold: 0.5,
-        minSpeechDuration: 0.25,
+        threshold: 0.25,
+        minSpeechDuration: 0.5,
         minSilenceDuration: 0.5,
-        windowSize: 512,
-        maxSpeechDuration: 30,
+        windowSize: 256,
+        maxSpeechDuration: 10,
       },
       sampleRate: AURIS_SAMPLE_RATE,
       numThreads: 1,

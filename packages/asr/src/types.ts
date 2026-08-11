@@ -1,5 +1,5 @@
 import type {
-  OnlineRecognizerConfig,
+  OfflineRecognizerConfig,
   SpeakerEmbeddingExtractorConfig,
   VadConfig,
 } from 'sherpa-onnx-node';
@@ -44,7 +44,7 @@ export interface ASRResult {
 }
 
 export interface AurisModelConfig {
-  recognizer: OnlineRecognizerConfig;
+  recognizer: OfflineRecognizerConfig;
   vad: VadConfig;
   speaker: SpeakerEmbeddingExtractorConfig;
 }

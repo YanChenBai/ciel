@@ -10,9 +10,9 @@ import { DATA_PATH } from '../constants.ts';
 import { loading, progress } from './utils/index.ts';
 
 const RELEASE = 'https://github.com/k2-fsa/sherpa-onnx/releases/download';
-const ASR_ARCHIVE = 'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2';
+const ASR_ARCHIVE = 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2';
 const ASR_URL = RELEASE + '/asr-models/' + ASR_ARCHIVE;
-const VAD_URL = RELEASE + '/asr-models/silero_vad.onnx';
+const VAD_URL = RELEASE + '/asr-models/ten-vad.int8.onnx';
 const SPEAKER_URL =
   RELEASE +
   '/speaker-recongition-models/' +
@@ -42,20 +42,27 @@ export async function installModel(args: readonly string[]): Promise<void> {
 async function installModels(force: boolean): Promise<void> {
   const modelsDir = path.join(DATA_PATH, 'models');
   const downloadsDir = path.join(DATA_PATH, 'downloads');
-  const asrDir = path.join(modelsDir, 'asr');
-  const vadFile = path.join(modelsDir, 'vad', 'silero_vad.onnx');
+  const asrDir = path.join(modelsDir, 'asr', 'sense-voice');
+  const vadFile = path.join(modelsDir, 'vad', 'ten-vad.int8.onnx');
   const speakerFile = path.join(modelsDir, 'speaker', 'model.onnx');
 
   await mkdir(downloadsDir, { recursive: true });
   const archive = path.join(downloadsDir, ASR_ARCHIVE);
-  if (force || !(await exists(path.join(asrDir, 'tokens.txt')))) {
+  if (
+    force ||
+    !(await exists(path.join(asrDir, 'tokens.txt'))) ||
+    !(await exists(path.join(asrDir, 'model.int8.onnx')))
+  ) {
     await download(ASR_URL, archive);
     const temporaryAsrDir = asrDir + '.installing';
     await rm(temporaryAsrDir, { recursive: true, force: true });
     await mkdir(temporaryAsrDir, { recursive: true });
     await extractArchive(archive, temporaryAsrDir);
-    if (!(await exists(path.join(temporaryAsrDir, 'tokens.txt')))) {
-      throw new Error('The ASR archive does not contain tokens.txt');
+    if (
+      !(await exists(path.join(temporaryAsrDir, 'tokens.txt'))) ||
+      !(await exists(path.join(temporaryAsrDir, 'model.int8.onnx')))
+    ) {
+      throw new Error('The SenseVoice archive is incomplete');
     }
     await rm(asrDir, { recursive: true, force: true });
     await rename(temporaryAsrDir, asrDir);

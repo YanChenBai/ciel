@@ -14,8 +14,7 @@ World
       → Signals
       → Sensus
       → Percepts
-      → Context
-  → Memory / Reasoning
+  → Nucleus / Context / Reasoning
   → Response
 ```
 
@@ -35,8 +34,7 @@ Sensory Path:
 Raw Signal
   → Sensus
   → Percept
-  → LLM-ready Context
-  → Ciel Core
+  → Nucleus
 
 Symbolic Path:
 Script
@@ -59,27 +57,27 @@ Script
 ## 整体架构
 
 ```text
-  Live Stream / External World
-                │
-                ▼
-            Stimulus
-    ┌───────────┼───────────┐
-    ▼           ▼           ▼
- Photon       Echo       Script
-    └───────────┼───────────┘
-                ▼
-             Sensus
-    ┌───────────┼───────────┐
-    ▼           ▼           ▼
- Oculus       Auris      Lectio
-    │           │           │
-    ▼           ▼           ▼
-  Sight      Hearing     Reading
-    └───────────┼───────────┘
-                ▼
-      Ciel Context / Core
-                ▼
-   Memory / Reasoning / Agent
+Live Stream / External World
+              │
+              ▼
+      Stimulus A ... Stimulus N
+              │
+  ┌───────────┼───────────┐
+  ▼           ▼           ▼
+Photon       Echo       Script
+  │           │           │
+  ▼           ▼           ▼
+Oculus       Auris      Lectio
+  │           │           │
+  ▼           ▼           ▼
+Sight       Hearing     Reading
+  └───────────┼───────────┘
+              │ Percepts
+              ▼
+          Nucleus ◄───────► Memory
+              │
+              ▼
+      Thought / Actions
 ```
 
 当前仓库是一个 Vite+ monorepo：
@@ -106,6 +104,8 @@ packages/core/src/
 ├── stimulus/             # 外部刺激输入契约
 ├── percepts/             # Sight、Hearing、Reading 感知产物
 ├── sensus/               # Auris、Oculus、Lectio 感官处理层
+├── memory/               # 长期记忆、情景记忆与工具
+├── nucleus/              # 实时 Context、记忆组装、思考与调度
 ├── constants/
 └── utils/
 ```
@@ -164,7 +164,7 @@ interface ScriptData {
 
 `Percept` 是 `Hearing | Reading | Sight` 的联合类型。每种感知产物都通过单个 `originSignal: SignalConstructor` 标明其原始信号类型。
 
-`Script` 不进入 Oculus 或 Auris，也不需要再次执行 ASR 或视觉理解。Stimulus 通过统一的 `data` 事件发出自带 `type: 'script'` 的信号后，Sensus 将其交给 Lectio 对齐为 `Reading`，再发送至 Context／Ciel Core。
+`Script` 不进入 Oculus 或 Auris，也不需要再次执行 ASR 或视觉理解。Stimulus 通过统一的 `data` 事件发出自带 `type: 'script'` 的信号后，Sensus 将其交给 Lectio 对齐为 `Reading`，再发送至 Nucleus。
 
 ### Stimulus
 
@@ -218,7 +218,8 @@ const ciel = new Ciel({
     bufferSeconds: 30,
   },
   oculus: {
-    sampleInterval: 1_000,
+    sampleInterval: 6_666.67,
+    differenceThreshold: 0.03,
   },
 });
 
@@ -234,20 +235,16 @@ await ciel.stop();
 - `Photon` 子类创建独立的 `Oculus`；
 - `Script` 子类创建独立的 `Lectio`，对齐为 `Reading` 后再通过 Ciel 的 `data` 事件发送。
 
-Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧集合。Ciel 还会为每个 Stimulus 维护独立 Context，使用 `getContext(stimulus)` 可取得对应场景上下文。
+Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧集合。所有 Stimulus 与 Nucleus 是多对一关系：处理后的 Percept 进入同一个实时 Context，每条数据保留 `stimulus`、场景和 Signal 来源。
 
 ### Context、Memory 与 Nucleus
 
-Context 负责组合完整 Prompt。身份、人格、行为规则、扩展区块、`Stimulus.meta`、`Signal.meta` 和 `context.define()` 会进入 system；情景记忆与感官处理后的实时 Percept 按时间放入本轮多模态 user message：
+Nucleus 统一管理当前 Percept 与 Memory，并在思考前通过 `getContext()` 组装完整 Context。`Stimulus.meta`、`Signal.meta` 和 `nucleus.define()` 进入内部 system；情景记忆与来自所有 Stimulus 的实时 Percept 按时间合并，并通过场景与 Signal 名称区分来源：
 
 ```text
-# 身份
+# 记忆规则
 
-你是夏尔。
-
-# 人格
-
-理性、温和，只有在互动有价值时才主动发言。
+稳定事实、偏好或经验使用 memory_remember 保存；短暂观察由 Nucleus 在 Episode 结束后统一总结。
 
 # 基础定义
 
@@ -257,18 +254,29 @@ Context 负责组合完整 Prompt。身份、人格、行为规则、扩展区�
 ## 直播弹幕
 观众实时发送的弹幕
 
+# 长期记忆
+
+## 用户偏好
+
+用户希望回答保持简洁。
+
+# 本轮输入
+
+[触发原因]
+感知更新
+
 # 情景记忆
 
 [情景]
 [2026-08-11T12:29:00.000Z] 用户此前正在检查直播画面。
 
-# 基础数据
+# 实时感知
 
-[直播弹幕]
+[Bilibili 直播间 / 直播弹幕]
 [2026-08-11T12:30:00.000Z] 右边是不是漏了？
 ```
 
-一个 Ciel 只拥有一个 Nucleus，Nucleus 内部只创建一个 AI SDK v7 `ToolLoopAgent`。应用只配置模型、分区 Prompt、行动工具、结构化输出和记忆窗口：
+一个 Ciel 只拥有一个 Nucleus。Nucleus 负责完整的思考与工具调用循环，应用只配置模型、自定义 system、实时消息、行动工具、结构化输出和记忆窗口：
 
 ```ts
 import { Ciel } from '@ciels/core';
@@ -277,15 +285,13 @@ import { isStepCount, jsonSchema, Output, tool } from 'ai';
 const stimulus = new LiveStimulus();
 
 const ciel = new Ciel({
-  context: { perceptWindow: 60_000 },
   nucleus: {
+    context: { perceptWindow: 60_000, maxImages: 4 },
     model,
-    prompt: {
-      identity: '你是夏尔，是长期陪伴用户的自主智能。',
-      personality: '理性、温和、好奇，不为了刷存在感而打断用户。',
-      rules: ['区分事实与推测', '只有在互动有价值时才主动发言'],
-      sections: [{ name: '世界观', content: '你通过多个感官持续观察当前场景。' }],
-    },
+    system: [
+      '# 自定义设定\n\n你是夏尔，是长期陪伴用户的自主智能。',
+      '# 行为要求\n\n理性、温和、好奇；区分事实与推测；只在互动有价值时主动发言。',
+    ],
     tools: {
       sendMessage: tool({
         description: '向当前场景发送一条消息',
@@ -304,6 +310,14 @@ const ciel = new Ciel({
       path: '.ciel-data/memory.db',
       longTermLimit: 8,
       episodicLimit: 8,
+      episode: {
+        idleTimeout: 60_000,
+        maxBufferedImages: 12,
+        maxImages: 4,
+        maxInputTokens: 24_000,
+        maxTextChars: 32_000,
+        minVisualEntropy: 0.05,
+      },
     },
     minThinkInterval: 10_000,
     maxThinkInterval: 60_000,
@@ -312,22 +326,25 @@ const ciel = new Ciel({
 
 await ciel.start();
 const nucleus = ciel.getNucleus();
+const context = await ciel.getContext();
 ```
 
-记忆工具由 Nucleus 私有管理，不需要也不允许应用注入。`memory_remember` 保存 main Agent 筛选出的稳定事实、偏好和经验；`memory_record_episode` 由 main Agent 在每轮结束前生成“当时发生了什么”的情景摘要；`memory_recall` 提供 Mastra 原生历史浏览。记忆以追加方式写入本地 LibSQL，`longTermLimit` 和 `episodicLimit` 只控制每轮注入窗口，不会覆盖旧数据。Nucleus 停止时会关闭自己的 Memory。
+记忆工具由 Nucleus 私有管理，不需要也不允许应用注入。`memory_remember` 保存 main Agent 筛选出的稳定事实、偏好和经验；`memory_recall` 提供 Mastra 原生历史浏览。情景记忆不再依赖 main Agent 每轮主动调用工具：新的 Percept 打开 Episode，多次思考和工具轨迹归入同一段经历；空闲超过 `episode.idleTimeout`，图片达到 `episode.maxBufferedImages`，文字与轨迹达到 `episode.maxTextChars`，单轮实际输入达到 `episode.maxInputTokens`，显式调用 `flushEpisode()`，或 Nucleus 停止时，都会生成一次摘要。
+
+视觉摘要直接使用 Oculus 生成的 3×2 Sight JPEG。普通思考只携带最近 `context.maxImages` 张图片；Episode 结算时，Nucleus 通过灰度熵排除空白、损坏或已经清理的图片，再按时间最多选择 `episode.maxImages` 张原图作为多模态输入，不执行 OCR 或预先生成图片文字描述。成功归档后只移除该批实时数据，归档期间新到的 Percept 会保留。只有空白画面且没有其他有效 Percept 时不会生成情景记忆。记忆以追加方式写入本地 LibSQL，`longTermLimit` 和 `episodicLimit` 只控制每轮注入窗口，不会覆盖旧数据。
 
 `minThinkInterval` 限制活跃时的思考频率；`maxThinkInterval` 在没有新感知时仍会给 Nucleus 一次主动判断的机会，但不强制对外输出。
-Context 会把 `percept`、`interval` 与 `manual` 三种触发原因放入本轮输入，main Agent 可以据此判断是否需要主动互动。
+Nucleus 会把 `percept`、`interval` 与 `manual` 三种触发原因放入本轮输入，main Agent 可以据此判断是否需要主动互动。
 
-上下文可从不同层扩充：
+Nucleus 只区分内部内容与应用自定义内容，并按顺序直接拼接：
 
-- `prompt.identity`、`prompt.personality`、`prompt.rules`：夏尔的稳定设定；
-- `prompt.sections`：世界观、能力边界等自定义 system 区块；
-- `context.define()`：当前目标、场景补充与临时语义定义；
-- `messages`：本轮外部任务、会话历史或其他 `ModelMessage`；
+- 内部 system：Context 定义、记忆上下文和记忆规则；
+- `system`：追加在内部 system 后的应用自定义提示词，不解释其人格、规则等语义；
+- 内部实时消息：触发原因、情景记忆和当前 Percept；
+- `messages`：追加在内部实时消息后的应用自定义 `ModelMessage`；
 - `tools`：真实行动能力；具有外部副作用的工具应按需配置 AI SDK `toolApproval`。
 
-`Stimulus.meta`、`Signal.meta`、`context.define()` 和 `prompt` 都会进入 system，因此只应接收受信任的应用定义；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 作为本轮消息注入，避免把外部文本提升为系统规则。
+`Stimulus.meta`、`Signal.meta`、`nucleus.define()` 和 `system` 都会进入 system，因此只应接收受信任的应用定义；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 作为本轮消息注入，避免把外部文本提升为系统规则。
 
 ### Sensus
 
@@ -348,13 +365,16 @@ Context 会把 `percept`、`interval` 与 `manual` 三种触发原因放入本�
 ```text
 Photon[]
   → 时间采样
-  → 收集 6 帧
-  → 3 × 2 视觉拼图
+  → 低分辨率灰度差异比较
+  → 每 9 个采样点选择变化帧
+  → 固定 1920 × 1080 视觉拼图
   → 持久化 JPEG
   → Sight
 ```
 
-当前实现会将采样后的画面统一调整为 1920 × 1080，并生成一张 3 × 2 的视觉快照。布局属于内部实现细节，不作为公共配置暴露。
+Oculus 将每个采样帧缩小为 64 × 36 灰度指纹，与上一张已经保留的帧计算平均像素差异；达到 `differenceThreshold` 才进入拼图。比较只用于去除重复画面，输出给多模态模型的仍是原始 Photon 生成的彩色 JPEG，不使用灰度缩略图。
+
+默认每分钟采样 9 帧，每 9 个采样点形成约一分钟的观察窗口。完整窗口使用 3 × 3 排版，每格 640 × 360，九张 16:9 画面可以无黑边、无拉伸、无裁切地填满固定 1920 × 1080 画布。差异筛选后少于九张时使用自适应排版；完全没有变化的后续窗口不会重复产生 Sight。默认 `differenceThreshold` 为 `0.03`，设为 `0` 可恢复为保留所有采样帧。
 
 `Sight` 只描述一次已经持久化的视觉观察：
 
@@ -578,7 +598,7 @@ Percept.type = hearing | reading | sight
 | 模型安装与声纹创建脚本   | 已实现   |
 | WebSocket 基础服务       | 初步实现 |
 | WebUI                    | 初步实现 |
-| Context 聚合             | 已实现   |
+| Nucleus Context 聚合     | 已实现   |
 | Mastra Memory 与 LibSQL  | 已实现   |
 | Nucleus 思考调度         | 已实现   |
 | 本地持久化与历史召回     | 基础实现 |
@@ -611,9 +631,7 @@ Ciel 当前解决的是“如何让 Agent 感受到世界”。后续可以继�
 
 ```text
 Percepts
-  → Context
-  → Memory
-  → Nucleus (Cognition)
+  → Nucleus (Context + Cognition) ← Memory
   → Will (Decision)
 ```
 

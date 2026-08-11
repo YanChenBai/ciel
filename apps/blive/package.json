@@ -1,7 +1,7 @@
 {
-  "name": "@ciels/core",
+  "name": "@ciels/blive",
   "version": "0.0.0",
-  "description": "Ciel signals, stimuli, percepts, sensory processors, and runtime orchestration.",
+  "description": "Bilibili live-stream Stimulus for Ciel.",
   "license": "MIT",
   "files": [
     "dist"
@@ -17,27 +17,22 @@
   "scripts": {
     "build": "vp pack",
     "dev": "vp pack --watch",
+    "start": "oxnode --env-file=.env ./src/main.ts",
     "test": "vp test",
     "check": "vp check",
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "@ciels/asr": "workspace:*",
-    "@ciels/event": "workspace:*",
-    "@mastra/core": "^1.57.0",
-    "@mastra/libsql": "^1.19.0",
-    "@mastra/memory": "^1.26.0",
-    "ai": "^7.0.58",
-    "sharp": "^0.35.3",
-    "zod": "^4.4.3"
+    "@ai-sdk/openai-compatible": "^3.0.7",
+    "@ciels/core": "workspace:*",
+    "ai": "^7.0.58"
   },
   "devDependencies": {
+    "@oxc-node/cli": "catalog:",
     "@types/node": "catalog:",
     "bumpp": "^11.1.0",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
-  },
-  "engines": {
-    "node": "^24.0.0"
   }
 }

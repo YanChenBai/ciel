@@ -69,13 +69,9 @@ vi.mock('sherpa-onnx-node', () => {
     }
   }
 
-  class OnlineRecognizer {
+  class OfflineRecognizer {
     createStream(): FakeStream {
       return new FakeStream();
-    }
-
-    isReady(stream: FakeStream): boolean {
-      return !stream.decoded;
     }
 
     decode(stream: FakeStream): void {
@@ -85,16 +81,14 @@ vi.mock('sherpa-onnx-node', () => {
     getResult(): object {
       return {
         text: '你好',
+        lang: '<|zh|>',
+        emotion: '<|NEUTRAL|>',
+        event: '<|Speech|>',
         tokens: ['你', '好'],
         timestamps: [0, 0.5],
-        ys_probs: [0.9, 0.7],
-        lm_probs: [],
-        context_scores: [],
-        segment: 0,
+        durations: [],
+        ys_log_probs: [Math.log(0.9), Math.log(0.7)],
         words: [],
-        start_time: 0,
-        is_final: true,
-        is_eof: false,
       };
     }
   }
@@ -118,7 +112,7 @@ vi.mock('sherpa-onnx-node', () => {
   return {
     default: {
       CircularBuffer,
-      OnlineRecognizer,
+      OfflineRecognizer,
       SpeakerEmbeddingExtractor,
       Vad,
     },
@@ -144,10 +138,10 @@ describe('ASR', () => {
     expect(results[0]).toMatchObject({
       content: '你好',
       speaker: 'speaker_0',
-      confidence: 0.8,
       startAt: new Date('2026-08-09T00:00:00.100Z'),
       endAt: new Date('2026-08-09T00:00:01.100Z'),
     });
+    expect(results[0]!.confidence).toBeCloseTo(0.8);
     expect(results[0]!.tokens).toEqual([
       {
         content: '你',

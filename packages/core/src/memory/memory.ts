@@ -11,7 +11,7 @@ import { LibSQLStore } from '@mastra/libsql';
 import { Memory as MastraStore } from '@mastra/memory';
 import type { LanguageModel } from 'ai';
 
-import type { ContextContent } from '#src/context/index.ts';
+import type { ContextContent } from '#src/nucleus/types.ts';
 
 import { DEFAULT_MEMORY_PATH } from './constants.ts';
 import type {
@@ -173,7 +173,7 @@ export class Memory {
   }
 
   /**
-   * 保存一条由 main Agent 对当前轮经历生成的情景摘要。
+   * 保存一条由 Nucleus Episode 生命周期生成的情景摘要。
    */
   rememberEpisode(entry: EpisodicMemory): Promise<void> {
     const operation = this.mutation.then(() =>

@@ -5,14 +5,15 @@ import type { Unsubscribe } from '@ciels/event';
 import sherpaOnnx from 'sherpa-onnx-node';
 import type {
   CircularBuffer as CircularBufferInstance,
-  OnlineRecognizer as OnlineRecognizerInstance,
-  OnlineRecognizerResult,
+  OfflineRecognizer as OfflineRecognizerInstance,
+  OfflineRecognizerResult,
   SpeechSegment,
   Vad as VadInstance,
 } from 'sherpa-onnx-node';
 
 import {
   AURIS_SAMPLE_RATE,
+  AURIS_VAD_WINDOW_SIZE,
   DEFAULT_BUFFER_SECONDS,
   DEFAULT_MAX_SPEAKERS,
   DEFAULT_SPEAKER_THRESHOLD,
@@ -21,13 +22,13 @@ import { createAurisModelConfig } from './models.ts';
 import { SpeakerTracker } from './speaker.ts';
 import type { ASREventMap, ASROptions, ASRSegment, ASRToken } from './types.ts';
 
-const { CircularBuffer, OnlineRecognizer, SpeakerEmbeddingExtractor, Vad } = sherpaOnnx;
+const { CircularBuffer, OfflineRecognizer, SpeakerEmbeddingExtractor, Vad } = sherpaOnnx;
 
 export class ASR {
   private readonly emitter = new EventEmitter<ASREventMap>();
   private readonly buffer: CircularBufferInstance;
   private readonly bufferCapacity: number;
-  private readonly recognizer: OnlineRecognizerInstance;
+  private readonly recognizer: OfflineRecognizerInstance;
   private readonly speaker: SpeakerTracker;
   private readonly vad: VadInstance;
   private readonly windowSize: number;
@@ -40,9 +41,9 @@ export class ASR {
     const bufferSeconds = options.bufferSeconds ?? DEFAULT_BUFFER_SECONDS;
     this.bufferCapacity = Math.ceil(bufferSeconds * AURIS_SAMPLE_RATE);
     this.buffer = new CircularBuffer(this.bufferCapacity);
-    this.recognizer = new OnlineRecognizer(models.recognizer);
+    this.recognizer = new OfflineRecognizer(models.recognizer);
     this.vad = new Vad(models.vad, bufferSeconds);
-    this.windowSize = models.vad.sileroVad?.windowSize ?? 512;
+    this.windowSize = models.vad.tenVad?.windowSize ?? AURIS_VAD_WINDOW_SIZE;
     this.speaker = new SpeakerTracker(
       new SpeakerEmbeddingExtractor(models.speaker),
       options.speaker ?? [],
@@ -135,8 +136,7 @@ export class ASR {
       samples: segment.samples,
       sampleRate: AURIS_SAMPLE_RATE,
     });
-    stream.inputFinished();
-    while (this.recognizer.isReady(stream)) this.recognizer.decode(stream);
+    this.recognizer.decode(stream);
     const result = this.recognizer.getResult(stream);
     const content = result.text.trim();
     if (content) {
@@ -166,7 +166,7 @@ function pcm16ToFloat32(data: Buffer): Float32Array {
 }
 
 function createTokens(
-  result: OnlineRecognizerResult,
+  result: OfflineRecognizerResult,
   segmentStartAt: Date,
   segmentEndAt: Date,
 ): readonly ASRToken[] | undefined {
@@ -175,17 +175,23 @@ function createTokens(
   }
   return result.tokens.map((content, index) => {
     const startAt = addSeconds(segmentStartAt, result.timestamps[index] ?? 0);
+    const duration = result.durations[index];
     const nextTimestamp = result.timestamps[index + 1];
     return {
       content,
       startAt,
-      endAt: nextTimestamp === undefined ? segmentEndAt : addSeconds(segmentStartAt, nextTimestamp),
+      endAt:
+        duration !== undefined
+          ? addSeconds(startAt, duration)
+          : nextTimestamp === undefined
+            ? segmentEndAt
+            : addSeconds(segmentStartAt, nextTimestamp),
     };
   });
 }
 
-function averageConfidence(result: OnlineRecognizerResult): number | undefined {
-  const probabilities = result.ys_probs.filter(Number.isFinite);
+function averageConfidence(result: OfflineRecognizerResult): number | undefined {
+  const probabilities = result.ys_log_probs.filter(Number.isFinite).map(Math.exp);
   if (probabilities.length === 0) return undefined;
   return probabilities.reduce((sum, value) => sum + value, 0) / probabilities.length;
 }
@@ -199,8 +205,13 @@ function addSeconds(at: Date, seconds: number): Date {
 }
 
 function validateOptions(options: ASROptions): void {
-  if (options.bufferSeconds !== undefined && options.bufferSeconds < 512 / AURIS_SAMPLE_RATE) {
-    throw new Error('bufferSeconds must hold at least one 512-sample VAD window');
+  if (
+    options.bufferSeconds !== undefined &&
+    options.bufferSeconds < AURIS_VAD_WINDOW_SIZE / AURIS_SAMPLE_RATE
+  ) {
+    throw new Error(
+      `bufferSeconds must hold at least one ${AURIS_VAD_WINDOW_SIZE}-sample VAD window`,
+    );
   }
   if (
     options.speakerThreshold !== undefined &&

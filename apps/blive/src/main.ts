@@ -1,0 +1,149 @@
+import { fileURLToPath } from 'node:url';
+
+process.env.CIEL_DATA_DIR ??= fileURLToPath(new URL('../../../.ciel-data/', import.meta.url));
+
+const [{ Ciel }, { createBliveLanguageModel }, { BilibiliLive }] = await Promise.all([
+  import('@ciels/core'),
+  import('./ai.ts'),
+  import('./blive.ts'),
+]);
+
+const roomId = 23369901;
+const defaultImageInterval = 60_000 / 9;
+const imageInterval = readOptionalPositiveNumber(process.env.BLIVE_IMAGE_INTERVAL);
+const live = new BilibiliLive({
+  roomId,
+  ...(process.env.BLIVE_FFMPEG_PATH ? { ffmpegPath: process.env.BLIVE_FFMPEG_PATH } : {}),
+  ...(imageInterval === undefined ? {} : { imageInterval }),
+});
+const model = createBliveLanguageModel();
+const ciel = new Ciel({
+  nucleus: {
+    model,
+    memory: {
+      path: fileURLToPath(new URL('../../../.ciel-data/memory.db', import.meta.url)),
+    },
+    context: {
+      maxImages: 9,
+      perceptWindow: 60_000,
+    },
+    minThinkInterval: 10_000,
+    maxThinkInterval: 60_000,
+    system: [
+      '你正在观察一个 Bilibili 直播间。结合 Hearing、Sight、近期情景与长期记忆理解正在发生的事情。只描述有依据的内容，区分事实与推测；没有值得表达的新信息时保持简短。',
+    ],
+  },
+  oculus: {
+    // FFmpeg 已按 imageInterval 限流，Oculus 接收每一张输出帧即可。
+    sampleInterval: 0,
+    differenceThreshold: 0.03,
+  },
+}).use(live);
+
+let hearings = 0;
+let sights = 0;
+let shuttingDown = false;
+let cielStarted = false;
+let resolveClosed: (() => void) | undefined;
+const closed = new Promise<void>(resolve => {
+  resolveClosed = resolve;
+});
+
+ciel.on('data', percept => {
+  if (percept.type === 'hearing') {
+    hearings += 1;
+    console.log(`[hearing] ${percept.speaker ? `[${percept.speaker}] ` : ''}${percept.content}`);
+  } else if (percept.type === 'sight') {
+    sights += 1;
+    console.log(`[sight] ${percept.path}`);
+  }
+});
+ciel.on('error', error => {
+  console.error(`[ciel] ${formatCielError(error)}`);
+});
+ciel.on('thought', output => {
+  console.log(`[thought] ${String(output)}`);
+});
+live.onError(error => {
+  console.error(`[blive] ${error.stack ?? error.message}`);
+});
+live.onStderr(message => {
+  console.error(`[ffmpeg] ${message}`);
+});
+live.onClose((code, signal) => {
+  if (!shuttingDown) {
+    if (code !== 0) {
+      console.error(`[blive] FFmpeg 意外退出（code=${String(code)}, signal=${String(signal)}）`);
+      process.exitCode = 1;
+    }
+    void shutdown('SIGTERM');
+    return;
+  }
+  resolveClosed?.();
+});
+
+const report = setInterval(() => {
+  const health = live.getHealth();
+  console.log(
+    `[blive] audio=${(health.audioBytes / 1024 / 1024).toFixed(2)} MiB photons=${health.imageFrames} hearings=${hearings} sights=${sights}`,
+  );
+}, 30_000);
+
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[blive] 收到 ${signal}，正在关闭 Ciel…`);
+  clearInterval(report);
+  if (cielStarted) {
+    await ciel.stop();
+    cielStarted = false;
+  }
+  resolveClosed?.();
+}
+
+process.once('SIGINT', () => void shutdown('SIGINT'));
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
+
+try {
+  console.log(`[blive] 正在通过 Ciel 连接 Bilibili 直播间 ${roomId}…`);
+  await ciel.start();
+  cielStarted = true;
+  console.log(
+    `[blive] Ciel 已启动，FFmpeg 每 ${imageInterval ?? defaultImageInterval}ms 输出一张 Photon`,
+  );
+  console.log('[blive] 按 Ctrl+C 退出');
+  await closed;
+  if (!shuttingDown) await shutdown('SIGTERM');
+  clearInterval(report);
+} catch (error) {
+  clearInterval(report);
+  if (cielStarted) await ciel.stop().catch(() => undefined);
+  console.error(error instanceof Error ? (error.stack ?? error.message) : error);
+  process.exitCode = 1;
+}
+
+function readPositiveNumber(value: string, name: string): number {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number <= 0) {
+    throw new Error(`${name}必须是正整数`);
+  }
+  return number;
+}
+
+function readOptionalPositiveNumber(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  return readPositiveNumber(value, 'BLIVE_IMAGE_INTERVAL');
+}
+
+function formatCielError(error: Error): string {
+  const detail = error.stack ?? error.message;
+  if (error.message.includes('No endpoints found that support image input')) {
+    return [
+      '当前 AI 模型不支持图片输入。',
+      '请将 BLIVE_AI_VISION_MODEL 设置为支持 image input 的多模态模型；',
+      'Oculus 会将 9 帧合成为一张 1920x1080 JPEG 后提交。',
+      detail,
+    ].join(' ');
+  }
+  return detail;
+}
