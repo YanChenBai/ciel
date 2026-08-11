@@ -5,7 +5,7 @@ import type { SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus, StimulusConstructor } from '#src/stimulus/index.ts';
 
 import { DEFAULT_CONTEXT_MAX_IMAGES } from './constants.ts';
-import type { ContextData, ContextDefinition, ContextTime } from './types.ts';
+import type { ContextContent, ContextData, ContextDefinition, ContextTime } from './types.ts';
 
 interface ContextEventMap {
   change(): void;
@@ -17,9 +17,36 @@ interface ContextSource {
 }
 
 function getPerceptTime(percept: Percept): ContextTime {
-  return percept.type === 'reading'
-    ? { startAt: percept.timestamp, endAt: percept.timestamp }
-    : { startAt: percept.startAt, endAt: percept.endAt };
+  if (percept.type === 'reading') {
+    return {
+      startAt: percept.timestamp,
+      endAt: percept.timestamp,
+    };
+  }
+  return {
+    startAt: percept.startAt,
+    endAt: percept.endAt,
+  };
+}
+
+function getPerceptContent(percept: Percept): ContextContent {
+  if (percept.type === 'sight') {
+    return {
+      type: 'image',
+      path: percept.path,
+    };
+  }
+  if (percept.type === 'hearing' && percept.speaker) {
+    return {
+      type: 'text',
+      text: percept.content,
+      speaker: percept.speaker,
+    };
+  }
+  return {
+    type: 'text',
+    text: percept.content,
+  };
 }
 
 interface NucleusRealtimeSnapshot {
@@ -31,12 +58,21 @@ interface NucleusRealtimeSnapshot {
 export class NucleusPerceptStore extends EventHost<ContextEventMap> {
   private readonly sources = new Map<Stimulus, ContextSource>();
   private readonly entries: ContextData[] = [];
+  private lastIngestedAt?: number;
 
   constructor(
     private readonly perceptWindow: number,
     private readonly maxImages: number = DEFAULT_CONTEXT_MAX_IMAGES,
   ) {
     super();
+  }
+
+  get active(): boolean {
+    return this.entries.length > 0;
+  }
+
+  get lastIngestAt(): number | undefined {
+    return this.lastIngestedAt;
   }
 
   register(stimulus: Stimulus): void {
@@ -81,19 +117,11 @@ export class NucleusPerceptStore extends EventHost<ContextEventMap> {
       scene: source.scene,
       signal: definition,
       time: getPerceptTime(percept),
-      content:
-        percept.type === 'sight'
-          ? { type: 'image', path: percept.path }
-          : {
-              type: 'text',
-              text: percept.content,
-              ...(percept.type === 'hearing' && percept.speaker
-                ? { speaker: percept.speaker }
-                : {}),
-            },
+      content: getPerceptContent(percept),
       percept,
     };
     this.entries.push(data);
+    this.lastIngestedAt = Date.now();
     this.emit('change');
     return data;
   }
@@ -103,16 +131,20 @@ export class NucleusPerceptStore extends EventHost<ContextEventMap> {
     const retained = this.entries.filter(entry => entry.time.endAt.getTime() >= cutoff);
     this.entries.length = 0;
     this.entries.push(...retained);
+    if (retained.length === 0) {
+      this.lastIngestedAt = undefined;
+    }
     const sorted = retained.toSorted(
       (left, right) =>
         left.time.startAt.getTime() - right.time.startAt.getTime() ||
         left.time.endAt.getTime() - right.time.endAt.getTime(),
     );
-    const images =
-      this.maxImages === 0
-        ? []
-        : sorted.filter(entry => entry.content.type === 'image').slice(-this.maxImages);
-    const visible = new Set([...sorted.filter(entry => entry.content.type === 'text'), ...images]);
+    const texts = sorted.filter(entry => entry.content.type === 'text');
+    let images: ContextData[] = [];
+    if (this.maxImages > 0) {
+      images = sorted.filter(entry => entry.content.type === 'image').slice(-this.maxImages);
+    }
+    const visible = new Set([...texts, ...images]);
     return {
       createdAt,
       data: sorted.filter(entry => visible.has(entry)),
@@ -129,5 +161,6 @@ export class NucleusPerceptStore extends EventHost<ContextEventMap> {
 
   clear(): void {
     this.entries.length = 0;
+    this.lastIngestedAt = undefined;
   }
 }

@@ -1,10 +1,10 @@
-// @env node
-
 import path from 'node:path';
 
 import { DATA_PATH } from '#constants';
 
-/**
- * 默认的本地 LibSQL 记忆文件。
- */
-export const DEFAULT_MEMORY_PATH = path.join(DATA_PATH, 'memories', 'memory.db');
+export const DEFAULT_MEMORY_PATH = path.join(DATA_PATH, 'memory.db');
+export const DEFAULT_RECENT_MEMORY_DAYS = 2;
+export const DEFAULT_MEMORY_RECALL_LIMIT = 5;
+export const DEFAULT_MEMORY_RESOURCE_ID = 'ciel';
+export const GLOBAL_MEMORY_THREAD_ID = 'global';
+export const MEMORY_KIND_METADATA = 'ciel_memory_kind';

@@ -2,16 +2,23 @@ import type { Percept } from '#src/percepts/index.ts';
 import type { SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus, StimulusConstructor } from '#src/stimulus/index.ts';
 
-import type { ContextDefinition, ContextPromptPart, ContextTime } from './types.ts';
+import type { ContextDefinition, ContextPromptPart, ContextSection, ContextTime } from './types.ts';
 
 function joinLine(...lines: string[]): string {
   return lines.join('\n');
 }
 
 function getPerceptTime(percept: Percept): ContextTime {
-  return percept.type === 'reading'
-    ? { startAt: percept.timestamp, endAt: percept.timestamp }
-    : { startAt: percept.startAt, endAt: percept.endAt };
+  if (percept.type === 'reading') {
+    return {
+      startAt: percept.timestamp,
+      endAt: percept.timestamp,
+    };
+  }
+  return {
+    startAt: percept.startAt,
+    endAt: percept.endAt,
+  };
 }
 
 function formatTime(time: ContextTime): string {
@@ -24,7 +31,9 @@ function uniqueDefinitions(definitions: readonly ContextDefinition[]): ContextDe
   const seen = new Set<string>();
   return definitions.filter(definition => {
     const key = `${definition.kind}\u0000${definition.name}\u0000${definition.description}`;
-    if (seen.has(key)) return false;
+    if (seen.has(key)) {
+      return false;
+    }
     seen.add(key);
     return true;
   });
@@ -68,8 +77,9 @@ export class Context {
   /**
    * 构建由 Stimulus 与 Signal 定义组成的 system 内容。
    */
-  systemBuilder(): string {
+  systemBuilder(sections: readonly ContextSection[] = []): string {
     return joinLine(
+      ...sections.flatMap(section => [`# ${section.name}`, '', section.content, '']),
       '# 基础定义',
       '',
       ...this.definitions.flatMap(definition => [
@@ -92,11 +102,13 @@ export class Context {
         leftTime.endAt.getTime() - rightTime.endAt.getTime()
       );
     });
-    if (sorted.length === 0) return [];
+    if (sorted.length === 0) {
+      return [];
+    }
 
     const parts: ContextPromptPart[] = [];
     let text = '# 基础数据';
-    sorted.forEach(percept => {
+    for (const percept of sorted) {
       const Signal = percept.originSignal;
       Signal.assertMeta();
       const header = `[${Signal.meta.name}]\n[${formatTime(getPerceptTime(percept))}]`;
@@ -105,13 +117,18 @@ export class Context {
         parts.push({ type: 'text', text: nextText });
         parts.push({ type: 'image', path: percept.path });
         text = '';
-        return;
+        continue;
       }
 
-      const speaker = percept.type === 'hearing' && percept.speaker ? `[${percept.speaker}] ` : '';
+      let speaker = '';
+      if (percept.type === 'hearing' && percept.speaker) {
+        speaker = `[${percept.speaker}] `;
+      }
       text = `${nextText} ${speaker}${percept.content}`;
-    });
-    if (text) parts.push({ type: 'text', text });
+    }
+    if (text) {
+      parts.push({ type: 'text', text });
+    }
     return parts;
   }
 }

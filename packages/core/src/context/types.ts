@@ -1,4 +1,3 @@
-import type { MemoryEntry } from '#src/memory/index.ts';
 import type { Percept } from '#src/percepts/index.ts';
 
 export type ContextDefinitionKind = 'scene' | 'signal';
@@ -20,10 +19,15 @@ export type ContextPromptPart =
 
 export type ContextTrigger = 'manual' | 'percept' | 'interval';
 
+export interface ContextSection {
+  readonly name: string;
+  readonly content: string;
+}
+
 export interface ContextPromptInput {
   readonly trigger: ContextTrigger;
-  readonly memories: readonly MemoryEntry[];
-  readonly memoryInstructions?: string;
+  readonly sections?: readonly ContextSection[];
+  readonly inputSections?: readonly ContextSection[];
   readonly percepts: readonly Percept[];
 }
 

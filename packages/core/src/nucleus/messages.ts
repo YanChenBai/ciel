@@ -5,6 +5,12 @@ import type { FilePart, ModelMessage, TextPart } from 'ai';
 import { resolveImagePart } from './image.ts';
 import type { NucleusInput, NucleusMessage, NucleusPrompt } from './types.ts';
 
+function isMessageArray(
+  value: ModelMessage | readonly ModelMessage[],
+): value is readonly ModelMessage[] {
+  return Array.isArray(value);
+}
+
 /**
  * 将 Nucleus Context 的多模态输入转换为首条消息，再追加应用提供的消息。
  */
@@ -25,7 +31,11 @@ export async function resolveNucleusMessages(
   const messages: ModelMessage[] = [{ role: 'user', content }];
   for (const source of sources ?? []) {
     const value = await source(input);
-    messages.push(...(Array.isArray(value) ? value : [value]));
+    if (isMessageArray(value)) {
+      messages.push(...value);
+    } else {
+      messages.push(value);
+    }
   }
   return messages;
 }

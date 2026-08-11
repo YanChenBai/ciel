@@ -21,12 +21,13 @@ vp run asr:install
 ```powershell
 $env:BLIVE_AI_API_KEY='...'
 $env:BLIVE_AI_VISION_MODEL='provider/vision-model'
+$env:BLIVE_AI_EMBEDDING_MODEL='provider/embedding-model'
 # 默认 https://openrouter.ai/api/v1；使用其他服务时再覆盖
 $env:BLIVE_AI_BASE_URL='https://openrouter.ai/api/v1'
 ```
 
-模型必须支持 `image input`。`BLIVE_AI_MODEL` 仍可兼容使用，但建议通过
-`BLIVE_AI_VISION_MODEL` 明确配置视觉模型；Oculus 每次只提交一张合成后的九宫格 JPEG。
+视觉模型必须支持 `image input`，embedding 模型用于历史经历的语义检索。`BLIVE_AI_MODEL`
+仍可兼容使用，但建议通过 `BLIVE_AI_VISION_MODEL` 明确配置视觉模型；Oculus 每次只提交一张合成后的九宫格 JPEG。
 
 ```bash
 vp run --filter @ciels/blive start
@@ -38,13 +39,16 @@ vp run --filter @ciels/blive start
 
 ```ts
 import { BilibiliLive } from '@ciels/blive';
-import { Ciel } from '@ciels/core';
+import { Ciel, Memory } from '@ciels/core';
 
 const live = new BilibiliLive({ roomId: 24680 });
 const ciel = new Ciel({
   nucleus: {
     model,
-    memory: { path: '.ciel-data/memory.db' },
+    memory: new Memory({
+      path: '.ciel-data/memory.db',
+      embedder: embeddingModel,
+    }),
   },
   oculus: {
     // BilibiliLive 已经在 FFmpeg 层限流为每分钟九帧。

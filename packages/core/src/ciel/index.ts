@@ -46,6 +46,15 @@ interface StimulusRuntime {
 type CielState = 'idle' | 'starting' | 'running' | 'stopping';
 
 export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
+  protected readonly Soul: string =
+    '你是夏尔。保持理性、温和与好奇，区分事实与推测，只在行动有价值时主动介入。';
+
+  protected readonly IDENTITY: string = [
+    '名字：夏尔',
+    '形象：暂无固定形象',
+    '身份：Ciel 的认知主体',
+  ].join('\n');
+
   private readonly options: CielOptions<TOutput>;
   private readonly stimuli: Stimulus[] = [];
   private readonly nucleus?: Nucleus<TOutput>;
@@ -57,7 +66,10 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     super();
     this.options = options;
     if (options.nucleus) {
-      this.nucleus = new Nucleus(options.nucleus);
+      this.nucleus = new Nucleus(options.nucleus, () => [
+        { name: 'SOUL', content: this.Soul },
+        { name: 'IDENTITY', content: this.IDENTITY },
+      ]);
       this.nucleus.on('thought', (output, input) => this.emit('thought', output, input));
       this.nucleus.on('error', error => this.emit('error', error));
     }

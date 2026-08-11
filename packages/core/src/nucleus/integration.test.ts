@@ -4,9 +4,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
+import { Memory } from '#src/memory/index.ts';
 import { Reading, Sight } from '#src/percepts/index.ts';
 import { Photon, Script } from '#src/signals/index.ts';
 import { Stimulus } from '#src/stimulus/index.ts';
@@ -39,10 +40,32 @@ function createModel(text = '回应'): MockLanguageModelV3 {
 }
 
 const temporaryDirectories: string[] = [];
+const memories: Memory[] = [];
+
+function createMemory(): Memory {
+  const memory = new Memory({
+    path: ':memory:',
+    embedder: new MockEmbeddingModelV3({
+      doEmbed: async ({ values }) => ({
+        embeddings: values.map(() => [1, 0]),
+        warnings: [],
+      }),
+    }),
+  });
+  memories.push(memory);
+  return memory;
+}
 
 afterEach(async () => {
+  await Promise.all(memories.splice(0).map(memory => memory.close()));
   await Promise.all(
-    temporaryDirectories.splice(0).map(directory => rm(directory, { recursive: true })),
+    temporaryDirectories.splice(0).map(directory =>
+      rm(directory, {
+        recursive: true,
+        maxRetries: 5,
+        retryDelay: 50,
+      }),
+    ),
   );
 });
 
@@ -57,7 +80,7 @@ describe('Nucleus Prompt', () => {
     const model = createModel();
     const nucleus = new Nucleus({
       context: { perceptWindow: Number.MAX_SAFE_INTEGER },
-      memory: { path: ':memory:' },
+      memory: createMemory(),
       model,
       system: ['# 自定义设定\n\n你是夏尔。'],
       messages: [() => ({ role: 'user', content: '当前任务' })],
@@ -89,26 +112,26 @@ describe('Nucleus Prompt', () => {
     expect(serialized.indexOf('## 直播间')).toBeLessThan(serialized.indexOf('你是夏尔。'));
     expect(serialized.indexOf('[对话]')).toBeLessThan(serialized.indexOf('当前任务'));
     expect(call?.prompt.some(message => message.role === 'user')).toBe(true);
-    await nucleus.getMemory().close();
   });
 
   it('自动提供记忆工具，并保护内置工具名称', async () => {
     const model = createModel();
+    const directory = await mkdtemp(path.join(tmpdir(), 'ciel-tools-'));
+    temporaryDirectories.push(directory);
 
-    const nucleus = new Nucleus({ memory: { path: ':memory:' }, model });
+    const nucleus = new Nucleus({ memory: createMemory(), model });
     await nucleus.think();
-    expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).toContain('memory_remember');
-    expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).toContain('memory_recall');
-    expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).not.toContain('memory_record_episode');
+    const tools = JSON.stringify(model.doGenerateCalls[0]?.tools);
+    expect(tools).toContain('memory_update');
+    expect(tools).toContain('memory_recall');
 
     expect(
       () =>
         new Nucleus({
-          memory: { path: ':memory:' },
+          memory: createMemory(),
           model,
-          tools: { memory_remember: { inputSchema: {} as never } },
+          tools: { memory_update: { inputSchema: {} as never } },
         }),
     ).toThrow('reserved by Nucleus');
-    await nucleus.getMemory().close();
   });
 });

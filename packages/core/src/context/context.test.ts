@@ -19,12 +19,25 @@ class TestStimulus extends Stimulus<typeof signals> {
 }
 
 describe('Context', () => {
-  it('根据 Stimulus 和 Signal 构建 system', () => {
+  it('根据内部定义、Stimulus 和 Signal 构建 system', () => {
     const stimulus = new TestStimulus();
     const context = new Context([...signals], [stimulus]);
 
-    expect(context.systemBuilder()).toBe(
+    expect(
+      context.systemBuilder([
+        { name: 'SOUL', content: '保持理性与好奇。' },
+        { name: 'IDENTITY', content: '名字：夏尔' },
+      ]),
+    ).toBe(
       [
+        '# SOUL',
+        '',
+        '保持理性与好奇。',
+        '',
+        '# IDENTITY',
+        '',
+        '名字：夏尔',
+        '',
         '# 基础定义',
         '',
         '## 直播间',

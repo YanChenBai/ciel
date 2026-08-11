@@ -1,75 +1,39 @@
-import type { ContextContent, ContextTime } from '#src/nucleus/types.ts';
+import type { EmbeddingModel } from 'ai';
 
-export type MemoryKind = 'long-term' | 'episodic';
+export type MemoryEmbeddingModel = Exclude<EmbeddingModel, string>;
 
-/**
- * 注入 Nucleus 的统一记忆条目。
- */
-export interface MemoryEntry {
-  /**
-   * 存储层生成或外部提供的唯一标识。
-   */
-  readonly id?: string;
+export interface MemoryOptions {
+  /** LibSQL 主数据库路径；向量库会以同目录的 `*.vector.db` 保存。 */
+  readonly path?: string;
 
-  /**
-   * 长期记忆或 Nucleus 总结的情景记忆。
-   */
-  readonly kind: MemoryKind;
+  /** 用于历史经历语义召回的 embedding model。 */
+  readonly embedder: MemoryEmbeddingModel;
 
-  /**
-   * 记忆的语义类别。
-   */
-  readonly name: string;
+  /** 注入上下文的最近日期数量。 */
+  readonly recentDays?: number;
 
-  /**
-   * 记忆被召回时应如何理解。
-   */
-  readonly description: string;
+  /** 单次语义召回的默认结果数。 */
+  readonly recallLimit?: number;
 
-  /**
-   * 事件发生或事实形成的时间范围。
-   */
-  readonly time: ContextTime;
-
-  /**
-   * 可供模型消费的文本或图片内容。
-   */
-  readonly content: ContextContent;
+  /** 跨日期 thread 共享记忆的主体标识。 */
+  readonly resourceId?: string;
 }
 
-/**
- * Agent 主动保存的稳定长期记忆。
- */
-export type LongTermMemory = Omit<MemoryEntry, 'kind'>;
-
-/**
- * main Agent 对一轮经历生成的情景摘要。
- */
-export type EpisodicMemory = Omit<MemoryEntry, 'kind'>;
-
-/**
- * 两类记忆各自的注入窗口。
- */
-export interface MemoryContextOptions {
-  /**
-   * 最多召回多少条长期记忆。
-   */
-  readonly longTermLimit: number;
-
-  /**
-   * 最多召回多少条近期情景记忆。
-   */
-  readonly episodicLimit: number;
+export interface MemoryRecall {
+  readonly content: string;
+  readonly createdAt: Date;
+  readonly id: string;
 }
 
-export interface MemoryContext {
-  /**
-   * 本轮自动注入的具体记忆。
-   */
-  readonly entries: readonly MemoryEntry[];
+export interface RecallMemoryInput {
+  /** 用自然语言描述要查找的历史。 */
+  readonly query: string;
 
-  /**
-   * 应放入模型 system prompt 的长期记忆上下文。
-   */
-  readonly instructions?: string;
+  /** 最多返回的经历数量。 */
+  readonly limit?: number;
+}
+
+export interface UpdateMemoryInput {
+  /** 精炼后的完整全局记忆。 */
+  readonly content: string;
 }

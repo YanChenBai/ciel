@@ -2,11 +2,11 @@ import { fileURLToPath } from 'node:url';
 
 process.env.CIEL_DATA_DIR ??= fileURLToPath(new URL('../../../.ciel-data/', import.meta.url));
 
-const [{ Ciel }, { createBliveLanguageModel }, { BilibiliLive }] = await Promise.all([
-  import('@ciels/core'),
-  import('./ai.ts'),
-  import('./blive.ts'),
-]);
+const [
+  { Ciel, Memory },
+  { createBliveEmbeddingModel, createBliveLanguageModel },
+  { BilibiliLive },
+] = await Promise.all([import('@ciels/core'), import('./ai.ts'), import('./blive.ts')]);
 
 const roomId = 23369901;
 const defaultImageInterval = 60_000 / 9;
@@ -17,12 +17,14 @@ const live = new BilibiliLive({
   ...(imageInterval === undefined ? {} : { imageInterval }),
 });
 const model = createBliveLanguageModel();
+const memory = new Memory({
+  path: fileURLToPath(new URL('../../../.ciel-data/memory.db', import.meta.url)),
+  embedder: createBliveEmbeddingModel(),
+});
 const ciel = new Ciel({
   nucleus: {
     model,
-    memory: {
-      path: fileURLToPath(new URL('../../../.ciel-data/memory.db', import.meta.url)),
-    },
+    memory,
     context: {
       maxImages: 9,
       perceptWindow: 60_000,
@@ -120,6 +122,12 @@ try {
   if (cielStarted) await ciel.stop().catch(() => undefined);
   console.error(error instanceof Error ? (error.stack ?? error.message) : error);
   process.exitCode = 1;
+} finally {
+  await memory.close().catch(error => {
+    console.error(
+      `[memory] ${formatCielError(error instanceof Error ? error : new Error(String(error)))}`,
+    );
+  });
 }
 
 function readPositiveNumber(value: string, name: string): number {
@@ -131,7 +139,9 @@ function readPositiveNumber(value: string, name: string): number {
 }
 
 function readOptionalPositiveNumber(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   return readPositiveNumber(value, 'BLIVE_IMAGE_INTERVAL');
 }
 

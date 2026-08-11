@@ -1,6 +1,9 @@
-import { MockLanguageModelV3 } from 'ai/test';
-import { describe, expect, it, vi } from 'vite-plus/test';
+// @env node
 
+import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+
+import { Memory } from '#src/memory/index.ts';
 import { Reading } from '#src/percepts/index.ts';
 import { Echo, Photon, Script } from '#src/signals/index.ts';
 import { Stimulus } from '#src/stimulus/index.ts';
@@ -52,6 +55,35 @@ vi.mock('#sensus', async () => {
 });
 
 const { Ciel } = await import('./index.ts');
+
+class CustomCiel extends Ciel {
+  protected override readonly Soul = '测试中的内在定义';
+  protected override readonly IDENTITY = '名字：测试夏尔';
+}
+
+const memories: Memory[] = [];
+
+function createEmbedder(): MockEmbeddingModelV3 {
+  return new MockEmbeddingModelV3({
+    doEmbed: async ({ values }) => ({
+      embeddings: values.map(() => [1, 0]),
+      warnings: [],
+    }),
+  });
+}
+
+async function createMemory(): Promise<Memory> {
+  const memory = new Memory({
+    path: ':memory:',
+    embedder: createEmbedder(),
+  });
+  memories.push(memory);
+  return memory;
+}
+
+afterEach(async () => {
+  await Promise.all(memories.splice(0).map(memory => memory.close()));
+});
 
 function createModel(text = '保持安静'): MockLanguageModelV3 {
   return new MockLanguageModelV3({
@@ -154,7 +186,7 @@ describe('Ciel', () => {
     const ciel = new Ciel({
       nucleus: {
         context: { perceptWindow: Number.MAX_SAFE_INTEGER },
-        memory: { path: ':memory:' },
+        memory: await createMemory(),
         model: createModel(),
       },
     })
@@ -172,10 +204,10 @@ describe('Ciel', () => {
   it('owns one Nucleus and forwards its thoughts', async () => {
     const stimulus = new TestStimulus();
     const model = createModel();
-    const ciel = new Ciel({
+    const ciel = new CustomCiel({
       nucleus: {
         context: { perceptWindow: Number.MAX_SAFE_INTEGER },
-        memory: { path: ':memory:' },
+        memory: await createMemory(),
         model,
       },
     }).use(stimulus);
@@ -190,6 +222,11 @@ describe('Ciel', () => {
 
     expect(nucleus).toBe(ciel.getNucleus());
     expect(thoughts).toContain('保持安静');
+    const prompt = JSON.stringify(model.doGenerateCalls[0]?.prompt);
+    expect(prompt).toContain('# SOUL');
+    expect(prompt).toContain('测试中的内在定义');
+    expect(prompt).toContain('# IDENTITY');
+    expect(prompt).toContain('名字：测试夏尔');
 
     await ciel.stop();
   });

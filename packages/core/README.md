@@ -49,8 +49,8 @@ Signal matching inside `Sensus` is automatic:
 
 - `Ciel`: stimulus registration and lifecycle orchestration.
 - `Context`: trusted Stimulus/Signal definition and multimodal Percept prompt builder.
-- `Memory`: Mastra-backed memory using local LibSQL persistence or `:memory:` mode, without a required embedding model.
-- `Nucleus<TOutput>`: the many-stimuli cognition runtime, unified realtime Context, memory owner, tool runner, and min/max thought scheduler.
+- `Memory`: Mastra Working Memory, date threads, and semantic recall backed by LibSQL and LibSQLVector.
+- `Nucleus<TOutput>`: the many-stimuli thought and memory-summary scheduler.
 - `Sensus`: unified signal routing, sensory capability, events, and lifecycle.
 - `SensusBase<TSignal, TData>`: common signal binding and `data/error` event contract for sensory capabilities.
 - `Stimulus`: typed event source with explicit `signals` and async `send()`.
@@ -58,15 +58,14 @@ Signal matching inside `Sensus` is automatic:
 Pass `nucleus` to `Ciel` to create its single lifecycle-managed `Nucleus`. Every registered
 Stimulus feeds the same Nucleus while each realtime entry retains its source Stimulus. `Context`
 builds the trusted base definitions and chronological text/image Percept input. Ciel forwards
-`thought` and `error` events and exposes the runtime through `getNucleus()` and its assembled
-realtime-plus-memory state through `getContext()`.
+`thought` and `error` events and exposes the runtime through `getNucleus()` and its current
+realtime state through `getContext()`.
 
-Nucleus privately adds tools for long-term writes and history recall, plus runtime-managed episodic
-summaries. A quiet period, buffered image/text pressure, actual input-token pressure, explicit
-flush, or shutdown closes the current episode. Valid Oculus JPEGs are sent directly to the
-multimodal model while the live context keeps only a configured number of recent images and blank
-images are skipped. Applications provide the model, custom system/messages, and domain action
-tools.
+Nucleus privately adds `memory_update` for replacing refined global memory and `memory_recall` for
+semantic search across historical date threads. Reaching the configured model-input token size, a quiet
+period, or shutdown summarizes current text and image Percepts into the current date thread. `Soul` and
+`IDENTITY` are protected strings on `Ciel`; subclasses may
+override them, and Context adds their Markdown headings when assembling the model prompt.
 
 - `Echo`, `Photon`, `Script`: immutable signal bases with static metadata.
 - `Auris`, `Oculus`, `Lectio`: lower-level signal-bound sensory capabilities.

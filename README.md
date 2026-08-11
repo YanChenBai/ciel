@@ -240,12 +240,22 @@ Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signa
 
 ### Context、Memory 与 Nucleus
 
-Nucleus 统一管理当前 Percept 与 Memory，并在思考前通过 `getContext()` 组装完整 Context。`Context.systemBuilder()` 将 `Stimulus.meta` 和 `Signal.meta` 构建为内部 system，`Context.messageBuilder()` 将实时 Percept 按时间构建为文字与图片输入：
+Memory、Context 与 Nucleus 保持单一职责：Memory 只读写 Markdown，Context 只组合提示词，Nucleus 只负责思考与记忆总结的调度。Ciel 提供可由子类覆盖的 `Soul` 与 `IDENTITY` 纯文本，Context 统一添加标题：
 
 ```text
-# 记忆规则
+# SOUL
 
-稳定事实、偏好或经验使用 memory_remember 保存；短暂观察由 Nucleus 在 Episode 结束后统一总结。
+你是夏尔。保持理性、温和与好奇。
+
+# IDENTITY
+
+名字：夏尔
+形象：暂无固定形象
+身份：Ciel 的认知主体
+
+# MEMORY
+
+用户希望回答保持简洁。
 
 # 基础定义
 
@@ -255,21 +265,18 @@ Nucleus 统一管理当前 Percept 与 Memory，并在思考前通过 `getContex
 ## 直播弹幕
 观众实时发送的弹幕
 
-# 长期记忆
-
-## 用户偏好
-
-用户希望回答保持简洁。
-
 # 本轮输入
 
 [触发原因]
 感知更新
 
-# 情景记忆
+# 最近经历
 
-[情景]
-[2026-08-11T12:29:00.000Z] 用户此前正在检查直播画面。
+# 2026-08-11
+
+## 12:29:00
+
+用户此前正在检查直播画面。
 
 # 基础数据
 
@@ -277,22 +284,32 @@ Nucleus 统一管理当前 Percept 与 Memory，并在思考前通过 `getContex
 [2026-08-11T12:30:00.000Z] 右边是不是漏了？
 ```
 
-一个 Ciel 只拥有一个 Nucleus。Nucleus 负责完整的思考与工具调用循环，应用只配置模型、自定义 system、实时消息、行动工具、结构化输出和记忆窗口：
+一个 Ciel 只拥有一个 Nucleus。Nucleus 负责完整的思考、工具调用和总结调度，应用配置模型、Memory、总结阈值、自定义消息与行动工具：
 
 ```ts
-import { Ciel } from '@ciels/core';
+import { Ciel, Memory } from '@ciels/core';
 import { isStepCount, jsonSchema, Output, tool } from 'ai';
 
 const stimulus = new LiveStimulus();
 
-const ciel = new Ciel({
+class LiveCiel extends Ciel {
+  protected override readonly Soul = '你是夏尔。保持理性、温和与好奇。';
+  protected override readonly IDENTITY = [
+    '名字：夏尔',
+    '形象：暂无固定形象',
+    '身份：长期陪伴用户的认知主体',
+  ].join('\n');
+}
+
+const ciel = new LiveCiel({
   nucleus: {
     context: { perceptWindow: 60_000, maxImages: 4 },
     model,
-    system: [
-      '# 自定义设定\n\n你是夏尔，是长期陪伴用户的自主智能。',
-      '# 行为要求\n\n理性、温和、好奇；区分事实与推测；只在互动有价值时主动发言。',
-    ],
+    memory: new Memory({
+      path: '.ciel-data/memory.db',
+      embedder: embeddingModel,
+    }),
+    memorySummary: { idleTimeout: 60_000, maxTokens: 500_000 },
     tools: {
       sendMessage: tool({
         description: '向当前场景发送一条消息',
@@ -307,19 +324,6 @@ const ciel = new Ciel({
     },
     output: Output.object({ schema: DecisionSchema }),
     stopWhen: isStepCount(8),
-    memory: {
-      path: '.ciel-data/memory.db',
-      longTermLimit: 8,
-      episodicLimit: 8,
-      episode: {
-        idleTimeout: 60_000,
-        maxBufferedImages: 12,
-        maxImages: 4,
-        maxInputTokens: 24_000,
-        maxTextChars: 32_000,
-        minVisualEntropy: 0.05,
-      },
-    },
     minThinkInterval: 10_000,
     maxThinkInterval: 60_000,
   },
@@ -330,22 +334,20 @@ const nucleus = ciel.getNucleus();
 const context = await ciel.getContext();
 ```
 
-记忆工具由 Nucleus 私有管理，不需要也不允许应用注入。`memory_remember` 保存 main Agent 筛选出的稳定事实、偏好和经验；`memory_recall` 提供 Mastra 原生历史浏览。情景记忆不再依赖 main Agent 每轮主动调用工具：新的 Percept 打开 Episode，多次思考和工具轨迹归入同一段经历；空闲超过 `episode.idleTimeout`，图片达到 `episode.maxBufferedImages`，文字与轨迹达到 `episode.maxTextChars`，单轮实际输入达到 `episode.maxInputTokens`，显式调用 `flushEpisode()`，或 Nucleus 停止时，都会生成一次摘要。
-
-视觉摘要直接使用 Oculus 生成的 3×2 Sight JPEG。普通思考只携带最近 `context.maxImages` 张图片；Episode 结算时，Nucleus 通过灰度熵排除空白、损坏或已经清理的图片，再按时间最多选择 `episode.maxImages` 张原图作为多模态输入，不执行 OCR 或预先生成图片文字描述。成功归档后只移除该批实时数据，归档期间新到的 Percept 会保留。只有空白画面且没有其他有效 Percept 时不会生成情景记忆。记忆以追加方式写入本地 LibSQL，`longTermLimit` 和 `episodicLimit` 只控制每轮注入窗口，不会覆盖旧数据。
+Memory 只复用 Mastra Memory，并通过 LibSQL 持久化：resource-scoped Working Memory 保存精炼后的全局记忆，`YYYY-MM-DD` thread 保存每日经历，LibSQLVector 为经历建立向量。Nucleus 提供 `memory_update` 更新完整全局记忆，并提供 `memory_recall` 让 Agent 按语义跨日期搜索经历；最近日期的经历仍会直接进入 Context。单轮模型输入达到 `memorySummary.maxTokens`、超过 `memorySummary.idleTimeout` 没有新事件，或 Ciel 停止时，Nucleus 会把文字与图片一起交给模型总结，并将纯文本结果写入当天 thread。输入 token 优先使用模型提供方返回的实际用量；API 未返回时，图片按 16 像素 patch、2×2 空间合并及 8192–8388608 像素缩放区间估算。
 
 `minThinkInterval` 限制活跃时的思考频率；`maxThinkInterval` 在没有新感知时仍会给 Nucleus 一次主动判断的机会，但不强制对外输出。
 Nucleus 会把 `percept`、`interval` 与 `manual` 三种触发原因放入本轮输入，main Agent 可以据此判断是否需要主动互动。
 
 Nucleus 只区分内部内容与应用自定义内容，并按顺序直接拼接：
 
-- 内部 system：Context 定义、记忆上下文和记忆规则；
+- 内部 system：SOUL、IDENTITY、MEMORY 与 Context 基础定义；
 - `system`：追加在内部 system 后的应用自定义提示词，不解释其人格、规则等语义；
-- 内部实时消息：触发原因、情景记忆和当前 Percept；
+- 内部实时消息：触发原因、最近经历和当前 Percept；
 - `messages`：追加在内部实时消息后的应用自定义 `ModelMessage`；
 - `tools`：真实行动能力；具有外部副作用的工具应按需配置 AI SDK `toolApproval`。
 
-`Stimulus.meta`、`Signal.meta` 和 `system` 都会进入 system，因此只应接收受信任的应用定义；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 作为本轮消息注入，避免把外部文本提升为系统规则。
+`Soul`、`IDENTITY`、全局记忆、`Stimulus.meta`、`Signal.meta` 和 `system` 都会进入 system，因此只应包含受信任内容；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 注入。
 
 ### Sensus
 
@@ -600,9 +602,9 @@ Percept.type = hearing | reading | sight
 | WebSocket 基础服务       | 初步实现 |
 | WebUI                    | 初步实现 |
 | Nucleus Context 聚合     | 已实现   |
-| Mastra Memory 与 LibSQL  | 已实现   |
+| Markdown 长期与每日记忆  | 已实现   |
 | Nucleus 思考调度         | 已实现   |
-| 本地持久化与历史召回     | 基础实现 |
+| 本地持久化与上下文总结   | 基础实现 |
 | AI SDK 多模态推理        | 基础实现 |
 | AI SDK 自主决策与行动    | 基础实现 |
 

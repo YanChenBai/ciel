@@ -7,11 +7,13 @@ describe('resolveBliveAIConfig', () => {
     expect(
       resolveBliveAIConfig({
         BLIVE_AI_API_KEY: ' key ',
+        BLIVE_AI_EMBEDDING_MODEL: ' provider/embedding-model ',
         BLIVE_AI_VISION_MODEL: ' provider/vision-model ',
       }),
     ).toEqual({
       apiKey: 'key',
       baseURL: 'https://openrouter.ai/api/v1',
+      embeddingModel: 'provider/embedding-model',
       model: 'provider/vision-model',
     });
   });
@@ -20,17 +22,30 @@ describe('resolveBliveAIConfig', () => {
     expect(
       resolveBliveAIConfig({
         BLIVE_AI_API_KEY: 'key',
+        BLIVE_AI_EMBEDDING_MODEL: 'provider/embedding-model',
         BLIVE_AI_MODEL: 'provider/vision-model',
       }).model,
     ).toBe('provider/vision-model');
   });
 
   it('缺少密钥或模型时快速失败', () => {
-    expect(() => resolveBliveAIConfig({ BLIVE_AI_MODEL: 'provider/model' })).toThrow(
-      'BLIVE_AI_API_KEY',
-    );
-    expect(() => resolveBliveAIConfig({ BLIVE_AI_API_KEY: 'key' })).toThrow(
-      'BLIVE_AI_VISION_MODEL',
-    );
+    expect(() =>
+      resolveBliveAIConfig({
+        BLIVE_AI_EMBEDDING_MODEL: 'provider/embedding-model',
+        BLIVE_AI_MODEL: 'provider/model',
+      }),
+    ).toThrow('BLIVE_AI_API_KEY');
+    expect(() =>
+      resolveBliveAIConfig({
+        BLIVE_AI_API_KEY: 'key',
+        BLIVE_AI_VISION_MODEL: 'provider/model',
+      }),
+    ).toThrow('BLIVE_AI_EMBEDDING_MODEL');
+    expect(() =>
+      resolveBliveAIConfig({
+        BLIVE_AI_API_KEY: 'key',
+        BLIVE_AI_EMBEDDING_MODEL: 'provider/embedding-model',
+      }),
+    ).toThrow('BLIVE_AI_VISION_MODEL');
   });
 });
