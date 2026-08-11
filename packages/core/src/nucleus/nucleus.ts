@@ -1,20 +1,20 @@
 import { EventHost, toError } from '@ciels/event';
 import type { Unsubscribe } from '@ciels/event';
 
+import { Context, createContextPrompt } from '#src/context/index.ts';
 import { Memory } from '#src/memory/index.ts';
 import type { Percept } from '#src/percepts/index.ts';
+import type { SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
 
-import { NucleusContextStore } from './context.ts';
 import { EpisodeRecorder } from './episode.ts';
 import { resolveNucleusMessages } from './messages.ts';
 import { normalizeNucleusOptions } from './options.ts';
 import type { NormalizedNucleusOptions } from './options.ts';
-import { createNucleusPrompt } from './prompt.ts';
+import { NucleusPerceptStore } from './percept-store.ts';
 import { createNucleusToolLoopAgent } from './tool-loop-agent.ts';
 import type { NucleusToolLoopAgent } from './tool-loop-agent.ts';
 import type {
-  ContextDefinitionInput,
   NucleusContext,
   NucleusEventMap,
   NucleusInput,
@@ -30,7 +30,10 @@ type NucleusState = 'idle' | 'running' | 'stopping';
 export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput>> {
   private readonly options: NormalizedNucleusOptions<TOutput>;
   private readonly memory: Memory;
-  private readonly context: NucleusContextStore;
+  private readonly signals: SignalConstructor[] = [];
+  private readonly stimuli: Stimulus[] = [];
+  private readonly context: Context;
+  private readonly store: NucleusPerceptStore;
   private readonly episodes: EpisodeRecorder;
   private readonly agent: NucleusToolLoopAgent<TOutput>;
   private state: NucleusState = 'idle';
@@ -53,10 +56,10 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     } = this.options.memory;
 
     this.memory = new Memory({ ...memoryOptions, model: this.options.model });
-    this.context = new NucleusContextStore(
+    this.context = new Context(this.signals, this.stimuli);
+    this.store = new NucleusPerceptStore(
       this.options.context.perceptWindow,
       this.options.context.maxImages,
-      this.options.context.definitions,
     );
     this.episodes = new EpisodeRecorder(this.memory, this.options.model, episode);
     this.agent = createNucleusToolLoopAgent(this.memory, this.options);
@@ -64,18 +67,18 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
 
   /** 注册一个可向 Nucleus 提供实时感知的 Stimulus。 */
   register(stimulus: Stimulus): void {
-    this.context.register(stimulus);
+    if (this.stimuli.includes(stimulus)) return;
+    this.stimuli.push(stimulus);
+    stimulus.signals.forEach(Signal => {
+      if (!this.signals.includes(Signal)) this.signals.push(Signal);
+    });
+    this.store.register(stimulus);
   }
 
   /** 接收 Sensus 已处理完成的实时感知。 */
   ingest(stimulus: Stimulus, percept: Percept): void {
-    this.episodes.ingest(this.context.ingest(stimulus, percept));
+    this.episodes.ingest(this.store.ingest(stimulus, percept));
     this.scheduleEpisodeFlush();
-  }
-
-  /** 添加一条运行时定义，返回幂等的移除函数。 */
-  define(definition: ContextDefinitionInput): () => void {
-    return this.context.define(definition);
   }
 
   /**
@@ -90,7 +93,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.startedAt = Date.now();
     this.lastThinkAt = undefined;
     this.dirty = false;
-    this.unsubscribe = this.context.on('change', () => {
+    this.unsubscribe = this.store.on('change', () => {
       this.dirty = true;
       this.schedule();
     });
@@ -117,10 +120,10 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     } finally {
       try {
         const archived = await this.episodes.flush();
-        this.context.remove(archived);
+        this.store.remove(archived);
       } finally {
         await this.memory.close();
-        this.context.clear();
+        this.store.clear();
         this.state = 'idle';
         this.dirty = false;
         this.lastThinkAt = undefined;
@@ -146,19 +149,20 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   async flushEpisode(): Promise<void> {
     this.clearEpisodeTimer();
     const archived = await this.episodes.flush();
-    this.context.remove(archived);
+    this.store.remove(archived);
     this.scheduleEpisodeFlush();
   }
 
   /** 取得当前实时感知与召回记忆组成的完整 Context。 */
   async getContext(createdAt: Date = new Date()): Promise<NucleusContext> {
-    const snapshot = this.context.snapshot(createdAt);
+    const snapshot = this.store.snapshot(createdAt);
     const memoryContext = await this.memory.getContext({
       longTermLimit: this.options.memory.longTermLimit,
       episodicLimit: this.options.memory.episodicLimit,
     });
     return {
       ...snapshot,
+      definitions: this.context.definitions,
       memories: memoryContext.entries,
       ...(memoryContext.instructions ? { memoryInstructions: memoryContext.instructions } : {}),
     };
@@ -187,7 +191,15 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
         ...context,
         trigger,
       };
-      const prompt = createNucleusPrompt(input);
+      const prompt = createContextPrompt(
+        {
+          trigger: input.trigger,
+          memories: input.memories,
+          percepts: input.data.map(data => data.percept),
+          ...(input.memoryInstructions ? { memoryInstructions: input.memoryInstructions } : {}),
+        },
+        this.context,
+      );
       const result = await this.agent.generate({
         messages: await resolveNucleusMessages(input, this.options.messages, prompt),
         options: { input, prompt },

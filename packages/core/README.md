@@ -48,6 +48,7 @@ Signal matching inside `Sensus` is automatic:
 ## Exports
 
 - `Ciel`: stimulus registration and lifecycle orchestration.
+- `Context`: trusted Stimulus/Signal definition and multimodal Percept prompt builder.
 - `Memory`: Mastra-backed memory using local LibSQL persistence or `:memory:` mode, without a required embedding model.
 - `Nucleus<TOutput>`: the many-stimuli cognition runtime, unified realtime Context, memory owner, tool runner, and min/max thought scheduler.
 - `Sensus`: unified signal routing, sensory capability, events, and lifecycle.
@@ -55,9 +56,10 @@ Signal matching inside `Sensus` is automatic:
 - `Stimulus`: typed event source with explicit `signals` and async `send()`.
 
 Pass `nucleus` to `Ciel` to create its single lifecycle-managed `Nucleus`. Every registered
-Stimulus feeds the same Nucleus while each Context entry retains its source Stimulus. Ciel
-forwards `thought` and `error` events and exposes the runtime through `getNucleus()` and its
-assembled realtime-plus-memory state through `getContext()`.
+Stimulus feeds the same Nucleus while each realtime entry retains its source Stimulus. `Context`
+builds the trusted base definitions and chronological text/image Percept input. Ciel forwards
+`thought` and `error` events and exposes the runtime through `getNucleus()` and its assembled
+realtime-plus-memory state through `getContext()`.
 
 Nucleus privately adds tools for long-term writes and history recall, plus runtime-managed episodic
 summaries. A quiet period, buffered image/text pressure, actual input-token pressure, explicit

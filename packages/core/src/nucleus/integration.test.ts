@@ -63,7 +63,6 @@ describe('Nucleus Prompt', () => {
       messages: [() => ({ role: 'user', content: '当前任务' })],
     });
     nucleus.register(stimulus);
-    nucleus.define({ name: '目标', description: '判断是否需要互动' });
     nucleus.ingest(
       stimulus,
       new Reading({ content: '你好', timestamp: new Date(1), originSignal: TestScript }),
@@ -85,11 +84,10 @@ describe('Nucleus Prompt', () => {
     expect(serialized).toContain('你是夏尔。');
     expect(serialized).toContain('## 直播间');
     expect(serialized).toContain('## 画面');
-    expect(serialized).toContain('## 目标');
-    expect(serialized).toContain('[直播间 / 对话]');
+    expect(serialized).toContain('[对话]');
     expect(serialized).toContain('当前任务');
     expect(serialized.indexOf('## 直播间')).toBeLessThan(serialized.indexOf('你是夏尔。'));
-    expect(serialized.indexOf('[直播间 / 对话]')).toBeLessThan(serialized.indexOf('当前任务'));
+    expect(serialized.indexOf('[对话]')).toBeLessThan(serialized.indexOf('当前任务'));
     expect(call?.prompt.some(message => message.role === 'user')).toBe(true);
     await nucleus.getMemory().close();
   });

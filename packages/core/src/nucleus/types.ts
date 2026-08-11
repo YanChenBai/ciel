@@ -1,12 +1,19 @@
 import type { LanguageModel, ModelMessage, Output, ToolLoopAgentSettings, ToolSet } from 'ai';
 
+import type {
+  ContextDefinition,
+  ContextPrompt,
+  ContextPromptPart,
+  ContextTime,
+  ContextTrigger,
+} from '#src/context/index.ts';
 import type { MemoryEntry, MemoryOptions } from '#src/memory/index.ts';
 import type { Percept } from '#src/percepts/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
 
 type MaybePromise<T> = T | Promise<T>;
 
-export type NucleusTrigger = 'manual' | 'percept' | 'interval';
+export type NucleusTrigger = ContextTrigger;
 
 export interface NucleusContextOptions {
   /** 每次组装 Context 时保留的最近感知时长，单位为毫秒。 */
@@ -14,25 +21,6 @@ export interface NucleusContextOptions {
 
   /** 单次模型输入最多携带多少张最近的实时图片。 */
   maxImages?: number;
-
-  /** 附加到场景与信号语义之前的基础定义。 */
-  definitions?: readonly ContextDefinitionInput[];
-}
-
-export interface ContextDefinitionInput {
-  readonly name: string;
-  readonly description: string;
-}
-
-export type ContextDefinitionKind = 'custom' | 'scene' | 'signal';
-
-export interface ContextDefinition extends ContextDefinitionInput {
-  readonly kind: ContextDefinitionKind;
-}
-
-export interface ContextTime {
-  readonly startAt: Date;
-  readonly endAt: Date;
 }
 
 export interface ContextTextContent {
@@ -75,14 +63,9 @@ export interface NucleusInput extends NucleusContext {
   readonly trigger: NucleusTrigger;
 }
 
-export type NucleusPromptPart =
-  | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'image'; readonly path: string };
+export type NucleusPromptPart = ContextPromptPart;
 
-export interface NucleusPrompt {
-  readonly system: readonly string[];
-  readonly input: readonly NucleusPromptPart[];
-}
+export type NucleusPrompt = ContextPrompt;
 
 /** 可在实时感知消息之后追加的 AI SDK 消息。 */
 export type NucleusMessage = (
@@ -133,3 +116,5 @@ export interface NucleusEventMap<TOutput = string> {
   thought(output: TOutput, input: NucleusInput): void;
   error(error: Error): void;
 }
+
+export type { ContextDefinition, ContextDefinitionKind, ContextTime } from '#src/context/index.ts';

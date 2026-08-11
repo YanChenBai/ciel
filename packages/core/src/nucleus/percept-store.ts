@@ -5,13 +5,7 @@ import type { SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus, StimulusConstructor } from '#src/stimulus/index.ts';
 
 import { DEFAULT_CONTEXT_MAX_IMAGES } from './constants.ts';
-import type {
-  ContextData,
-  ContextDefinition,
-  ContextDefinitionInput,
-  ContextTime,
-  NucleusContextSnapshot,
-} from './types.ts';
+import type { ContextData, ContextDefinition, ContextTime } from './types.ts';
 
 interface ContextEventMap {
   change(): void;
@@ -28,31 +22,21 @@ function getPerceptTime(percept: Percept): ContextTime {
     : { startAt: percept.startAt, endAt: percept.endAt };
 }
 
-function uniqueDefinitions(definitions: readonly ContextDefinition[]): ContextDefinition[] {
-  const seen = new Set<string>();
-  return definitions.filter(definition => {
-    const key = `${definition.kind}\u0000${definition.name}\u0000${definition.description}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
+interface NucleusRealtimeSnapshot {
+  readonly createdAt: Date;
+  readonly data: readonly ContextData[];
 }
 
-/** Nucleus 内部的实时感知与语义定义存储。 */
-export class NucleusContextStore extends EventHost<ContextEventMap> {
+/** Nucleus 内部的实时感知窗口。 */
+export class NucleusPerceptStore extends EventHost<ContextEventMap> {
   private readonly sources = new Map<Stimulus, ContextSource>();
-  private readonly definitions: ContextDefinition[];
   private readonly entries: ContextData[] = [];
 
   constructor(
     private readonly perceptWindow: number,
     private readonly maxImages: number = DEFAULT_CONTEXT_MAX_IMAGES,
-    definitions: readonly ContextDefinitionInput[] = [],
   ) {
     super();
-    this.definitions = definitions.map(definition => ({ kind: 'custom', ...definition }));
   }
 
   register(stimulus: Stimulus): void {
@@ -68,7 +52,6 @@ export class NucleusContextStore extends EventHost<ContextEventMap> {
       name: Stimulus.meta.name,
       description: Stimulus.meta.description,
     };
-    const definitions: ContextDefinition[] = [scene];
     for (const Signal of stimulus.signals) {
       Signal.assertMeta();
       const definition: ContextDefinition = {
@@ -77,10 +60,8 @@ export class NucleusContextStore extends EventHost<ContextEventMap> {
         description: Signal.meta.description,
       };
       signals.set(Signal, definition);
-      definitions.push(definition);
     }
     this.sources.set(stimulus, { scene, signals });
-    this.definitions.push(...definitions);
     this.emit('change');
   }
 
@@ -117,27 +98,7 @@ export class NucleusContextStore extends EventHost<ContextEventMap> {
     return data;
   }
 
-  define(definition: ContextDefinitionInput): () => void {
-    if (!definition.name || !definition.description) {
-      throw new Error('context definition must have a non-empty name and description');
-    }
-
-    const value: ContextDefinition = { kind: 'custom', ...definition };
-    this.definitions.unshift(value);
-    this.emit('change');
-    let active = true;
-    return () => {
-      if (!active) return;
-      active = false;
-      const index = this.definitions.indexOf(value);
-      if (index >= 0) {
-        this.definitions.splice(index, 1);
-        this.emit('change');
-      }
-    };
-  }
-
-  snapshot(createdAt: Date = new Date()): NucleusContextSnapshot {
+  snapshot(createdAt: Date = new Date()): NucleusRealtimeSnapshot {
     const cutoff = createdAt.getTime() - this.perceptWindow;
     const retained = this.entries.filter(entry => entry.time.endAt.getTime() >= cutoff);
     this.entries.length = 0;
@@ -154,7 +115,6 @@ export class NucleusContextStore extends EventHost<ContextEventMap> {
     const visible = new Set([...sorted.filter(entry => entry.content.type === 'text'), ...images]);
     return {
       createdAt,
-      definitions: uniqueDefinitions(this.definitions),
       data: sorted.filter(entry => visible.has(entry)),
     };
   }

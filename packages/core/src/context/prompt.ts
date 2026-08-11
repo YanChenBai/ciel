@@ -1,11 +1,5 @@
-import type {
-  ContextData,
-  ContextDefinition,
-  ContextTime,
-  NucleusInput,
-  NucleusPrompt,
-  NucleusPromptPart,
-} from './types.ts';
+import type { Context } from './context.ts';
+import type { ContextPrompt, ContextPromptInput, ContextPromptPart, ContextTime } from './types.ts';
 
 const TRIGGER_NAMES = {
   manual: '手动触发',
@@ -21,36 +15,7 @@ function formatTime(time: ContextTime): string {
   return startAt === endAt ? startAt : `${startAt} - ${endAt}`;
 }
 
-function formatDefinitions(definitions: readonly ContextDefinition[]): string {
-  return [
-    '# 基础定义',
-    ...definitions.map(definition => `## ${definition.name}\n${definition.description}`),
-  ].join('\n\n');
-}
-
-function appendData(parts: NucleusPromptPart[], data: ContextData, text: string): string {
-  const header = `[${data.scene.name} / ${data.signal.name}]\n[${formatTime(data.time)}]`;
-  if (data.content.type === 'text') {
-    const speaker = data.content.speaker ? `[${data.content.speaker}] ` : '';
-    return `${text}\n\n${header} ${speaker}${data.content.text}`;
-  }
-  parts.push({ type: 'text', text: `${text}\n\n${header}` });
-  parts.push({ type: 'image', path: data.content.path });
-  return '';
-}
-
-function formatRealtimeData(data: readonly ContextData[]): NucleusPromptPart[] {
-  if (data.length === 0) return [];
-  const parts: NucleusPromptPart[] = [];
-  let text = '# 实时感知';
-  data.forEach(entry => {
-    text = appendData(parts, entry, text);
-  });
-  if (text) parts.push({ type: 'text', text });
-  return parts;
-}
-
-function formatLongTermMemories(input: NucleusInput): string | undefined {
+function formatLongTermMemories(input: ContextPromptInput): string | undefined {
   const memories = input.memories.filter(memory => memory.kind === 'long-term');
   if (memories.length === 0) return undefined;
   return [
@@ -62,9 +27,9 @@ function formatLongTermMemories(input: NucleusInput): string | undefined {
   ].join('\n\n');
 }
 
-function formatEpisodicMemories(input: NucleusInput): NucleusPromptPart[] {
+function formatEpisodicMemories(input: ContextPromptInput): ContextPromptPart[] {
   const memories = input.memories.filter(memory => memory.kind === 'episodic');
-  const parts: NucleusPromptPart[] = [];
+  const parts: ContextPromptPart[] = [];
   let text = `# 本轮输入\n\n[触发原因]\n${TRIGGER_NAMES[input.trigger]}`;
   if (memories.length > 0) {
     text += '\n\n# 情景记忆';
@@ -84,16 +49,19 @@ function formatEpisodicMemories(input: NucleusInput): NucleusPromptPart[] {
   return parts;
 }
 
-export function createNucleusPrompt(input: NucleusInput): NucleusPrompt {
+/**
+ * 统一组合基础定义、记忆与当前 Percept。
+ */
+export function createContextPrompt(input: ContextPromptInput, context: Context): ContextPrompt {
   const system = [
     ...(input.memoryInstructions ? [`# 记忆上下文\n\n${input.memoryInstructions}`] : []),
     `# 记忆规则\n\n${MEMORY_RULES}`,
-    formatDefinitions(input.definitions),
+    context.systemBuilder(),
   ];
   const longTermMemories = formatLongTermMemories(input);
   if (longTermMemories) system.push(longTermMemories);
   return {
     system,
-    input: [...formatEpisodicMemories(input), ...formatRealtimeData(input.data)],
+    input: [...formatEpisodicMemories(input), ...context.messageBuilder(input.percepts)],
   };
 }

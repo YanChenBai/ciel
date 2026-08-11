@@ -4,7 +4,7 @@ import { Hearing, Reading, Sight } from '#src/percepts/index.ts';
 import { Echo, Photon, Script } from '#src/signals/index.ts';
 import { Stimulus } from '#src/stimulus/index.ts';
 
-import { NucleusContextStore } from './context.ts';
+import { NucleusPerceptStore } from './percept-store.ts';
 
 class TestEcho extends Echo.WithMeta({ name: 'Voice', description: 'Recognized speech' }) {}
 class TestPhoton extends Photon.WithMeta({ name: 'View', description: 'Visual snapshots' }) {}
@@ -22,10 +22,10 @@ class SecondTestStimulus extends TestStimulus {
   static readonly meta = { name: 'Local room', description: 'A second scene' };
 }
 
-describe('NucleusContextStore', () => {
-  it('keeps registered definitions and chronologically ordered realtime data', () => {
+describe('NucleusPerceptStore', () => {
+  it('keeps chronologically ordered realtime data', () => {
     const stimulus = new TestStimulus();
-    const context = new NucleusContextStore(1_000);
+    const context = new NucleusPerceptStore(1_000);
     context.register(stimulus);
     context.ingest(
       stimulus,
@@ -56,19 +56,15 @@ describe('NucleusContextStore', () => {
     );
 
     const snapshot = context.snapshot(new Date(2_000));
-    expect(snapshot.definitions.find(definition => definition.kind === 'scene')?.name).toBe(
-      'Live room',
-    );
     expect(snapshot.data.map(data => data.percept.type)).toEqual(['hearing', 'sight', 'reading']);
   });
 
-  it('merges stimuli and manages runtime definitions', () => {
+  it('merges realtime data from multiple stimuli', () => {
     const first = new TestStimulus();
     const second = new SecondTestStimulus();
-    const context = new NucleusContextStore(1_000);
+    const context = new NucleusPerceptStore(1_000);
     context.register(first);
     context.register(second);
-    const remove = context.define({ name: 'Goal', description: 'Decide whether to interact' });
     context.ingest(
       second,
       new Reading({ content: 'second', timestamp: new Date(200), originSignal: TestScript }),
@@ -79,25 +75,16 @@ describe('NucleusContextStore', () => {
     );
 
     const snapshot = context.snapshot(new Date(300));
-    expect(
-      snapshot.definitions
-        .filter(definition => definition.kind === 'scene')
-        .map(definition => definition.name),
-    ).toEqual(['Live room', 'Local room']);
     expect(snapshot.data.map(data => data.content)).toMatchObject([
       { text: 'first' },
       { text: 'second' },
     ]);
     expect(snapshot.data.map(data => data.stimulus)).toEqual([first, second]);
-    remove();
-    expect(context.snapshot().definitions).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: 'Goal' })]),
-    );
   });
 
   it('limits realtime images and removes only an archived batch', () => {
     const stimulus = new TestStimulus();
-    const context = new NucleusContextStore(1_000, 1);
+    const context = new NucleusPerceptStore(1_000, 1);
     context.register(stimulus);
     const first = context.ingest(
       stimulus,

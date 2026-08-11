@@ -104,8 +104,9 @@ packages/core/src/
 ├── stimulus/             # 外部刺激输入契约
 ├── percepts/             # Sight、Hearing、Reading 感知产物
 ├── sensus/               # Auris、Oculus、Lectio 感官处理层
+├── context/              # 基础定义与多模态 Percept 上下文构建
 ├── memory/               # 长期记忆、情景记忆与工具
-├── nucleus/              # 实时 Context、记忆组装、思考与调度
+├── nucleus/              # 感知窗口、记忆组装、思考与调度
 ├── constants/
 └── utils/
 ```
@@ -239,7 +240,7 @@ Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signa
 
 ### Context、Memory 与 Nucleus
 
-Nucleus 统一管理当前 Percept 与 Memory，并在思考前通过 `getContext()` 组装完整 Context。`Stimulus.meta`、`Signal.meta` 和 `nucleus.define()` 进入内部 system；情景记忆与来自所有 Stimulus 的实时 Percept 按时间合并，并通过场景与 Signal 名称区分来源：
+Nucleus 统一管理当前 Percept 与 Memory，并在思考前通过 `getContext()` 组装完整 Context。`Context.systemBuilder()` 将 `Stimulus.meta` 和 `Signal.meta` 构建为内部 system，`Context.messageBuilder()` 将实时 Percept 按时间构建为文字与图片输入：
 
 ```text
 # 记忆规则
@@ -270,9 +271,9 @@ Nucleus 统一管理当前 Percept 与 Memory，并在思考前通过 `getContex
 [情景]
 [2026-08-11T12:29:00.000Z] 用户此前正在检查直播画面。
 
-# 实时感知
+# 基础数据
 
-[Bilibili 直播间 / 直播弹幕]
+[直播弹幕]
 [2026-08-11T12:30:00.000Z] 右边是不是漏了？
 ```
 
@@ -344,7 +345,7 @@ Nucleus 只区分内部内容与应用自定义内容，并按顺序直接拼接
 - `messages`：追加在内部实时消息后的应用自定义 `ModelMessage`；
 - `tools`：真实行动能力；具有外部副作用的工具应按需配置 AI SDK `toolApproval`。
 
-`Stimulus.meta`、`Signal.meta`、`nucleus.define()` 和 `system` 都会进入 system，因此只应接收受信任的应用定义；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 作为本轮消息注入，避免把外部文本提升为系统规则。
+`Stimulus.meta`、`Signal.meta` 和 `system` 都会进入 system，因此只应接收受信任的应用定义；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 作为本轮消息注入，避免把外部文本提升为系统规则。
 
 ### Sensus
 

@@ -30,7 +30,6 @@ export type NormalizedNucleusOptions<TOutput> = Omit<
   'context' | 'maxThinkInterval' | 'memory' | 'minThinkInterval'
 > & {
   context: {
-    definitions: readonly import('./types.ts').ContextDefinitionInput[];
     maxImages: number;
     perceptWindow: number;
   };
@@ -96,7 +95,6 @@ export function normalizeNucleusOptions<TOutput>(
     ...options,
     ...normalized,
     context: {
-      definitions: options.context?.definitions ?? [],
       maxImages: normalized.contextMaxImages,
       perceptWindow: normalized.perceptWindow,
     },
