@@ -113,4 +113,74 @@ describe('NucleusPerceptStore', () => {
     context.remove([first, second]);
     expect(context.snapshot(new Date(300)).data).toEqual([currentText]);
   });
+
+  it('freezes changed frames until success and advances each visual source by timestamp', () => {
+    const firstStimulus = new TestStimulus();
+    const secondStimulus = new SecondTestStimulus();
+    const context = new NucleusPerceptStore(1_000, 4);
+    context.register(firstStimulus);
+    context.register(secondStimulus);
+    const first = context.ingest(
+      firstStimulus,
+      new Sight({
+        path: 'first.jpg',
+        startAt: new Date(100),
+        endAt: new Date(100),
+        originSignal: TestPhoton,
+      }),
+    );
+    const concurrentSource = context.ingest(
+      secondStimulus,
+      new Sight({
+        path: 'other.jpg',
+        startAt: new Date(100),
+        endAt: new Date(100),
+        originSignal: TestPhoton,
+      }),
+    );
+
+    const initial = context.checkout(new Date(200));
+    const later = context.ingest(
+      firstStimulus,
+      new Sight({
+        path: 'later.jpg',
+        startAt: new Date(200),
+        endAt: new Date(200),
+        originSignal: TestPhoton,
+      }),
+    );
+
+    expect(initial.vision?.data).toEqual([first, concurrentSource]);
+    expect(context.checkout(new Date(200)).vision).toBe(initial.vision);
+    context.commitVision(initial.vision!);
+    expect(context.checkout(new Date(300)).vision?.data).toEqual([later]);
+  });
+
+  it('does not lease a frame at or before a successfully committed source timestamp', () => {
+    const stimulus = new TestStimulus();
+    const context = new NucleusPerceptStore(1_000, 1);
+    context.register(stimulus);
+    context.ingest(
+      stimulus,
+      new Sight({
+        path: 'first.jpg',
+        startAt: new Date(100),
+        endAt: new Date(100),
+        originSignal: TestPhoton,
+      }),
+    );
+    const checkout = context.checkout(new Date(100));
+    context.commitVision(checkout.vision!);
+    context.ingest(
+      stimulus,
+      new Sight({
+        path: 'duplicate.jpg',
+        startAt: new Date(100),
+        endAt: new Date(100),
+        originSignal: TestPhoton,
+      }),
+    );
+
+    expect(context.checkout(new Date(100)).vision).toBeUndefined();
+  });
 });

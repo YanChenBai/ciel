@@ -7,7 +7,7 @@ import type { Signal, SignalConstructor } from '#signals';
 import { Auris } from './auris.ts';
 import type { SensusBase } from './base.ts';
 import { Lectio } from './lectio.ts';
-import { Oculus } from './oculus.ts';
+import { Oculus } from './oculus/index.ts';
 import type { SensusOptions, SensusOutputEventMap } from './types.ts';
 
 type SignalHandler = (signal: Signal) => void | Promise<void>;

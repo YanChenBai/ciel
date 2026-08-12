@@ -3,6 +3,7 @@ import type { Unsubscribe } from '@ciels/event';
 import { generateText, Output, ToolLoopAgent } from 'ai';
 import type { FilePart, TextPart, ToolSet } from 'ai';
 
+import { composeSight } from '#sensus';
 import { Context, createContextPrompt } from '#src/context/index.ts';
 import type { ContextSection } from '#src/context/index.ts';
 import { createMemoryTools } from '#src/memory/tool.ts';
@@ -25,6 +26,7 @@ import type {
   NucleusPrompt,
   NucleusTrigger,
 } from './types.ts';
+import type { PerceptCheckout } from './vision-types.ts';
 
 type NucleusState = 'idle' | 'running' | 'stopping';
 
@@ -209,11 +211,12 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private async execute(trigger: NucleusTrigger): Promise<TOutput> {
     this.dirty = false;
     try {
-      const [context, longTermMemory, recentMemory] = await Promise.all([
-        this.getContext(),
+      const [checkout, longTermMemory, recentMemory] = await Promise.all([
+        Promise.resolve(this.store.checkout()),
         this.options.memory.readLongTerm(),
         this.options.memory.readRecent(),
       ]);
+      const context = await this.resolveCheckout(checkout);
       const input: NucleusInput = { ...context, trigger };
       const longTerm = longTermMemory.trim() || '暂无长期记忆。';
       const recent = recentMemory.trim();
@@ -250,6 +253,9 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
         messages: await resolveNucleusMessages(input, this.options.messages, prompt),
         options: { input, prompt },
       });
+      if (checkout.vision) {
+        this.store.commitVision(checkout.vision);
+      }
       this.lastInputTokens = result.usage.inputTokens ?? estimatedImageTokens;
       const output = result.output as TOutput;
       this.emit('thought', output, input);
@@ -276,7 +282,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   private requestSummary(): void {
-    if (this.inFlight || this.summaryInFlight || !this.store.active) {
+    if (this.inFlight || this.summaryInFlight || !this.store.summarizable) {
       return;
     }
     this.clearTimer();
@@ -294,15 +300,16 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
 
   private async summarizeMemory(): Promise<void> {
     const snapshot = this.store.snapshot();
-    if (snapshot.data.length === 0) {
+    const data = snapshot.data.filter(entry => entry.content.type === 'text');
+    if (data.length === 0) {
       return;
     }
-    const summary = await this.summarize(snapshot.data);
+    const summary = await this.summarize(data);
     if (summary) {
-      const createdAt = new Date(Math.max(...snapshot.data.map(data => data.time.endAt.getTime())));
+      const createdAt = new Date(Math.max(...data.map(entry => entry.time.endAt.getTime())));
       await this.options.memory.appendEpisode(summary, createdAt);
     }
-    this.store.remove(snapshot.data);
+    this.store.remove(data);
   }
 
   private async summarize(data: readonly ContextData[]): Promise<string> {
@@ -397,7 +404,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
 
   private scheduleSummary(): void {
     this.clearSummaryTimer();
-    if (this.state !== 'running' || !this.store.active || this.summaryInFlight) {
+    if (this.state !== 'running' || !this.store.summarizable || this.summaryInFlight) {
       return;
     }
     const lastIngestAt = this.store.lastIngestAt;
@@ -428,5 +435,44 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     }
     clearTimeout(this.summaryTimer);
     this.summaryTimer = undefined;
+  }
+
+  private async resolveCheckout(checkout: PerceptCheckout): Promise<NucleusContext> {
+    const images = checkout.vision
+      ? await Promise.all(
+          checkout.vision.batches.map(async batch => {
+            const first = batch.data[0]!;
+            const frames = batch.data.map(entry => {
+              if (entry.percept.type !== 'sight') {
+                throw new Error('Vision batches can only contain Sight percepts');
+              }
+              return entry.percept;
+            });
+            const sight = await composeSight(frames);
+            return {
+              ...first,
+              time: {
+                startAt: sight.startAt,
+                endAt: sight.endAt,
+              },
+              content: {
+                type: 'image' as const,
+                path: sight.path,
+              },
+              percept: sight,
+            };
+          }),
+        )
+      : [];
+    const data = [...checkout.data, ...images].toSorted(
+      (left, right) =>
+        left.time.startAt.getTime() - right.time.startAt.getTime() ||
+        left.time.endAt.getTime() - right.time.endAt.getTime(),
+    );
+    return {
+      createdAt: checkout.createdAt,
+      data,
+      definitions: this.context.definitions,
+    };
   }
 }

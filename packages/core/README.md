@@ -61,9 +61,15 @@ builds the trusted base definitions and chronological text/image Percept input. 
 `thought` and `error` events and exposes the runtime through `getNucleus()` and its current
 realtime state through `getContext()`.
 
+Oculus persists each sampled frame that differs enough from the last accepted frame. Nucleus leases
+new frames per Stimulus and Photon type, composes up to nine frames into each context image, and
+advances that source's timestamp only after a successful model call. Failed calls retry the frozen
+batch, while frames arriving during the call remain pending for the next thought.
+
 Nucleus privately adds `memory_update` for replacing refined global memory and `memory_recall` for
 semantic search across historical date threads. Reaching the configured model-input token size, a quiet
-period, or shutdown summarizes current text and image Percepts into the current date thread. `Soul` and
+period, or shutdown summarizes current text Percepts into the current date thread. Successfully submitted
+images are not uploaded again by the automatic summary. `Soul` and
 `IDENTITY` are protected strings on `Ciel`; subclasses may
 override them, and Context adds their Markdown headings when assembling the model prompt.
 

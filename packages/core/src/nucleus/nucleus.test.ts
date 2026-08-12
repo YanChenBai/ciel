@@ -1,10 +1,11 @@
 // @env node
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
+import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { Memory } from '#src/memory/index.ts';
@@ -77,6 +78,32 @@ async function createTemporaryDirectory(): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), 'ciel-nucleus-'));
   temporaryDirectories.push(root);
   return root;
+}
+
+async function writeImage(directory: string, name: string, background: string): Promise<string> {
+  const imagePath = path.join(directory, name);
+  await sharp({
+    create: { width: 64, height: 36, channels: 3, background },
+  })
+    .jpeg()
+    .toFile(imagePath);
+  return imagePath;
+}
+
+function collectImageData(value: unknown, images: string[] = []): string[] {
+  if (!value || typeof value !== 'object') {
+    return images;
+  }
+  if ('mediaType' in value && value.mediaType === 'image/jpeg' && 'data' in value) {
+    const data = value.data;
+    if (data && typeof data === 'object' && 'data' in data && typeof data.data === 'string') {
+      images.push(data.data);
+    }
+  }
+  for (const child of Object.values(value)) {
+    collectImageData(child, images);
+  }
+  return images;
 }
 
 afterEach(async () => {
@@ -156,11 +183,10 @@ describe('Nucleus', () => {
     expect(prompt).toContain('用户此前正在检查直播。');
   });
 
-  it('图片输入达到 token 阈值后作为多模态经历总结', async () => {
+  it('图片只进入主思考，自动经历总结不会重复上传', async () => {
     const stimulus = new TestStimulus();
     const directory = await createTemporaryDirectory();
-    const imagePath = path.join(directory, 'scene.jpg');
-    await writeFile(imagePath, Buffer.from([1, 2, 3]));
+    const imagePath = await writeImage(directory, 'scene.jpg', '#ffffff');
     const memory = createMemoryAt();
     const model = new MockLanguageModelV3({
       doGenerate: [response('已处理', 100), response('画面中出现了一只猫。')],
@@ -181,12 +207,120 @@ describe('Nucleus', () => {
         originSignal: TestPhoton,
       }),
     );
+    nucleus.ingest(stimulus, createReading('画面中出现了一只猫。', Date.now()));
 
     await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(2));
-    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain('image/jpeg');
+    expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).toContain('image/jpeg');
+    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).not.toContain('image/jpeg');
     expect(await memory.readRecent()).toContain('画面中出现了一只猫。');
     expect((await nucleus.getContext()).data).toEqual([]);
     await nucleus.stop();
+  });
+
+  it('失败时重试冻结的变化帧，成功后不再重复上传', async () => {
+    const stimulus = new TestStimulus();
+    const directory = await createTemporaryDirectory();
+    const firstPath = await writeImage(directory, 'first.jpg', '#000000');
+    const secondPath = await writeImage(directory, 'second.jpg', '#ffffff');
+    const laterPath = await writeImage(directory, 'later.jpg', '#ff0000');
+    let attempts = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error('temporary provider failure');
+        }
+        return response('已处理');
+      },
+    });
+    const nucleus = new Nucleus({ memory: await createMemory(), model });
+    nucleus.register(stimulus);
+    nucleus.ingest(
+      stimulus,
+      new Sight({
+        path: firstPath,
+        startAt: new Date(1),
+        endAt: new Date(1),
+        originSignal: TestPhoton,
+      }),
+    );
+    nucleus.ingest(
+      stimulus,
+      new Sight({
+        path: secondPath,
+        startAt: new Date(2),
+        endAt: new Date(2),
+        originSignal: TestPhoton,
+      }),
+    );
+
+    await expect(nucleus.think()).rejects.toThrow('temporary provider failure');
+    await Promise.resolve();
+    nucleus.ingest(
+      stimulus,
+      new Sight({
+        path: laterPath,
+        startAt: new Date(3),
+        endAt: new Date(3),
+        originSignal: TestPhoton,
+      }),
+    );
+    await expect(nucleus.think()).resolves.toBe('已处理');
+    await expect(nucleus.think()).resolves.toBe('已处理');
+    await expect(nucleus.think()).resolves.toBe('已处理');
+
+    const images = model.doGenerateCalls.map(call => collectImageData(call.prompt));
+    expect(images.map(value => value.length)).toEqual([1, 1, 1, 0]);
+    expect(images[1]).toEqual(images[0]);
+    expect(images[2]).not.toEqual(images[1]);
+  });
+
+  it('每九个变化帧组成一张图，不足九帧也在本轮提交', async () => {
+    const stimulus = new TestStimulus();
+    const directory = await createTemporaryDirectory();
+    const nucleus = new Nucleus({ memory: await createMemory(), model: createModel() });
+    const inputs: NucleusInput[] = [];
+    nucleus.register(stimulus);
+    nucleus.on('thought', (_output, input) => inputs.push(input));
+    const paths = await Promise.all(
+      Array.from({ length: 10 }, (_, index) =>
+        writeImage(directory, `frame-${index}.jpg`, index % 2 === 0 ? '#000000' : '#ffffff'),
+      ),
+    );
+    for (let index = 0; index < paths.length; index += 1) {
+      nucleus.ingest(
+        stimulus,
+        new Sight({
+          path: paths[index]!,
+          startAt: new Date(index + 1),
+          endAt: new Date(index + 1),
+          originSignal: TestPhoton,
+        }),
+      );
+    }
+
+    await nucleus.think();
+
+    const images = inputs[0]!.data.filter(entry => entry.content.type === 'image');
+    expect(images.map(entry => [entry.time.startAt.getTime(), entry.time.endAt.getTime()])).toEqual(
+      [
+        [1, 9],
+        [10, 10],
+      ],
+    );
+    await expect(
+      Promise.all(
+        images.map(entry => {
+          if (entry.content.type !== 'image') {
+            throw new Error('Expected image context data');
+          }
+          return sharp(entry.content.path).metadata();
+        }),
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({ width: 1920, height: 1080 }),
+      expect.objectContaining({ width: 1920, height: 1080 }),
+    ]);
   });
 
   it('长时间没有新事件后总结经历', async () => {

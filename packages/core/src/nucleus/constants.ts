@@ -9,8 +9,11 @@ export const DEFAULT_MAX_THINK_INTERVAL = MINUTE * 5;
 /** Context 默认保留最近三分钟内的实时感知。 */
 export const DEFAULT_PERCEPT_WINDOW = MINUTE * 3;
 
-/** 单轮实时 Context 默认最多携带四张最近图片。 */
+/** 单轮实时 Context 默认最多携带四张变化帧拼图。 */
 export const DEFAULT_CONTEXT_MAX_IMAGES = 4;
+
+/** 一张 Context 拼图最多包含九个变化帧。 */
+export const VISION_FRAMES_PER_IMAGE = 9;
 
 /** 一分钟没有新 Percept 后总结当前经历。 */
 export const DEFAULT_MEMORY_SUMMARY_IDLE_TIMEOUT = MINUTE;

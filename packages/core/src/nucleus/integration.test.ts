@@ -1,10 +1,11 @@
 // @env node
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
+import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { Memory } from '#src/memory/index.ts';
@@ -74,7 +75,11 @@ describe('Nucleus Prompt', () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'ciel-context-'));
     temporaryDirectories.push(directory);
     const imagePath = path.join(directory, 'scene.png');
-    await writeFile(imagePath, Buffer.from([1, 2, 3]));
+    await sharp({
+      create: { width: 64, height: 36, channels: 3, background: '#ffffff' },
+    })
+      .png()
+      .toFile(imagePath);
 
     const stimulus = new TestStimulus();
     const model = createModel();

@@ -334,7 +334,7 @@ const nucleus = ciel.getNucleus();
 const context = await ciel.getContext();
 ```
 
-Memory 只复用 Mastra Memory，并通过 LibSQL 持久化：resource-scoped Working Memory 保存精炼后的全局记忆，`YYYY-MM-DD` thread 保存每日经历，LibSQLVector 为经历建立向量。Nucleus 提供 `memory_update` 更新完整全局记忆，并提供 `memory_recall` 让 Agent 按语义跨日期搜索经历；最近日期的经历仍会直接进入 Context。单轮模型输入达到 `memorySummary.maxTokens`、超过 `memorySummary.idleTimeout` 没有新事件，或 Ciel 停止时，Nucleus 会把文字与图片一起交给模型总结，并将纯文本结果写入当天 thread。输入 token 优先使用模型提供方返回的实际用量；API 未返回时，图片按 16 像素 patch、2×2 空间合并及 8192–8388608 像素缩放区间估算。
+Memory 只复用 Mastra Memory，并通过 LibSQL 持久化：resource-scoped Working Memory 保存精炼后的全局记忆，`YYYY-MM-DD` thread 保存每日经历，LibSQLVector 为经历建立向量。Nucleus 提供 `memory_update` 更新完整全局记忆，并提供 `memory_recall` 让 Agent 按语义跨日期搜索经历；最近日期的经历仍会直接进入 Context。单轮模型输入达到 `memorySummary.maxTokens`、超过 `memorySummary.idleTimeout` 没有新事件，或 Ciel 停止时，Nucleus 会总结当前文字 Percept，并将纯文本结果写入当天 thread。视觉变化帧只进入主思考，成功提交后不会在自动总结或下一轮思考中重复上传。输入 token 优先使用模型提供方返回的实际用量；API 未返回时，图片按 16 像素 patch、2×2 空间合并及 8192–8388608 像素缩放区间估算。
 
 `minThinkInterval` 限制活跃时的思考频率；`maxThinkInterval` 在没有新感知时仍会给 Nucleus 一次主动判断的机会，但不强制对外输出。
 Nucleus 会把 `percept`、`interval` 与 `manual` 三种触发原因放入本轮输入，main Agent 可以据此判断是否需要主动互动。
@@ -369,15 +369,15 @@ Nucleus 只区分内部内容与应用自定义内容，并按顺序直接拼接
 Photon[]
   → 时间采样
   → 低分辨率灰度差异比较
-  → 每 9 个采样点选择变化帧
-  → 固定 1920 × 1080 视觉拼图
-  → 持久化 JPEG
-  → Sight
+  → 持久化每个变化帧
+  → 单帧 Sight
+  → Nucleus 冻结本轮新增帧
+  → 每 9 帧组成 1920 × 1080 上下文拼图
 ```
 
-Oculus 将每个采样帧缩小为 64 × 36 灰度指纹，与上一张已经保留的帧计算平均像素差异；达到 `differenceThreshold` 才进入拼图。比较只用于去除重复画面，输出给多模态模型的仍是原始 Photon 生成的彩色 JPEG，不使用灰度缩略图。
+Oculus 将每个采样帧缩小为 64 × 36 灰度指纹，与上一张已经保留的帧计算平均像素差异；达到 `differenceThreshold` 才持久化并产生单帧 `Sight`。比较只用于去除重复画面，输出给多模态模型的仍是原始 Photon 生成的彩色 JPEG，不使用灰度缩略图。
 
-默认每分钟采样 9 帧，每 9 个采样点形成约一分钟的观察窗口。完整窗口使用 3 × 3 排版，每格 640 × 360，九张 16:9 画面可以无黑边、无拉伸、无裁切地填满固定 1920 × 1080 画布。差异筛选后少于九张时使用自适应排版；完全没有变化的后续窗口不会重复产生 Sight。默认 `differenceThreshold` 为 `0.03`，设为 `0` 可恢复为保留所有采样帧。
+默认每分钟采样 9 帧。Nucleus 组装一次模型 Context 时，按 Stimulus 与 Photon 类型分别冻结尚未成功提交的变化帧，每 9 帧组成一张 3 × 3 拼图；不足 9 帧也使用自适应排版立即提交。`context.maxImages` 限制单轮拼图数量。模型调用成功后按每个视觉来源的最后时间戳推进游标，失败时保留同一批帧供下次重试，调用期间新到的帧留到下一轮。默认 `differenceThreshold` 为 `0.03`，设为 `0` 可恢复为保留所有采样帧。
 
 `Sight` 只描述一次已经持久化的视觉观察：
 
@@ -589,24 +589,24 @@ Percept.type = hearing | reading | sight
 
 ## 当前实现状态
 
-| 能力                     | 状态     |
-| ------------------------ | -------- |
-| 原始视觉、音频、文字信号 | 已实现   |
-| Stimulus 输入契约与事件  | 已实现   |
-| Oculus 采样与视觉拼图    | 已实现   |
-| Sight 持久化             | 已实现   |
-| Auris 流式输入与 VAD     | 已实现   |
-| ASR 与转写时间戳         | 已实现   |
-| 声纹识别与未知说话人聚类 | 已实现   |
-| 模型安装与声纹创建脚本   | 已实现   |
-| WebSocket 基础服务       | 初步实现 |
-| WebUI                    | 初步实现 |
-| Nucleus Context 聚合     | 已实现   |
-| Markdown 长期与每日记忆  | 已实现   |
-| Nucleus 思考调度         | 已实现   |
-| 本地持久化与上下文总结   | 基础实现 |
-| AI SDK 多模态推理        | 基础实现 |
-| AI SDK 自主决策与行动    | 基础实现 |
+| 能力                        | 状态     |
+| --------------------------- | -------- |
+| 原始视觉、音频、文字信号    | 已实现   |
+| Stimulus 输入契约与事件     | 已实现   |
+| Oculus 变化采样与上下文拼图 | 已实现   |
+| Sight 持久化                | 已实现   |
+| Auris 流式输入与 VAD        | 已实现   |
+| ASR 与转写时间戳            | 已实现   |
+| 声纹识别与未知说话人聚类    | 已实现   |
+| 模型安装与声纹创建脚本      | 已实现   |
+| WebSocket 基础服务          | 初步实现 |
+| WebUI                       | 初步实现 |
+| Nucleus Context 聚合        | 已实现   |
+| Markdown 长期与每日记忆     | 已实现   |
+| Nucleus 思考调度            | 已实现   |
+| 本地持久化与上下文总结      | 基础实现 |
+| AI SDK 多模态推理           | 基础实现 |
+| AI SDK 自主决策与行动       | 基础实现 |
 
 ## 开发
 

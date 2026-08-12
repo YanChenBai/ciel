@@ -18,6 +18,8 @@ export type NucleusTrigger = ContextTrigger;
 
 export interface NucleusContextOptions {
   readonly perceptWindow?: number;
+
+  /** 单轮最多提交的视觉变化帧拼图数量，每张最多包含九帧。 */
   readonly maxImages?: number;
 }
 

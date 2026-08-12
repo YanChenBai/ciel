@@ -4,7 +4,7 @@
 
 - stdout 输出 16kHz、单声道、s16le PCM，转换为 `BilibiliAudio extends Echo`；
 - fd 3 每分钟输出九张 JPEG，转换为 `BilibiliVideo extends Photon`；
-- Ciel 的 Auris 与 Oculus 继续负责听觉、3×3 视觉拼图和后续 Nucleus 感知。
+- Ciel 的 Auris 与 Oculus 继续负责听觉和视觉变化筛选，Nucleus 在每轮 Context 中组合视觉拼图。
 
 ## 使用
 
@@ -27,7 +27,7 @@ $env:BLIVE_AI_BASE_URL='https://openrouter.ai/api/v1'
 ```
 
 视觉模型必须支持 `image input`，embedding 模型用于历史经历的语义检索。`BLIVE_AI_MODEL`
-仍可兼容使用，但建议通过 `BLIVE_AI_VISION_MODEL` 明确配置视觉模型；Oculus 每次只提交一张合成后的九宫格 JPEG。
+仍可兼容使用，但建议通过 `BLIVE_AI_VISION_MODEL` 明确配置视觉模型；Nucleus 会把本轮尚未成功提交的变化帧每九张组合成一张 JPEG，不足九张也会立即提交。
 
 ```bash
 vp run --filter @ciels/blive start

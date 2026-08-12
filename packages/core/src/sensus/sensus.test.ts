@@ -34,7 +34,7 @@ vi.mock('./auris.ts', async () => {
   };
 });
 
-vi.mock('./oculus.ts', async () => {
+vi.mock('./oculus/index.ts', async () => {
   const { EventHost } = await import('@ciels/event');
   return {
     Oculus: class extends EventHost<{
