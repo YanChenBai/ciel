@@ -165,6 +165,35 @@ describe('Nucleus', () => {
     await nucleus.stop();
   });
 
+  it('允许感知策略绕过最小间隔提前触发思考', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const stimulus = new TestStimulus();
+    const model = createModel();
+    const nucleus = new Nucleus({
+      model,
+      memory: await createMemory(),
+      memorySummary: { idleTimeout: 60_000 },
+      minThinkInterval: 10_000,
+      maxThinkInterval: 20_000,
+      triggerPolicy: record =>
+        record.content.type === 'text' && record.content.text === '现在回答'
+          ? 'immediate'
+          : 'scheduled',
+    });
+    nucleus.register(stimulus);
+    nucleus.start();
+    nucleus.ingest(stimulus, createReading('第一条', 0));
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(1));
+
+    await vi.advanceTimersByTimeAsync(100);
+    nucleus.ingest(stimulus, createReading('现在回答', 100));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(model.doGenerateCalls).toHaveLength(2);
+    await nucleus.stop();
+  });
+
   it('把长期记忆和最近经历注入上下文', async () => {
     const stimulus = new TestStimulus();
     const memory = await createMemory();
@@ -183,7 +212,7 @@ describe('Nucleus', () => {
     expect(prompt).toContain('用户此前正在检查直播。');
   });
 
-  it('图片只进入主思考，自动经历总结不会重复上传', async () => {
+  it('图片进入主思考与独立的经历归档，但原始痕迹仍可读取', async () => {
     const stimulus = new TestStimulus();
     const directory = await createTemporaryDirectory();
     const imagePath = await writeImage(directory, 'scene.jpg', '#ffffff');
@@ -211,9 +240,12 @@ describe('Nucleus', () => {
 
     await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(2));
     expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).toContain('image/jpeg');
-    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).not.toContain('image/jpeg');
+    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain('image/jpeg');
     expect(await memory.readRecent()).toContain('画面中出现了一只猫。');
-    expect((await nucleus.getContext()).data).toEqual([]);
+    expect((await nucleus.getContext()).data.map(data => data.percept.type)).toEqual([
+      'sight',
+      'reading',
+    ]);
     await nucleus.stop();
   });
 
@@ -326,19 +358,25 @@ describe('Nucleus', () => {
   it('长时间没有新事件后总结经历', async () => {
     const memory = await createMemory();
     const stimulus = new TestStimulus();
-    const model = new MockLanguageModelV3({
-      doGenerate: [response('已处理'), response('这段时间用户发来了一条消息。')],
-    });
+    const model = createModel('已处理');
+    const episodeAgent = {
+      run: vi.fn(async () => '这段时间用户发来了一条消息。'),
+    };
     const nucleus = new Nucleus({
       model,
       memory,
+      memoryAgents: { episode: episodeAgent },
       memorySummary: { idleTimeout: 50, maxTokens: 10_000 },
     });
     nucleus.register(stimulus);
     nucleus.start();
     nucleus.ingest(stimulus, createReading('一条实时消息', Date.now()));
 
-    await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(2));
+    await vi.waitFor(async () =>
+      expect(await memory.readRecent()).toContain('这段时间用户发来了一条消息。'),
+    );
+    expect(model.doGenerateCalls).toHaveLength(1);
+    expect(episodeAgent.run).toHaveBeenCalledOnce();
     expect(await memory.readRecent()).toContain('这段时间用户发来了一条消息。');
     await nucleus.stop();
   });

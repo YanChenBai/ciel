@@ -165,6 +165,12 @@ describe('Ciel', () => {
       content: 'hello',
       originSignal: TestScript,
     });
+    expect(
+      ciel
+        .getVestigium()
+        .snapshot()
+        .records.map(record => record.percept),
+    ).toEqual(readings);
     await ciel.stop();
     expect(stimulus.stopped).toBe(true);
     expect(processorState.closes).toBe(1);

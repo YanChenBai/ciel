@@ -5,16 +5,17 @@ import type {
   ContextPrompt,
   ContextPromptPart,
   ContextSection,
-  ContextTime,
   ContextTrigger,
 } from '#src/context/index.ts';
-import type { Memory } from '#src/memory/index.ts';
-import type { Percept } from '#src/percepts/index.ts';
-import type { Stimulus } from '#src/stimulus/index.ts';
+import type { CielMemoryStore } from '#src/memory/index.ts';
+import type { EpisodeAgentInput, MemoryAgent } from '#src/memory/index.ts';
+import type { VestigiumContent, VestigiumRecord, VestigiumStore } from '#src/vestigium/index.ts';
 
 type MaybePromise<T> = T | Promise<T>;
 
 export type NucleusTrigger = ContextTrigger;
+export type NucleusTriggerMode = 'immediate' | 'scheduled' | 'passive';
+export type NucleusTriggerPolicy = (record: VestigiumRecord) => NucleusTriggerMode;
 
 export interface NucleusContextOptions {
   readonly perceptWindow?: number;
@@ -28,27 +29,12 @@ export interface NucleusMemorySummaryOptions {
   readonly maxTokens?: number;
 }
 
-export interface ContextTextContent {
-  readonly type: 'text';
-  readonly text: string;
-  readonly speaker?: string;
+export interface NucleusMemoryAgentsOptions {
+  readonly episode?: MemoryAgent<EpisodeAgentInput, string>;
 }
 
-export interface ContextImageContent {
-  readonly type: 'image';
-  readonly path: string;
-}
-
-export type ContextContent = ContextTextContent | ContextImageContent;
-
-export interface ContextData {
-  readonly stimulus: Stimulus;
-  readonly scene: ContextDefinition;
-  readonly signal: ContextDefinition;
-  readonly time: ContextTime;
-  readonly content: ContextContent;
-  readonly percept: Percept;
-}
+export type ContextContent = VestigiumContent;
+export type ContextData = VestigiumRecord;
 
 export interface NucleusContext {
   readonly createdAt: Date;
@@ -78,10 +64,15 @@ export interface NucleusGenerationOptions<TOutput = string> {
 
 export interface NucleusOptions<TOutput = string> extends NucleusGenerationOptions<TOutput> {
   readonly context?: NucleusContextOptions;
-  readonly memory: Memory;
+  readonly memory: CielMemoryStore;
+  readonly memoryAgents?: NucleusMemoryAgentsOptions;
   readonly memorySummary?: NucleusMemorySummaryOptions;
   readonly minThinkInterval?: number;
   readonly maxThinkInterval?: number;
+  /** 决定一条新痕迹是否立即、按节流规则或仅被动进入下一轮上下文。 */
+  readonly triggerPolicy?: NucleusTriggerPolicy;
+  /** 可注入共享的感知记录层；Ciel 默认会为所有感官创建一个。 */
+  readonly vestigium?: VestigiumStore;
 }
 
 export interface NucleusEventMap<TOutput = string> {

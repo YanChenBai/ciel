@@ -25,6 +25,15 @@ export interface MemoryRecall {
   readonly id: string;
 }
 
+/** Nucleus、工具与后续 MemoryCoordinator 共享的最小记忆存储契约。 */
+export interface CielMemoryStore {
+  readLongTerm(): Promise<string>;
+  readRecent(): Promise<string>;
+  updateLongTerm(content: string): Promise<void>;
+  appendEpisode(content: string, createdAt?: Date, idempotencyKey?: string): Promise<void>;
+  recall(query: string, limit?: number): Promise<MemoryRecall[]>;
+}
+
 export interface RecallMemoryInput {
   /** 用自然语言描述要查找的历史。 */
   readonly query: string;

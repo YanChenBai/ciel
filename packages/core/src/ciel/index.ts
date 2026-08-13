@@ -8,6 +8,8 @@ import type { NucleusContext, NucleusInput, NucleusOptions } from '#src/nucleus/
 import type { Percept } from '#src/percepts/index.ts';
 import type { Signal } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
+import { Vestigium } from '#src/vestigium/index.ts';
+import type { VestigiumStore } from '#src/vestigium/index.ts';
 
 export type CielNucleusOptions<TOutput = string> = NucleusOptions<TOutput>;
 
@@ -58,6 +60,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   private readonly options: CielOptions<TOutput>;
   private readonly stimuli: Stimulus[] = [];
   private readonly nucleus?: Nucleus<TOutput>;
+  private readonly vestigium: VestigiumStore;
   private runtimes: StimulusRuntime[] = [];
   private nucleusStarted = false;
   private state: CielState = 'idle';
@@ -65,8 +68,9 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   constructor(options: CielOptions<TOutput> = {}) {
     super();
     this.options = options;
+    this.vestigium = options.nucleus?.vestigium ?? new Vestigium();
     if (options.nucleus) {
-      this.nucleus = new Nucleus(options.nucleus, () => [
+      this.nucleus = new Nucleus({ ...options.nucleus, vestigium: this.vestigium }, () => [
         { name: 'SOUL', content: this.Soul },
         { name: 'IDENTITY', content: this.IDENTITY },
       ]);
@@ -85,6 +89,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     }
 
     this.stimuli.push(stimulus);
+    this.vestigium.register(stimulus);
     this.nucleus?.register(stimulus);
 
     return this;
@@ -99,6 +104,10 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
       throw new Error('Ciel has no Nucleus configuration');
     }
     return this.nucleus;
+  }
+
+  getVestigium(): VestigiumStore {
+    return this.vestigium;
   }
 
   async start(): Promise<void> {
@@ -159,7 +168,11 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   private subscribe(runtime: StimulusRuntime): void {
     runtime.unsubscribers.push(
       runtime.sensus.on('data', percept => {
-        this.nucleus?.ingest(runtime.stimulus, percept);
+        if (this.nucleus) {
+          this.nucleus.ingest(runtime.stimulus, percept);
+        } else {
+          this.vestigium.append(runtime.stimulus, percept);
+        }
         this.emit('data', percept);
       }),
       runtime.sensus.on('error', error => this.emit('error', error)),

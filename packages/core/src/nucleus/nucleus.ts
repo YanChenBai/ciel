@@ -1,21 +1,25 @@
 import { EventHost, toError } from '@ciels/event';
 import type { Unsubscribe } from '@ciels/event';
-import { generateText, Output, ToolLoopAgent } from 'ai';
+import { Output, ToolLoopAgent } from 'ai';
 import type { FilePart, TextPart, ToolSet } from 'ai';
 
 import { composeSight } from '#sensus';
 import { Context, createContextPrompt } from '#src/context/index.ts';
 import type { ContextSection } from '#src/context/index.ts';
+import { EpisodeAgent } from '#src/memory/index.ts';
+import type { EpisodeAgentInput, MemoryAgent } from '#src/memory/index.ts';
 import { createMemoryTools } from '#src/memory/tool.ts';
 import type { Percept } from '#src/percepts/index.ts';
-import type { SignalConstructor } from '#src/signals/index.ts';
+import type { Photon, SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
+import { Vestigium } from '#src/vestigium/index.ts';
+import type { VestigiumCheckout, VestigiumRecord, VestigiumStore } from '#src/vestigium/index.ts';
 
+import { VISION_FRAMES_PER_IMAGE } from './constants.ts';
 import { estimateImageTokens, resolveImagePart } from './image.ts';
 import { resolveNucleusMessages } from './messages.ts';
 import { normalizeNucleusOptions } from './options.ts';
 import type { NormalizedNucleusOptions } from './options.ts';
-import { NucleusPerceptStore } from './percept-store.ts';
 import type {
   ContextData,
   NucleusContext,
@@ -26,7 +30,6 @@ import type {
   NucleusPrompt,
   NucleusTrigger,
 } from './types.ts';
-import type { PerceptCheckout } from './vision-types.ts';
 
 type NucleusState = 'idle' | 'running' | 'stopping';
 
@@ -48,6 +51,14 @@ const MEMORY_RULES = [
   '发现新的稳定事实、偏好或经验时，使用 memory_update 提交精炼、去重后的完整全局记忆。',
 ].join('\n');
 
+const SUMMARY_RETRY_DELAY = 1_000;
+
+interface VisionBatch {
+  readonly data: readonly VestigiumRecord[];
+  readonly signal: SignalConstructor<Photon>;
+  readonly stimulus: Stimulus;
+}
+
 /**
  * Ciel 的认知调度器，负责思考与记忆总结的触发时机。
  */
@@ -56,17 +67,22 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private readonly signals: SignalConstructor[] = [];
   private readonly stimuli: Stimulus[] = [];
   private readonly context: Context;
-  private readonly store: NucleusPerceptStore;
+  private readonly vestigium: VestigiumStore;
   private readonly agent: NucleusAgent<TOutput>;
+  private readonly episodeAgent: MemoryAgent<EpisodeAgentInput, string>;
+  private readonly nucleusConsumer: string;
+  private readonly memoryConsumer: string;
   private state: NucleusState = 'idle';
   private startedAt = 0;
   private lastThinkAt?: number;
   private lastInputTokens = 0;
   private dirty = false;
+  private urgent = false;
   private timer?: ReturnType<typeof setTimeout>;
   private summaryTimer?: ReturnType<typeof setTimeout>;
   private inFlight?: Promise<TOutput>;
   private summaryInFlight?: Promise<void>;
+  private summaryRetryAt?: number;
   private unsubscribe?: Unsubscribe;
 
   constructor(
@@ -76,11 +92,11 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     super();
     this.options = normalizeNucleusOptions(options);
     this.context = new Context(this.signals, this.stimuli);
-    this.store = new NucleusPerceptStore(
-      this.options.context.perceptWindow,
-      this.options.context.maxImages,
-    );
+    this.vestigium = options.vestigium ?? new Vestigium();
+    this.nucleusConsumer = this.vestigium.createConsumer('nucleus');
+    this.memoryConsumer = this.vestigium.createConsumer('memory');
     this.agent = this.createAgent();
+    this.episodeAgent = options.memoryAgents?.episode ?? new EpisodeAgent(options.model);
   }
 
   private createAgent(): NucleusAgent<TOutput> {
@@ -129,11 +145,11 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
         this.signals.push(Signal);
       }
     }
-    this.store.register(stimulus);
+    this.vestigium.register(stimulus);
   }
 
   ingest(stimulus: Stimulus, percept: Percept): void {
-    this.store.ingest(stimulus, percept);
+    this.vestigium.append(stimulus, percept);
     this.scheduleSummary();
   }
 
@@ -146,9 +162,16 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.startedAt = Date.now();
     this.lastThinkAt = undefined;
     this.lastInputTokens = 0;
-    this.dirty = false;
-    this.unsubscribe = this.store.on('change', () => {
-      this.dirty = true;
+    this.dirty = this.vestigium.hasUnread(
+      this.nucleusConsumer,
+      record => this.resolveTriggerMode(record) !== 'passive',
+    );
+    this.urgent = false;
+    this.unsubscribe = this.vestigium.on('append', record => {
+      const mode = this.resolveTriggerMode(record);
+      if (mode !== 'passive') this.dirty = true;
+      if (mode === 'immediate') this.urgent = true;
+      this.scheduleSummary();
       this.schedule();
     });
     this.scheduleSummary();
@@ -171,9 +194,9 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       await this.summaryInFlight;
       await this.summarizeMemory();
     } finally {
-      this.store.clear();
       this.state = 'idle';
       this.dirty = false;
+      this.urgent = false;
       this.lastThinkAt = undefined;
       this.lastInputTokens = 0;
     }
@@ -184,8 +207,24 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   async getContext(createdAt: Date = new Date()): Promise<NucleusContext> {
+    const records = this.vestigium
+      .snapshot(createdAt, this.options.context.perceptWindow)
+      .records.toSorted(
+        (left, right) =>
+          left.time.startAt.getTime() - right.time.startAt.getTime() ||
+          left.time.endAt.getTime() - right.time.endAt.getTime(),
+      );
+    const texts = records.filter(record => record.content.type === 'text');
+    const images =
+      this.options.context.maxImages === 0
+        ? []
+        : records
+            .filter(record => record.content.type === 'image')
+            .slice(-this.options.context.maxImages);
+    const visible = new Set([...texts, ...images]);
     return {
-      ...this.store.snapshot(createdAt),
+      createdAt,
+      data: records.filter(record => visible.has(record)),
       definitions: this.context.definitions,
     };
   }
@@ -194,10 +233,6 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     if (this.inFlight) {
       return this.inFlight;
     }
-    if (this.summaryInFlight) {
-      return this.summaryInFlight.then(() => this.requestThink(trigger));
-    }
-
     this.clearTimer();
     const pending = this.execute(trigger);
     this.inFlight = pending;
@@ -210,9 +245,10 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
 
   private async execute(trigger: NucleusTrigger): Promise<TOutput> {
     this.dirty = false;
+    this.urgent = false;
     try {
       const [checkout, longTermMemory, recentMemory] = await Promise.all([
-        Promise.resolve(this.store.checkout()),
+        Promise.resolve(this.vestigium.checkout(this.nucleusConsumer)),
         this.options.memory.readLongTerm(),
         this.options.memory.readRecent(),
       ]);
@@ -253,14 +289,14 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
         messages: await resolveNucleusMessages(input, this.options.messages, prompt),
         options: { input, prompt },
       });
-      if (checkout.vision) {
-        this.store.commitVision(checkout.vision);
-      }
+      this.vestigium.commit(checkout);
+      this.compactVestigium();
       this.lastInputTokens = result.usage.inputTokens ?? estimatedImageTokens;
       const output = result.output as TOutput;
       this.emit('thought', output, input);
       return output;
     } catch (error) {
+      this.dirty = this.vestigium.hasUnread(this.nucleusConsumer);
       const normalized = toError(error);
       this.emit('error', normalized);
       throw normalized;
@@ -282,7 +318,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   private requestSummary(): void {
-    if (this.inFlight || this.summaryInFlight || !this.store.summarizable) {
+    if (this.inFlight || this.summaryInFlight || !this.vestigium.hasUnread(this.memoryConsumer)) {
       return;
     }
     this.clearTimer();
@@ -299,17 +335,23 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   private async summarizeMemory(): Promise<void> {
-    const snapshot = this.store.snapshot();
-    const data = snapshot.data.filter(entry => entry.content.type === 'text');
+    const checkout = this.vestigium.checkout(this.memoryConsumer);
+    const data = await this.resolveArchiveData(checkout.records);
     if (data.length === 0) {
+      this.vestigium.commit(checkout);
       return;
     }
     const summary = await this.summarize(data);
-    if (summary) {
-      const createdAt = new Date(Math.max(...data.map(entry => entry.time.endAt.getTime())));
-      await this.options.memory.appendEpisode(summary, createdAt);
-    }
-    this.store.remove(data);
+    if (!summary) throw new Error('EpisodeAgent returned an empty summary');
+    const createdAt = new Date(Math.max(...data.map(entry => entry.time.endAt.getTime())));
+    await this.options.memory.appendEpisode(
+      summary,
+      createdAt,
+      `vestigium:${checkout.consumerId}:${checkout.fromSequence}-${checkout.throughSequence}`,
+    );
+    this.vestigium.commit(checkout);
+    this.summaryRetryAt = undefined;
+    this.compactVestigium();
   }
 
   private async summarize(data: readonly ContextData[]): Promise<string> {
@@ -340,12 +382,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       }
     }
 
-    const result = await generateText({
-      model: this.options.model,
-      system: '将这段经历总结为简洁、客观、过去时的纯文本。只记录实际发生的事情，不推测。',
-      messages: [{ role: 'user', content }],
-    });
-    return result.text.trim();
+    return this.episodeAgent.run({ content });
   }
 
   private async estimateImageTokens(data: readonly ContextData[]): Promise<number> {
@@ -368,14 +405,13 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       return;
     }
     this.summaryInFlight = undefined;
-    if (rescheduleSummary) {
-      this.scheduleSummary();
-    }
+    if (!rescheduleSummary) this.summaryRetryAt = Date.now() + SUMMARY_RETRY_DELAY;
+    this.scheduleSummary();
     this.schedule();
   }
 
   private schedule(): void {
-    if (this.state !== 'running' || this.inFlight || this.summaryInFlight) {
+    if (this.state !== 'running' || this.inFlight) {
       return;
     }
 
@@ -383,7 +419,9 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     const now = Date.now();
     const anchor = this.lastThinkAt ?? this.startedAt;
     let dueAt = anchor + this.options.maxThinkInterval;
-    if (this.dirty && this.lastThinkAt === undefined) {
+    if (this.urgent) {
+      dueAt = now;
+    } else if (this.dirty && this.lastThinkAt === undefined) {
       dueAt = now;
     } else if (this.dirty) {
       dueAt = anchor + this.options.minThinkInterval;
@@ -404,14 +442,21 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
 
   private scheduleSummary(): void {
     this.clearSummaryTimer();
-    if (this.state !== 'running' || !this.store.summarizable || this.summaryInFlight) {
+    if (
+      this.state !== 'running' ||
+      !this.vestigium.hasUnread(this.memoryConsumer) ||
+      this.summaryInFlight
+    ) {
       return;
     }
-    const lastIngestAt = this.store.lastIngestAt;
+    const lastIngestAt = this.vestigium.lastAppendAt;
     if (lastIngestAt === undefined) {
       return;
     }
-    const dueAt = lastIngestAt + this.options.memorySummary.idleTimeout;
+    const dueAt = Math.max(
+      lastIngestAt + this.options.memorySummary.idleTimeout,
+      this.summaryRetryAt ?? -Infinity,
+    );
     this.summaryTimer = setTimeout(
       () => {
         this.summaryTimer = undefined;
@@ -437,34 +482,43 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.summaryTimer = undefined;
   }
 
-  private async resolveCheckout(checkout: PerceptCheckout): Promise<NucleusContext> {
-    const images = checkout.vision
-      ? await Promise.all(
-          checkout.vision.batches.map(async batch => {
-            const first = batch.data[0]!;
-            const frames = batch.data.map(entry => {
-              if (entry.percept.type !== 'sight') {
-                throw new Error('Vision batches can only contain Sight percepts');
-              }
-              return entry.percept;
-            });
-            const sight = await composeSight(frames);
-            return {
-              ...first,
-              time: {
-                startAt: sight.startAt,
-                endAt: sight.endAt,
-              },
-              content: {
-                type: 'image' as const,
-                path: sight.path,
-              },
-              percept: sight,
-            };
-          }),
-        )
-      : [];
-    const data = [...checkout.data, ...images].toSorted(
+  private async resolveCheckout(checkout: VestigiumCheckout): Promise<NucleusContext> {
+    const recent = this.vestigium
+      .snapshot(checkout.createdAt, this.options.context.perceptWindow)
+      .records.filter(
+        record => record.sequence <= checkout.throughSequence && record.content.type === 'text',
+      );
+    const batches = this.createVisionBatches(checkout.records);
+    const resolvedImages = await Promise.all(
+      batches.map(async batch => {
+        const first = batch.data[0]!;
+        const frames = batch.data.map(entry => {
+          if (entry.percept.type !== 'sight') {
+            throw new Error('Vision batches can only contain Sight percepts');
+          }
+          return entry.percept;
+        });
+        try {
+          const sight = await composeSight(frames);
+          return {
+            ...first,
+            time: {
+              startAt: sight.startAt,
+              endAt: sight.endAt,
+            },
+            content: {
+              type: 'image' as const,
+              path: sight.path,
+            },
+            percept: sight,
+          };
+        } catch {
+          return undefined;
+        }
+      }),
+    );
+    const images = resolvedImages.filter(image => image !== undefined);
+    const data = [...recent, ...images].toSorted(
       (left, right) =>
         left.time.startAt.getTime() - right.time.startAt.getTime() ||
         left.time.endAt.getTime() - right.time.endAt.getTime(),
@@ -474,5 +528,121 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       data,
       definitions: this.context.definitions,
     };
+  }
+
+  private createVisionBatches(
+    records: readonly VestigiumRecord[],
+    limit: number = this.options.context.maxImages,
+  ): readonly VisionBatch[] {
+    if (limit === 0) return [];
+
+    const sources: Array<{
+      data: VestigiumRecord[];
+      signal: SignalConstructor<Photon>;
+      stimulus: Stimulus;
+    }> = [];
+    for (const record of records) {
+      if (record.percept.type !== 'sight') continue;
+      let source = sources.find(
+        value => value.stimulus === record.stimulus && value.signal === record.percept.originSignal,
+      );
+      if (!source) {
+        source = {
+          data: [],
+          signal: record.percept.originSignal,
+          stimulus: record.stimulus,
+        };
+        sources.push(source);
+      }
+      source.data.push(record);
+    }
+
+    const batches = sources
+      .flatMap(source => {
+        const batches: VisionBatch[] = [];
+        for (let index = 0; index < source.data.length; index += VISION_FRAMES_PER_IMAGE) {
+          batches.push({
+            signal: source.signal,
+            stimulus: source.stimulus,
+            data: source.data.slice(index, index + VISION_FRAMES_PER_IMAGE),
+          });
+        }
+        return batches;
+      })
+      .toSorted(
+        (left, right) =>
+          left.data[0]!.time.startAt.getTime() - right.data[0]!.time.startAt.getTime(),
+      );
+    return this.selectVisionBatches(batches, limit);
+  }
+
+  /** 保留首尾并在时间线上均匀取样，避免长段视觉只剩最后几秒。 */
+  private selectVisionBatches(
+    batches: readonly VisionBatch[],
+    limit: number,
+  ): readonly VisionBatch[] {
+    if (batches.length <= limit) return batches;
+    if (limit === 1) return [batches.at(-1)!];
+
+    const selected = new Set<number>();
+    for (let index = 0; index < limit; index += 1) {
+      selected.add(Math.round((index * (batches.length - 1)) / (limit - 1)));
+    }
+    return [...selected].map(index => batches[index]!);
+  }
+
+  private async resolveArchiveData(
+    records: readonly VestigiumRecord[],
+  ): Promise<readonly VestigiumRecord[]> {
+    const texts = records.filter(record => record.content.type === 'text');
+    const images = await Promise.all(
+      this.createVisionBatches(records, Math.max(1, this.options.context.maxImages)).map(
+        async batch => {
+          const first = batch.data[0]!;
+          try {
+            const sight = await composeSight(
+              batch.data.map(record => {
+                if (record.percept.type !== 'sight') {
+                  throw new Error('Vision batches can only contain Sight percepts');
+                }
+                return record.percept;
+              }),
+            );
+            return {
+              ...first,
+              time: { startAt: sight.startAt, endAt: sight.endAt },
+              content: { type: 'image' as const, path: sight.path },
+              percept: sight,
+            };
+          } catch {
+            return {
+              ...first,
+              content: {
+                type: 'text' as const,
+                text: `[视觉证据不可读取；Vestigium sequence: ${batch.data
+                  .map(record => record.sequence)
+                  .join(', ')}]`,
+              },
+            };
+          }
+        },
+      ),
+    );
+    return [...texts, ...images].toSorted(
+      (left, right) =>
+        left.time.startAt.getTime() - right.time.startAt.getTime() ||
+        left.time.endAt.getTime() - right.time.endAt.getTime(),
+    );
+  }
+
+  private compactVestigium(): void {
+    this.vestigium.compact(new Date(), this.options.context.perceptWindow);
+  }
+
+  private resolveTriggerMode(record: VestigiumRecord): 'immediate' | 'scheduled' | 'passive' {
+    return (
+      this.options.triggerPolicy?.(record) ??
+      (record.percept.type === 'hearing' ? 'immediate' : 'scheduled')
+    );
   }
 }

@@ -14,7 +14,9 @@ World
       → Signals
       → Sensus
       → Percepts
-  → Nucleus / Context / Reasoning
+  → Vestigium
+      → Nucleus / Context / Reasoning
+      → Episode Agent / Memory
   → Response
 ```
 
@@ -34,14 +36,15 @@ Sensory Path:
 Raw Signal
   → Sensus
   → Percept
-  → Nucleus
+  → Vestigium
+  → Nucleus / Memory
 
 Symbolic Path:
 Script
   → Sensus
   → Lectio
   → Reading
-  → Ciel Core
+  → Vestigium
 ```
 
 `Sensus` 是所有信号统一进入感知层的入口。`Photon`、`Echo` 和 `Script` 分别交由 Oculus、Auris、Lectio 转换；`Script` 已经是外部世界提供的符号信息，因此 Lectio 只将其对齐为 `Reading`，不再执行额外的内容理解。感知层不负责最终推理，高层认知也不直接处理媒体编码细节。
@@ -56,29 +59,38 @@ Script
 
 ## 整体架构
 
-```text
-Live Stream / External World
-              │
-              ▼
-      Stimulus A ... Stimulus N
-              │
-  ┌───────────┼───────────┐
-  ▼           ▼           ▼
-Photon       Echo       Script
-  │           │           │
-  ▼           ▼           ▼
-Oculus       Auris      Lectio
-  │           │           │
-  ▼           ▼           ▼
-Sight       Hearing     Reading
-  └───────────┼───────────┘
-              │ Percepts
-              ▼
-          Nucleus ◄───────► Memory
-              │
-              ▼
-      Thought / Actions
+```mermaid
+flowchart TD
+  World["直播流 / 外部世界"] --> Stimuli["Stimulus A ... Stimulus N"]
+
+  Stimuli --> Photon
+  Stimuli --> Echo
+  Stimuli --> Script
+
+  Photon --> Oculus --> Sight
+  Echo --> Auris --> Hearing
+  Script --> Lectio --> Reading
+
+  Sight --> Vestigium["Vestigium<br/>append-only 感知痕迹"]
+  Hearing --> Vestigium
+  Reading --> Vestigium
+
+  Vestigium -->|"nucleus consumer<br/>checkout / commit"| Projector["Context 投影器<br/>近期文字 + 有界视觉拼图"]
+  Projector --> Nucleus["Nucleus 主 Agent"]
+  Memory["Memory<br/>长期事实 / 最近经历 / 语义召回"] --> Nucleus
+  Nucleus --> Thought["Thought / Actions"]
+
+  Vestigium -->|"memory consumer<br/>checkout / commit"| EpisodeAgent["Episode Agent<br/>无工具，只生成摘要"]
+  EpisodeAgent -->|"幂等 appendEpisode"| Memory
+
+  classDef journal fill:#302b63,color:#fff,stroke:#6f63d9;
+  classDef agent fill:#123b5d,color:#fff,stroke:#3e8cc4;
+  class Vestigium journal;
+  class Nucleus,EpisodeAgent agent;
 ```
+
+关键边界是：感知结果只追加一次，Context 与 Memory 各自消费。子 Agent 不持有 Memory
+写权限；它只返回摘要，最终落库与 Vestigium 游标提交仍由确定性代码完成。
 
 当前仓库是一个 Vite+ monorepo：
 
@@ -105,8 +117,9 @@ packages/core/src/
 ├── percepts/             # Sight、Hearing、Reading 感知产物
 ├── sensus/               # Auris、Oculus、Lectio 感官处理层
 ├── context/              # 基础定义与多模态 Percept 上下文构建
-├── memory/               # 长期记忆、情景记忆与工具
-├── nucleus/              # 感知窗口、记忆组装、思考与调度
+├── vestigium/            # 追加式感知痕迹、独立消费者游标与安全回收
+├── memory/               # 长期记忆、Episode 子 Agent 与工具
+├── nucleus/              # 上下文投影、记忆组装、思考与调度
 ├── constants/
 └── utils/
 ```
@@ -236,11 +249,11 @@ await ciel.stop();
 - `Photon` 子类创建独立的 `Oculus`；
 - `Script` 子类创建独立的 `Lectio`，对齐为 `Reading` 后再通过 Ciel 的 `data` 事件发送。
 
-Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧集合。所有 Stimulus 与 Nucleus 是多对一关系：处理后的 Percept 进入同一个实时 Context，每条数据保留 `stimulus`、场景和 Signal 来源。
+Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧集合。所有处理后的 Percept 先进入同一个 Vestigium，每条记录保留 `sequence`、`stimulus`、场景、Signal 来源、时间与原始 Percept。Nucleus 和记忆归档分别通过独立消费者游标读取，不再共享一个会被删除的实时数组。
 
-### Context、Memory 与 Nucleus
+### Vestigium、Context、Memory 与 Nucleus
 
-Memory、Context 与 Nucleus 保持单一职责：Memory 只读写 Markdown，Context 只组合提示词，Nucleus 只负责思考与记忆总结的调度。Ciel 提供可由子类覆盖的 `Soul` 与 `IDENTITY` 纯文本，Context 统一添加标题：
+四层保持单一职责：Vestigium 记录感知事实；Context 将指定 checkout 投影成模型输入；Memory 保存长期事实和 Episode；Nucleus 负责思考、工具与调度。Ciel 提供可由子类覆盖的 `Soul` 与 `IDENTITY` 纯文本，Context 统一添加标题：
 
 ```text
 # SOUL
@@ -332,11 +345,16 @@ const ciel = new LiveCiel({
 await ciel.start();
 const nucleus = ciel.getNucleus();
 const context = await ciel.getContext();
+const vestigium = ciel.getVestigium();
 ```
 
-Memory 只复用 Mastra Memory，并通过 LibSQL 持久化：resource-scoped Working Memory 保存精炼后的全局记忆，`YYYY-MM-DD` thread 保存每日经历，LibSQLVector 为经历建立向量。Nucleus 提供 `memory_update` 更新完整全局记忆，并提供 `memory_recall` 让 Agent 按语义跨日期搜索经历；最近日期的经历仍会直接进入 Context。单轮模型输入达到 `memorySummary.maxTokens`、超过 `memorySummary.idleTimeout` 没有新事件，或 Ciel 停止时，Nucleus 会总结当前文字 Percept，并将纯文本结果写入当天 thread。视觉变化帧只进入主思考，成功提交后不会在自动总结或下一轮思考中重复上传。输入 token 优先使用模型提供方返回的实际用量；API 未返回时，图片按 16 像素 patch、2×2 空间合并及 8192–8388608 像素缩放区间估算。
+Memory 复用 Mastra Memory，并通过 LibSQL 持久化：resource-scoped Working Memory 保存精炼后的全局记忆，`YYYY-MM-DD` thread 保存每日经历，LibSQLVector 为经历建立向量。Nucleus 提供 `memory_update` 更新完整全局记忆，并提供 `memory_recall` 让 Agent 按语义跨日期搜索经历；最近日期的经历仍会直接进入 Context。
 
-`minThinkInterval` 限制活跃时的思考频率；`maxThinkInterval` 在没有新感知时仍会给 Nucleus 一次主动判断的机会，但不强制对外输出。
+单轮模型输入达到 `memorySummary.maxTokens`、超过 `memorySummary.idleTimeout` 没有新事件，或 Ciel 停止时，记忆消费者会 checkout 尚未归档的 Vestigium 记录。无工具的 Episode Agent 将文字与有界视觉拼图总结成纯文本，Nucleus 使用稳定幂等键写入当天 thread，成功后才提交记忆游标；失败会退避重试。损坏图片降级为包含 Vestigium sequence 的文字证据，不会卡住整批归档。主思考与记忆归档使用不同消费者，因此归档模型运行不会占用主思考 checkout。
+
+主思考只把新视觉记录组成拼图，成功后提交自己的游标；失败时重复相同 checkout，调用期间追加的记录留到下一轮。近期文字可以按 `perceptWindow` 再次投影为对话上下文。两个消费者都已提交且记录离开实时窗口后，进程内 Vestigium 才会回收该记录。输入 token 优先使用模型提供方返回的实际用量；API 未返回时，图片按 16 像素 patch、2×2 空间合并及 8192–8388608 像素缩放区间估算。
+
+`minThinkInterval` 限制普通活跃事件的思考频率；`maxThinkInterval` 在没有新感知时仍会给 Nucleus 一次主动判断的机会，但不强制对外输出。`triggerPolicy(record)` 可以对每条 Vestigium 记录返回 `immediate`、`scheduled` 或 `passive`。`Hearing` 默认立即触发，因此 Auris 在 VAD/ASR 结束一段语音并产出 Hearing 后，可以绕过最小间隔；应用也可让特定弹幕、视觉事件或控制消息提前触发。
 Nucleus 会把 `percept`、`interval` 与 `manual` 三种触发原因放入本轮输入，main Agent 可以据此判断是否需要主动互动。
 
 Nucleus 只区分内部内容与应用自定义内容，并按顺序直接拼接：
@@ -371,13 +389,14 @@ Photon[]
   → 低分辨率灰度差异比较
   → 持久化每个变化帧
   → 单帧 Sight
-  → Nucleus 冻结本轮新增帧
+  → Vestigium 追加记录
+  → 消费者 checkout 本轮新增帧
   → 每 9 帧组成 1920 × 1080 上下文拼图
 ```
 
 Oculus 将每个采样帧缩小为 64 × 36 灰度指纹，与上一张已经保留的帧计算平均像素差异；达到 `differenceThreshold` 才持久化并产生单帧 `Sight`。比较只用于去除重复画面，输出给多模态模型的仍是原始 Photon 生成的彩色 JPEG，不使用灰度缩略图。
 
-默认每分钟采样 9 帧。Nucleus 组装一次模型 Context 时，按 Stimulus 与 Photon 类型分别冻结尚未成功提交的变化帧，每 9 帧组成一张 3 × 3 拼图；不足 9 帧也使用自适应排版立即提交。`context.maxImages` 限制单轮拼图数量。模型调用成功后按每个视觉来源的最后时间戳推进游标，失败时保留同一批帧供下次重试，调用期间新到的帧留到下一轮。默认 `differenceThreshold` 为 `0.03`，设为 `0` 可恢复为保留所有采样帧。
+默认每分钟采样 9 帧。Nucleus 组装一次模型 Context 时，从自己的 Vestigium checkout 中按 Stimulus 与 Photon 类型分组，每 9 帧组成一张 3 × 3 拼图；不足 9 帧也使用自适应排版。`context.maxImages` 限制单轮拼图数量；候选超过预算时在整段时间线上保留首尾并均匀采样，避免长时间讲话只留下最后几秒。模型调用成功后提交整个稳定 checkout，失败时保留同一批供下次重试，调用期间新到的帧留到下一轮。原始 Sight 仍由 Vestigium 管理，不因提示词图片预算而立即丢弃。默认 `differenceThreshold` 为 `0.03`，设为 `0` 可恢复为保留所有采样帧。
 
 `Sight` 只描述一次已经持久化的视觉观察：
 
@@ -562,6 +581,9 @@ Ciel 使用轻量事件驱动通信。Sensus 统一消费信号并发送结果�
 ```text
 Sensus emits data(Percept)
 Percept.type = hearing | reading | sight
+  → Vestigium.append(record)
+      → nucleus consumer
+      → memory consumer
 ```
 
 这种方式使信号生产者、具体感官能力和后续认知模块保持独立。
@@ -582,35 +604,37 @@ Percept.type = hearing | reading | sight
 ├── models/               # ASR、VAD、说话人模型
 ├── voiceprints/          # 已创建的声纹
 ├── sights/               # Oculus 视觉快照
-└── memories/             # Nucleus 长期记忆
+└── memories/             # 长期记忆与每日 Episode
 ```
 
 该目录已加入 `.gitignore`。
 
 ## 当前实现状态
 
-| 能力                        | 状态     |
-| --------------------------- | -------- |
-| 原始视觉、音频、文字信号    | 已实现   |
-| Stimulus 输入契约与事件     | 已实现   |
-| Oculus 变化采样与上下文拼图 | 已实现   |
-| Sight 持久化                | 已实现   |
-| Auris 流式输入与 VAD        | 已实现   |
-| ASR 与转写时间戳            | 已实现   |
-| 声纹识别与未知说话人聚类    | 已实现   |
-| 模型安装与声纹创建脚本      | 已实现   |
-| WebSocket 基础服务          | 初步实现 |
-| WebUI                       | 初步实现 |
-| Nucleus Context 聚合        | 已实现   |
-| Markdown 长期与每日记忆     | 已实现   |
-| Nucleus 思考调度            | 已实现   |
-| 本地持久化与上下文总结      | 基础实现 |
-| AI SDK 多模态推理           | 基础实现 |
-| AI SDK 自主决策与行动       | 基础实现 |
+| 能力                         | 状态     |
+| ---------------------------- | -------- |
+| 原始视觉、音频、文字信号     | 已实现   |
+| Stimulus 输入契约与事件      | 已实现   |
+| Oculus 变化采样与上下文拼图  | 已实现   |
+| Sight 持久化                 | 已实现   |
+| Auris 流式输入与 VAD         | 已实现   |
+| ASR 与转写时间戳             | 已实现   |
+| 声纹识别与未知说话人聚类     | 已实现   |
+| 模型安装与声纹创建脚本       | 已实现   |
+| WebSocket 基础服务           | 初步实现 |
+| WebUI                        | 初步实现 |
+| Nucleus Context 聚合         | 已实现   |
+| Vestigium 感知日志与独立游标 | 基础实现 |
+| Episode 总结子 Agent         | 已实现   |
+| Markdown 长期与每日记忆      | 已实现   |
+| Nucleus 思考调度             | 已实现   |
+| 本地持久化与上下文总结       | 基础实现 |
+| AI SDK 多模态推理            | 基础实现 |
+| AI SDK 自主决策与行动        | 基础实现 |
 
 ## 开发
 
-项目固定使用 Node.js 24.11.1 与 pnpm 11.20.0，并通过 Vite+ 统一管理依赖、格式化、检查、测试和构建。Vite+ 会按项目声明准备对应版本，无需手动切换全局环境。
+项目固定使用 Node.js 24.11.1 与 pnpm 11.21.0，并通过 Vite+ 统一管理依赖、格式化、检查、测试和构建。Vite+ 会按项目声明准备对应版本，无需手动切换全局环境。
 
 ```powershell
 vp install
@@ -632,12 +656,20 @@ vp dev
 
 Ciel 当前解决的是“如何让 Agent 感受到世界”。后续可以继续扩展记忆、推理与决策能力：
 
-```text
-Percepts
-  → Nucleus (Context + Cognition) ← Memory
-  → Will (Decision)
+```mermaid
+flowchart LR
+  Percepts --> Vestigium
+  Vestigium --> Context
+  Context --> Nucleus["Nucleus / Cognition"]
+  Memory --> Nucleus
+  Vestigium --> MemoryAgents["Memory Agents"]
+  MemoryAgents --> Coordinator["Memory Coordinator"]
+  Coordinator --> Memory
+  Nucleus --> Will["Will / Decision"]
 ```
 
-这些模块应消费 `Sight`、`Hearing`、`Reading` 等感知对象，而不是直接依赖直播流、图片 Buffer、音频编码或原始 `Script`。
+当前 Vestigium 是进程内实现；后续会在保持同一 record/checkout/commit 契约的前提下接入持久化 evidence、可恢复队列和版本化 MemoryCoordinator。理解可以由多个只读子 Agent 并行完成，但长期记忆提交仍保持单写者、幂等和可审计。
+
+这些模块应消费 Vestigium 中的 `Sight`、`Hearing`、`Reading` 记录，而不是直接依赖直播流、图片 Buffer、音频编码或原始 `Script`。
 
 最终目标是让 AI Agent 能够持续地看见、听见、记住并理解它所处的世界。

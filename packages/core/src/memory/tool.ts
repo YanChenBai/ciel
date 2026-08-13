@@ -1,18 +1,22 @@
 import { jsonSchema, tool } from 'ai';
 import type { Tool } from 'ai';
 
-import type { Memory } from './memory.ts';
-import type { RecallMemoryInput, UpdateMemoryInput } from './types.ts';
+import type {
+  CielMemoryStore,
+  MemoryRecall,
+  RecallMemoryInput,
+  UpdateMemoryInput,
+} from './types.ts';
 
 export interface MemoryTools {
-  readonly memory_recall: Tool<RecallMemoryInput, Awaited<ReturnType<Memory['recall']>>>;
+  readonly memory_recall: Tool<RecallMemoryInput, MemoryRecall[]>;
   readonly memory_update: Tool<UpdateMemoryInput, { updated: true }>;
 }
 
 /**
  * 创建供 Agent 搜索历史经历和精炼全局记忆的工具。
  */
-export function createMemoryTools(memory: Memory): MemoryTools {
+export function createMemoryTools(memory: CielMemoryStore): MemoryTools {
   return {
     memory_recall: tool({
       description: '按语义搜索跨日期的历史经历。当前上下文不足时使用。',

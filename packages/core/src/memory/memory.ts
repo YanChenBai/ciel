@@ -16,7 +16,12 @@ import {
   GLOBAL_MEMORY_THREAD_ID,
   MEMORY_KIND_METADATA,
 } from './constants.ts';
-import type { MemoryEmbeddingModel, MemoryOptions, MemoryRecall } from './types.ts';
+import type {
+  CielMemoryStore,
+  MemoryEmbeddingModel,
+  MemoryOptions,
+  MemoryRecall,
+} from './types.ts';
 
 type MastraMemoryOptions = NonNullable<ConstructorParameters<typeof MastraMemory>[0]>;
 type MastraEmbedder = NonNullable<MastraMemoryOptions['embedder']>;
@@ -94,7 +99,7 @@ function readMessageText(message: {
 /**
  * 用 Mastra Memory 管理全局工作记忆、每日经历与语义召回。
  */
-export class Memory {
+export class Memory implements CielMemoryStore {
   private readonly storage: LibSQLStore;
   private readonly vector: LibSQLVector;
   private readonly store: MastraMemory;
@@ -214,7 +219,11 @@ export class Memory {
   }
 
   /** 将一次经历总结写入对应的日期 thread 并建立向量。 */
-  appendEpisode(content: string, createdAt: Date = new Date()): Promise<void> {
+  appendEpisode(
+    content: string,
+    createdAt: Date = new Date(),
+    idempotencyKey?: string,
+  ): Promise<void> {
     return this.mutate(async () => {
       await this.ready;
       const threadId = formatDate(createdAt);
@@ -222,7 +231,7 @@ export class Memory {
       await this.store.saveMessages({
         messages: [
           {
-            id: randomUUID(),
+            id: idempotencyKey ?? randomUUID(),
             role: 'user',
             createdAt,
             threadId,
