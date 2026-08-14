@@ -15,12 +15,18 @@ const unsubscribe = events.on('message', value => console.log(value));
 events.emit('message', 'fire-and-forget');
 await events.emitAsync('message', 'wait for listeners');
 unsubscribe();
+
+events.$on.message(value => console.log(value));
+events.$emit.message('fire-and-forget');
+await events.$emitAsync.message('wait for listeners');
 ```
 
 - `emit()` invokes listeners synchronously and does not wait for returned promises.
 - `emitAsync()` invokes the current listener snapshot and waits for all results.
 - `once()` removes its listener before invoking it.
 - `clear()` removes one event or every listener.
+- `$on`, `$once`, `$emit`, and `$emitAsync` provide the same operations with event-name
+  completion.
 
 ## EventHost
 
@@ -30,6 +36,10 @@ Extend `EventHost` when consumers should subscribe publicly but only the class i
 class Channel extends EventHost<{ value(value: number): void }> {
   publish(value: number) {
     this.$emit.value(value);
+  }
+
+  publishAsync(value: number) {
+    return this.$emitAsync.value(value);
   }
 }
 
@@ -45,6 +55,9 @@ remain available.
 
 `$emit.<event>()` provides the same event-name completion to subclasses while remaining
 protected. The existing `emit(event, ...args)` API remains available.
+
+`$emitAsync.<event>()` provides the asynchronous counterpart and resolves after all current
+listeners have completed. The existing `emitAsync(event, ...args)` API remains available.
 
 `inheritEvents(source, ...events)` forwards selected same-name events from another typed event
 source. Only events whose source parameters are compatible with the host event are accepted, and

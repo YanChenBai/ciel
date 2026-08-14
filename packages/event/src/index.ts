@@ -27,6 +27,13 @@ export type EventEmissions<Events extends EventMap<Events>> = {
 };
 
 /**
+ * 将事件名称映射为对应的异步触发方法
+ */
+export type EventAsyncEmissions<Events extends EventMap<Events>> = {
+  readonly [Event in keyof Events]: (...args: Parameters<Events[Event]>) => Promise<void>;
+};
+
+/**
  * 筛选源与目标中名称相同且参数兼容的事件
  */
 export type InheritableEvents<
@@ -55,6 +62,36 @@ export class EventEmitter<Events extends EventMap<Events>> {
    * 按事件名称保存已注册的监听器
    */
   private readonly listeners = new Map<keyof Events, Set<EventListener>>();
+
+  /**
+   * 按事件名称订阅事件
+   */
+  readonly $on = this.createSubscriptions((event, listener) => this.on(event, listener));
+
+  /**
+   * 按事件名称订阅只会执行一次的事件
+   */
+  readonly $once = this.createSubscriptions((event, listener) => this.once(event, listener));
+
+  /**
+   * 按事件名称同步触发事件
+   */
+  readonly $emit = new Proxy({} as EventEmissions<Events>, {
+    get:
+      (_target, event) =>
+      (...args: Parameters<Events[keyof Events]>) =>
+        this.emit(event as keyof Events, ...args),
+  });
+
+  /**
+   * 按事件名称触发事件并等待全部监听器完成
+   */
+  readonly $emitAsync = new Proxy({} as EventAsyncEmissions<Events>, {
+    get:
+      (_target, event) =>
+      (...args: Parameters<Events[keyof Events]>) =>
+        this.emitAsync(event as keyof Events, ...args),
+  });
 
   /**
    * 订阅事件并返回对应的取消订阅函数
@@ -133,6 +170,18 @@ export class EventEmitter<Events extends EventMap<Events>> {
       this.listeners.delete(event);
     }
   }
+
+  /**
+   * 创建按事件名称访问的订阅方法集合
+   */
+  private createSubscriptions(
+    subscribe: <Event extends keyof Events>(event: Event, listener: Events[Event]) => Unsubscribe,
+  ): EventSubscriptions<Events> {
+    return new Proxy({} as EventSubscriptions<Events>, {
+      get: (_target, event) => (listener: Events[keyof Events]) =>
+        subscribe(event as keyof Events, listener),
+    });
+  }
 }
 
 /**
@@ -147,22 +196,22 @@ export abstract class EventHost<Events extends EventMap<Events>> {
   /**
    * 按事件名称订阅该 Host 的事件
    */
-  readonly $on = this.createSubscriptions((event, listener) => this.on(event, listener));
+  readonly $on = this.emitter.$on;
 
   /**
    * 按事件名称订阅只会执行一次的 Host 事件
    */
-  readonly $once = this.createSubscriptions((event, listener) => this.once(event, listener));
+  readonly $once = this.emitter.$once;
 
   /**
    * 按事件名称同步触发 Host 事件
    */
-  protected readonly $emit = new Proxy({} as EventEmissions<Events>, {
-    get:
-      (_target, event) =>
-      (...args: Parameters<Events[keyof Events]>) =>
-        this.emitter.emit(event as keyof Events, ...args),
-  });
+  protected readonly $emit = this.emitter.$emit;
+
+  /**
+   * 按事件名称触发 Host 事件并等待全部监听器完成
+   */
+  protected readonly $emitAsync = this.emitter.$emitAsync;
 
   /**
    * 订阅该 Host 的事件
@@ -225,17 +274,5 @@ export abstract class EventHost<Events extends EventMap<Events>> {
       }) as SourceEvents[typeof event]),
     );
     return () => unsubscribes.forEach(unsubscribe => unsubscribe());
-  }
-
-  /**
-   * 创建按事件名称访问的订阅方法集合
-   */
-  private createSubscriptions(
-    subscribe: <Event extends keyof Events>(event: Event, listener: Events[Event]) => Unsubscribe,
-  ): EventSubscriptions<Events> {
-    return new Proxy({} as EventSubscriptions<Events>, {
-      get: (_target, event) => (listener: Events[keyof Events]) =>
-        subscribe(event as keyof Events, listener),
-    });
   }
 }

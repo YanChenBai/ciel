@@ -52,6 +52,18 @@ describe('EventEmitter', () => {
 
     expect(values).toEqual([1]);
   });
+
+  it('supports event-named subscription and emission helpers', async () => {
+    const emitter = new EventEmitter<TestEvents>();
+    const values: number[] = [];
+    emitter.$on.value(value => values.push(value));
+    emitter.$once.value(value => values.push(value * 10));
+
+    emitter.$emit.value(1);
+    await emitter.$emitAsync.value(2);
+
+    expect(values).toEqual([1, 10, 2]);
+  });
 });
 
 describe('EventHost', () => {
@@ -136,6 +148,25 @@ describe('EventHost', () => {
     host.publish('hello', true);
 
     expect(messages).toEqual([['hello', true]]);
+  });
+
+  it('awaits listeners through a protected event-named helper', async () => {
+    class Host extends EventHost<TestEvents> {
+      publish(value: number): Promise<void> {
+        return this.$emitAsync.value(value);
+      }
+    }
+
+    const host = new Host();
+    const values: number[] = [];
+    host.$on.value(async value => {
+      await Promise.resolve();
+      values.push(value);
+    });
+
+    await host.publish(1);
+
+    expect(values).toEqual([1]);
   });
 
   it('inherits compatible events from another host', () => {
