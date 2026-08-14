@@ -14,6 +14,7 @@ import type { Photon, SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
 import { Vestigium } from '#src/vestigium/index.ts';
 import type { VestigiumCheckout, VestigiumRecord, VestigiumStore } from '#src/vestigium/index.ts';
+import { definePrompt } from '#utils';
 
 import { VISION_FRAMES_PER_IMAGE } from './constants.ts';
 import { estimateImageTokens, resolveImagePart } from './image.ts';
@@ -46,10 +47,10 @@ type NucleusAgent<TOutput> = ToolLoopAgent<
   Output.Output<TOutput>
 >;
 
-const MEMORY_RULES = [
-  '当前上下文不足时，使用 memory_recall 按语义搜索历史经历。',
-  '发现新的稳定事实、偏好或经验时，使用 memory_update 提交精炼、去重后的完整全局记忆。',
-].join('\n');
+const MEMORY_RULES = definePrompt(`
+当前上下文不足时，使用 memory_recall 按语义搜索历史经历。
+发现新的稳定事实、偏好或经验时，使用 memory_update 提交精炼、去重后的完整全局记忆。
+`);
 
 const SUMMARY_RETRY_DELAY = 1_000;
 

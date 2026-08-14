@@ -302,18 +302,21 @@ Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signa
 一个 Ciel 只拥有一个 Nucleus。Nucleus 负责完整的思考、工具调用和总结调度，应用配置模型、Memory、总结阈值、自定义消息与行动工具：
 
 ```ts
-import { Ciel, Memory } from '@ciels/core';
+import { Ciel, definePrompt, Memory } from '@ciels/core';
 import { isStepCount, jsonSchema, Output, tool } from 'ai';
 
 const stimulus = new LiveStimulus();
 
 class LiveCiel extends Ciel {
-  protected override readonly Soul = '你是夏尔。保持理性、温和与好奇。';
-  protected override readonly Identity = [
-    '名字：夏尔',
-    '形象：暂无固定形象',
-    '身份：长期陪伴用户的认知主体',
-  ].join('\n');
+  protected override readonly Soul = definePrompt(`
+  你是夏尔。保持理性、温和与好奇。
+  `);
+
+  protected override readonly Identity = definePrompt(`
+  名字：夏尔
+  形象：暂无固定形象
+  身份：长期陪伴用户的认知主体
+  `);
 }
 
 const ciel = new LiveCiel(stimulus, {
@@ -327,7 +330,9 @@ const ciel = new LiveCiel(stimulus, {
     memorySummary: { idleTimeout: 60_000, maxTokens: 500_000 },
     tools: {
       sendMessage: tool({
-        description: '向当前场景发送一条消息',
+        description: definePrompt(`
+        向当前场景发送一条消息
+        `),
         inputSchema: jsonSchema<{ content: string }>({
           type: 'object',
           properties: { content: { type: 'string' } },

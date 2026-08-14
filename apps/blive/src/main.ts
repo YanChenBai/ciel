@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 process.env.CIEL_DATA_DIR ??= fileURLToPath(new URL('../../../.ciel-data/', import.meta.url));
 
 const [
-  { Ciel, Memory },
+  { Ciel, Memory, definePrompt },
   { createBliveEmbeddingModel, createBliveLanguageModel },
   { BilibiliLive },
 ] = await Promise.all([import('@ciels/core'), import('./ai.ts'), import('./blive.ts')]);
@@ -32,7 +32,11 @@ const ciel = new Ciel(live, {
     minThinkInterval: 10_000,
     maxThinkInterval: 60_000,
     system: [
-      '你正在观察一个 Bilibili 直播间。结合 Hearing、Sight、近期情景与长期记忆理解正在发生的事情。只描述有依据的内容，区分事实与推测；没有值得表达的新信息时保持简短。',
+      definePrompt(`
+      你正在观察一个 Bilibili 直播间。
+      结合 Hearing、Sight、近期情景与长期记忆理解正在发生的事情。
+      只描述有依据的内容，区分事实与推测；没有值得表达的新信息时保持简短。
+      `),
     ],
   },
   oculus: {
