@@ -47,7 +47,8 @@ export class Sensus extends EventHost<SensusOutputEventMap> {
     const Signal = signal.constructor as SignalConstructor;
     const handler = this.handlers.get(Signal);
     if (!handler) {
-      this.emit('error', new Error(`${Signal.name} is not declared in Sensus signals`));
+      const error = new Error(`${Signal.name} is not declared in Sensus signals`);
+      this.emit('error', error);
       return;
     }
 
@@ -103,6 +104,7 @@ export class Sensus extends EventHost<SensusOutputEventMap> {
   ): void {
     capability.on('data', percept => this.emit('data', percept));
     capability.on('error', error => this.emit('error', error));
+    capability.on('speechend', at => this.emit('speechend', at));
 
     this.handlers.set(signal, value => capability.process(value as TSignal));
     this.cleanups.push(() => capability.close());

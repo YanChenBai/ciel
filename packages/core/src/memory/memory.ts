@@ -13,7 +13,6 @@ import {
   DEFAULT_MEMORY_RECALL_LIMIT,
   DEFAULT_MEMORY_RESOURCE_ID,
   DEFAULT_RECENT_MEMORY_DAYS,
-  GLOBAL_MEMORY_THREAD_ID,
   MEMORY_KIND_METADATA,
 } from './constants.ts';
 import type {
@@ -63,6 +62,13 @@ function formatTime(date: Date): string {
   ].join(':');
 }
 
+/**
+ * Mastra 的 thread 与 message ID 是全局主键，因此所有持久化 ID 都必须纳入 resourceId 命名空间。
+ */
+function createScopedId(resourceId: string, id: string): string {
+  return `${encodeURIComponent(resourceId)}:${id}`;
+}
+
 function resolveDatabaseUrl(databasePath: string): string {
   if (databasePath === ':memory:') {
     return databasePath;
@@ -106,6 +112,7 @@ export class Memory implements CielMemoryStore {
   private readonly recentDays: number;
   private readonly recallLimit: number;
   private readonly resourceId: string;
+  private readonly globalThreadId: string;
   private readonly ready: Promise<void>;
   private mutation: Promise<void> = Promise.resolve();
 
@@ -114,7 +121,9 @@ export class Memory implements CielMemoryStore {
     const vectorPath = resolveVectorPath(databasePath);
     this.recentDays = options.recentDays ?? DEFAULT_RECENT_MEMORY_DAYS;
     this.recallLimit = options.recallLimit ?? DEFAULT_MEMORY_RECALL_LIMIT;
-    this.resourceId = options.resourceId ?? DEFAULT_MEMORY_RESOURCE_ID;
+    this.resourceId = (options.resourceId ?? DEFAULT_MEMORY_RESOURCE_ID).trim();
+    if (!this.resourceId) throw new Error('memory.resourceId must not be empty');
+    this.globalThreadId = createScopedId(this.resourceId, 'global');
     this.validatePositiveInteger('recentDays', this.recentDays);
     this.validatePositiveInteger('recallLimit', this.recallLimit);
 
@@ -150,7 +159,7 @@ export class Memory implements CielMemoryStore {
   async readLongTerm(): Promise<string> {
     await Promise.all([this.ready, this.mutation]);
     const content = await this.store.getWorkingMemory({
-      threadId: GLOBAL_MEMORY_THREAD_ID,
+      threadId: this.globalThreadId,
       resourceId: this.resourceId,
       memoryConfig: {
         workingMemory: WORKING_MEMORY_CONFIG,
@@ -198,7 +207,7 @@ export class Memory implements CielMemoryStore {
       const entries = recalled.messages.map(message => {
         return `## ${formatTime(message.createdAt)}\n\n${readMessageText(message)}`;
       });
-      days.push(`# ${thread.id}\n\n${entries.join('\n\n')}`);
+      days.push(`# ${thread.title}\n\n${entries.join('\n\n')}`);
     }
     return days.join('\n\n');
   }
@@ -208,7 +217,7 @@ export class Memory implements CielMemoryStore {
     return this.mutate(async () => {
       await this.ready;
       await this.store.updateWorkingMemory({
-        threadId: GLOBAL_MEMORY_THREAD_ID,
+        threadId: this.globalThreadId,
         resourceId: this.resourceId,
         workingMemory: content.trim(),
         memoryConfig: {
@@ -226,12 +235,13 @@ export class Memory implements CielMemoryStore {
   ): Promise<void> {
     return this.mutate(async () => {
       await this.ready;
-      const threadId = formatDate(createdAt);
-      await this.ensureThread(threadId, createdAt, 'episode');
+      const date = formatDate(createdAt);
+      const threadId = createScopedId(this.resourceId, `episode:${date}`);
+      await this.ensureThread(threadId, date, createdAt, 'episode');
       await this.store.saveMessages({
         messages: [
           {
-            id: idempotencyKey ?? randomUUID(),
+            id: createScopedId(this.resourceId, idempotencyKey ?? randomUUID()),
             role: 'user',
             createdAt,
             threadId,
@@ -264,7 +274,7 @@ export class Memory implements CielMemoryStore {
     }
     await Promise.all([this.ready, this.mutation]);
     const result = await this.store.recall({
-      threadId: GLOBAL_MEMORY_THREAD_ID,
+      threadId: this.globalThreadId,
       resourceId: this.resourceId,
       vectorSearchString: search,
       page: 0,
@@ -300,11 +310,12 @@ export class Memory implements CielMemoryStore {
       await mkdir(path.dirname(databasePath), { recursive: true });
     }
     await this.storage.init();
-    await this.ensureThread(GLOBAL_MEMORY_THREAD_ID, new Date(0), 'global');
+    await this.ensureThread(this.globalThreadId, 'global', new Date(0), 'global');
   }
 
   private async ensureThread(
     threadId: string,
+    title: string,
     createdAt: Date,
     kind: 'episode' | 'global',
   ): Promise<void> {
@@ -318,7 +329,7 @@ export class Memory implements CielMemoryStore {
     await this.store.saveThread({
       thread: {
         id: threadId,
-        title: threadId,
+        title,
         resourceId: this.resourceId,
         createdAt,
         updatedAt: createdAt,

@@ -8,15 +8,12 @@ import type {
   ContextTrigger,
 } from '#src/context/index.ts';
 import type { CielMemoryStore } from '#src/memory/index.ts';
-import type { EpisodeAgentInput, MemoryAgent } from '#src/memory/index.ts';
-import type { VestigiumContent, VestigiumRecord, VestigiumStore } from '#src/vestigium/index.ts';
+import type { EpisodeSummarizer } from '#src/memory/index.ts';
+import type { PerceptRecord, PerceptStore, StoredPerceptContent } from '#src/percepts/index.ts';
 
 type MaybePromise<T> = T | Promise<T>;
 
 export type NucleusTrigger = ContextTrigger;
-export type NucleusTriggerMode = 'immediate' | 'scheduled' | 'passive';
-export type NucleusTriggerPolicy = (record: VestigiumRecord) => NucleusTriggerMode;
-
 export interface NucleusContextOptions {
   readonly perceptWindow?: number;
 
@@ -29,12 +26,8 @@ export interface NucleusMemorySummaryOptions {
   readonly maxTokens?: number;
 }
 
-export interface NucleusMemoryAgentsOptions {
-  readonly episode?: MemoryAgent<EpisodeAgentInput, string>;
-}
-
-export type ContextContent = VestigiumContent;
-export type ContextData = VestigiumRecord;
+export type ContextContent = StoredPerceptContent;
+export type ContextData = PerceptRecord;
 
 export interface NucleusContext {
   readonly createdAt: Date;
@@ -65,14 +58,13 @@ export interface NucleusGenerationOptions<TOutput = string> {
 export interface NucleusOptions<TOutput = string> extends NucleusGenerationOptions<TOutput> {
   readonly context?: NucleusContextOptions;
   readonly memory: CielMemoryStore;
-  readonly memoryAgents?: NucleusMemoryAgentsOptions;
   readonly memorySummary?: NucleusMemorySummaryOptions;
   readonly minThinkInterval?: number;
   readonly maxThinkInterval?: number;
-  /** 决定一条新痕迹是否立即、按节流规则或仅被动进入下一轮上下文。 */
-  readonly triggerPolicy?: NucleusTriggerPolicy;
-  /** 可注入共享的感知记录层；Ciel 默认会为所有感官创建一个。 */
-  readonly vestigium?: VestigiumStore;
+  /** 自定义经历总结方法；默认使用主模型执行一次无工具总结。 */
+  readonly summarizeEpisode?: EpisodeSummarizer;
+  /** 可注入共享的感知存储；Ciel 默认会为所有感官创建内存实现。 */
+  readonly perceptStore?: PerceptStore;
 }
 
 export interface NucleusEventMap<TOutput = string> {

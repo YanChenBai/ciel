@@ -6,18 +6,18 @@ import type { SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus, StimulusConstructor } from '#src/stimulus/index.ts';
 
 import type {
-  VestigiumCheckout,
-  VestigiumContent,
-  VestigiumRecord,
-  VestigiumSnapshot,
-  VestigiumStore,
+  PerceptCheckout,
+  PerceptRecord,
+  PerceptSnapshot,
+  PerceptStore,
+  StoredPerceptContent,
 } from './types.ts';
 
-interface VestigiumEventMap {
-  append(record: VestigiumRecord): void;
+interface PerceptStoreEventMap {
+  append(record: PerceptRecord): void;
 }
 
-interface VestigiumSource {
+interface PerceptSource {
   readonly scene: ContextDefinition;
   readonly signals: Map<SignalConstructor, ContextDefinition>;
 }
@@ -29,7 +29,7 @@ function getPerceptTime(percept: Percept): ContextTime {
   return { startAt: percept.startAt, endAt: percept.endAt };
 }
 
-function getPerceptContent(percept: Percept): VestigiumContent {
+function getPerceptContent(percept: Percept): StoredPerceptContent {
   if (percept.type === 'sight') {
     return { type: 'image', path: percept.path };
   }
@@ -40,11 +40,11 @@ function getPerceptContent(percept: Percept): VestigiumContent {
 }
 
 /** 所有 Sensus 结果的追加式记录层，每个消费者拥有独立提交游标。 */
-export class Vestigium extends EventHost<VestigiumEventMap> implements VestigiumStore {
-  private readonly sources = new Map<Stimulus, VestigiumSource>();
-  private readonly records: VestigiumRecord[] = [];
+export class InMemoryPerceptStore extends EventHost<PerceptStoreEventMap> implements PerceptStore {
+  private readonly sources = new Map<Stimulus, PerceptSource>();
+  private readonly records: PerceptRecord[] = [];
   private readonly cursors = new Map<string, number>();
-  private readonly activeCheckouts = new Map<string, VestigiumCheckout>();
+  private readonly activeCheckouts = new Map<string, PerceptCheckout>();
   private nextSequence = 1;
   private nextConsumer = 1;
   private lastAppendedAt?: number;
@@ -87,13 +87,13 @@ export class Vestigium extends EventHost<VestigiumEventMap> implements Vestigium
     });
   }
 
-  append(stimulus: Stimulus, percept: Percept): VestigiumRecord {
+  append(stimulus: Stimulus, percept: Percept): PerceptRecord {
     const source = this.sources.get(stimulus);
-    if (!source) throw new Error('Stimulus is not registered in Vestigium');
+    if (!source) throw new Error('Stimulus is not registered in PerceptStore');
     const signal = source.signals.get(percept.originSignal);
-    if (!signal) throw new Error(`${percept.originSignal.name} is not registered in Vestigium`);
+    if (!signal) throw new Error(`${percept.originSignal.name} is not registered in PerceptStore`);
 
-    const record: VestigiumRecord = {
+    const record: PerceptRecord = {
       sequence: this.nextSequence++,
       stimulus,
       scene: source.scene,
@@ -108,13 +108,13 @@ export class Vestigium extends EventHost<VestigiumEventMap> implements Vestigium
     return record;
   }
 
-  checkout(consumerId: string, createdAt: Date = new Date()): VestigiumCheckout {
+  checkout(consumerId: string, createdAt: Date = new Date()): PerceptCheckout {
     const active = this.activeCheckouts.get(consumerId);
     if (active) return active;
 
     const fromSequence = this.cursors.get(consumerId) ?? 0;
     const throughSequence = this.records.at(-1)?.sequence ?? fromSequence;
-    const checkout: VestigiumCheckout = {
+    const checkout: PerceptCheckout = {
       consumerId,
       createdAt,
       fromSequence,
@@ -127,18 +127,18 @@ export class Vestigium extends EventHost<VestigiumEventMap> implements Vestigium
     return checkout;
   }
 
-  commit(checkout: VestigiumCheckout): void {
+  commit(checkout: PerceptCheckout): void {
     if (this.activeCheckouts.get(checkout.consumerId) !== checkout) {
-      throw new Error(`Vestigium checkout for ${checkout.consumerId} is no longer active`);
+      throw new Error(`PerceptStore checkout for ${checkout.consumerId} is no longer active`);
     }
     if ((this.cursors.get(checkout.consumerId) ?? 0) !== checkout.fromSequence) {
-      throw new Error(`Vestigium cursor for ${checkout.consumerId} has changed`);
+      throw new Error(`PerceptStore cursor for ${checkout.consumerId} has changed`);
     }
     this.cursors.set(checkout.consumerId, checkout.throughSequence);
     this.activeCheckouts.delete(checkout.consumerId);
   }
 
-  snapshot(createdAt: Date = new Date(), duration?: number): VestigiumSnapshot {
+  snapshot(createdAt: Date = new Date(), duration?: number): PerceptSnapshot {
     const cutoff = duration === undefined ? -Infinity : createdAt.getTime() - duration;
     return {
       createdAt,
@@ -146,7 +146,7 @@ export class Vestigium extends EventHost<VestigiumEventMap> implements Vestigium
     };
   }
 
-  hasUnread(consumerId: string, predicate?: (record: VestigiumRecord) => boolean): boolean {
+  hasUnread(consumerId: string, predicate?: (record: PerceptRecord) => boolean): boolean {
     const cursor = this.cursors.get(consumerId) ?? 0;
     return this.records.some(
       record => record.sequence > cursor && (predicate === undefined || predicate(record)),

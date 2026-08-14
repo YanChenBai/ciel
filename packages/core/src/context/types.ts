@@ -17,7 +17,7 @@ export type ContextPromptPart =
   | { readonly type: 'text'; readonly text: string }
   | { readonly type: 'image'; readonly path: string };
 
-export type ContextTrigger = 'manual' | 'percept' | 'interval';
+export type ContextTrigger = 'manual' | 'speech-end' | 'interval';
 
 export interface ContextSection {
   readonly name: string;

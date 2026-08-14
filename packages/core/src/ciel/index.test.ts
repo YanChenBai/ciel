@@ -26,6 +26,7 @@ vi.mock('#sensus', async () => {
     Sensus: class extends EventHost<{
       data(data: unknown): void;
       error(error: Error): void;
+      speechend(at: Date): void;
     }> {
       constructor(options: { signals: readonly unknown[] }) {
         super();
@@ -36,6 +37,8 @@ vi.mock('#sensus', async () => {
         const value = signal as { type: string };
         if (value.type === 'echo') {
           processorState.echoes.push(signal);
+          // 真实 Auris 会先输出 Hearing，再转发 ASR 的 VAD 结束时间。
+          this.emit('speechend', (signal as Echo).endAt);
         } else if (value.type === 'photon') {
           await Promise.resolve();
           processorState.photons.push(signal);

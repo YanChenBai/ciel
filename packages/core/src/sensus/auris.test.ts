@@ -12,12 +12,14 @@ vi.mock('@ciels/asr', () => ({
     }
 
     write(segment: { startAt: Date }): void {
+      const endAt = new Date(segment.startAt.getTime() + 1_000);
       this.listeners.get('result')?.({
         content: '你好',
         speaker: 'speaker_0',
         startAt: segment.startAt,
-        endAt: new Date(segment.startAt.getTime() + 1_000),
+        endAt,
       });
+      this.listeners.get('speechend')?.(endAt);
     }
 
     flush(): void {}
@@ -44,7 +46,9 @@ describe('Auris', () => {
   it('wraps ASR results as Hearing with Echo metadata', () => {
     const auris = new Auris(TestEcho);
     const results: import('#percepts').Hearing[] = [];
+    const speechEnds: Date[] = [];
     auris.on('data', hearing => results.push(hearing));
+    auris.on('speechend', at => speechEnds.push(at));
 
     const startAt = new Date('2026-08-10T00:00:00.000Z');
     auris.process(
@@ -63,6 +67,7 @@ describe('Auris', () => {
       name: 'Test audio',
       description: 'Synthetic PCM used by Auris tests',
     });
+    expect(speechEnds).toEqual([new Date(startAt.getTime() + 1_000)]);
   });
 
   it('rejects Echo instances from a different signal', () => {

@@ -121,7 +121,7 @@ afterEach(async () => {
 });
 
 describe('Nucleus', () => {
-  it('限制连续思考频率，并在最大间隔后主动思考', async () => {
+  it('在 VAD 结束后触发思考，限制最小间隔并保留最大间隔兜底', async () => {
     const memory = await createMemory();
     vi.useFakeTimers();
     vi.setSystemTime(0);
@@ -144,13 +144,15 @@ describe('Nucleus', () => {
 
     nucleus.start();
     nucleus.ingest(stimulus, createReading('第一条', 0));
+    nucleus.speechEnd();
     await vi.advanceTimersByTimeAsync(0);
     await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(1));
     await vi.advanceTimersByTimeAsync(0);
-    expect(inputs[0]?.trigger).toBe('percept');
+    expect(inputs[0]?.trigger).toBe('speech-end');
 
     await vi.advanceTimersByTimeAsync(100);
     nucleus.ingest(stimulus, createReading('第二条', 100));
+    nucleus.speechEnd();
     const beforeNextThought = (thoughtTimes[0] ?? 0) + 999 - Date.now();
     await vi.advanceTimersByTimeAsync(beforeNextThought);
     expect(model.doGenerateCalls).toHaveLength(1);
@@ -165,7 +167,7 @@ describe('Nucleus', () => {
     await nucleus.stop();
   });
 
-  it('允许感知策略绕过最小间隔提前触发思考', async () => {
+  it('普通感知只进入上下文，直到 VAD 结束才触发思考', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     const stimulus = new TestStimulus();
@@ -176,21 +178,21 @@ describe('Nucleus', () => {
       memorySummary: { idleTimeout: 60_000 },
       minThinkInterval: 10_000,
       maxThinkInterval: 20_000,
-      triggerPolicy: record =>
-        record.content.type === 'text' && record.content.text === '现在回答'
-          ? 'immediate'
-          : 'scheduled',
     });
     nucleus.register(stimulus);
     nucleus.start();
     nucleus.ingest(stimulus, createReading('第一条', 0));
     await vi.advanceTimersByTimeAsync(0);
-    await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(1));
+    expect(model.doGenerateCalls).toHaveLength(0);
 
     await vi.advanceTimersByTimeAsync(100);
     nucleus.ingest(stimulus, createReading('现在回答', 100));
     await vi.advanceTimersByTimeAsync(0);
-    expect(model.doGenerateCalls).toHaveLength(2);
+    expect(model.doGenerateCalls).toHaveLength(0);
+
+    nucleus.speechEnd();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(model.doGenerateCalls).toHaveLength(1);
     await nucleus.stop();
   });
 
@@ -237,6 +239,7 @@ describe('Nucleus', () => {
       }),
     );
     nucleus.ingest(stimulus, createReading('画面中出现了一只猫。', Date.now()));
+    nucleus.speechEnd();
 
     await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(2));
     expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).toContain('image/jpeg');
@@ -359,14 +362,12 @@ describe('Nucleus', () => {
     const memory = await createMemory();
     const stimulus = new TestStimulus();
     const model = createModel('已处理');
-    const episodeAgent = {
-      run: vi.fn(async () => '这段时间用户发来了一条消息。'),
-    };
+    const summarizeEpisode = vi.fn(async () => '这段时间用户发来了一条消息。');
     const nucleus = new Nucleus({
       model,
       memory,
-      memoryAgents: { episode: episodeAgent },
       memorySummary: { idleTimeout: 50, maxTokens: 10_000 },
+      summarizeEpisode,
     });
     nucleus.register(stimulus);
     nucleus.start();
@@ -375,8 +376,8 @@ describe('Nucleus', () => {
     await vi.waitFor(async () =>
       expect(await memory.readRecent()).toContain('这段时间用户发来了一条消息。'),
     );
-    expect(model.doGenerateCalls).toHaveLength(1);
-    expect(episodeAgent.run).toHaveBeenCalledOnce();
+    expect(model.doGenerateCalls).toHaveLength(0);
+    expect(summarizeEpisode).toHaveBeenCalledOnce();
     expect(await memory.readRecent()).toContain('这段时间用户发来了一条消息。');
     await nucleus.stop();
   });

@@ -51,22 +51,23 @@ flowchart TD
   Stimulus --> Signals["Photon / Echo / Script"]
   Signals --> Sensus["Oculus / Auris / Lectio"]
   Sensus --> Percepts["Sight / Hearing / Reading"]
-  Percepts --> Vestigium["Vestigium append"]
+  Percepts --> PerceptStore["PerceptStore append"]
 
-  Vestigium -->|"independent checkout"| Context["Context projection"]
+  PerceptStore -->|"independent checkout"| Context["Context projection"]
   Context --> Nucleus["Nucleus main agent"]
   Memory --> Nucleus
   Nucleus -->|"success"| NucleusCommit["commit nucleus cursor"]
 
-  Vestigium -->|"independent checkout"| EpisodeAgent["Episode Agent"]
-  EpisodeAgent -->|"summary only"| Coordinator["deterministic append"]
+  PerceptStore -->|"independent checkout"| Summarizer["summarizeEpisode"]
+  Summarizer -->|"summary only"| Coordinator["deterministic append"]
   Coordinator --> Memory["Memory / LibSQL"]
   Coordinator -->|"success"| MemoryCommit["commit memory cursor"]
 ```
 
 Both consumers receive stable checkouts. A failed call keeps its checkout for retry, while later
-percepts continue to append. The Episode Agent receives multimodal prompt parts but no tools or store
-handle; only deterministic Nucleus code appends the resulting Episode and advances the memory cursor.
+percepts continue to append. The episode summarizer is a replaceable function that receives multimodal
+prompt parts but no tools or store handle; only deterministic Nucleus code appends the resulting Episode
+and advances the memory cursor.
 
 `Ciel.stop()` stops its stimulus, removes subscriptions, and closes its `Sensus`. Closing flushes stateful capabilities and releases their event listeners.
 
@@ -76,23 +77,24 @@ handle; only deterministic Nucleus code appends the resulting Episode and advanc
 - `Context`: trusted Stimulus/Signal definition and multimodal Percept prompt builder.
 - `Memory`: Mastra Working Memory, date threads, and semantic recall backed by LibSQL and LibSQLVector.
 - `Nucleus<TOutput>`: the thought and memory-summary scheduler.
-- `Vestigium`: the append-only sensory journal shared by context construction and memory archiving.
+- `PerceptStore`: the storage contract shared by context construction and memory archiving.
+- `InMemoryPerceptStore`: the process-local append-only Percept store with independent consumer cursors.
 - `Sensus`: unified signal routing, sensory capability, events, and lifecycle.
 - `SensusBase<TSignal, TData>`: common signal binding and `data/error` event contract for sensory capabilities.
 - `Stimulus`: typed event source with explicit `signals` and async `send()`.
 
 Pass one Stimulus as the first `Ciel` constructor argument and its required Nucleus configuration
-as the second argument. Ciel privately creates and owns both Nucleus and Vestigium; neither runtime
+as the second argument. Ciel privately creates and owns both Nucleus and InMemoryPerceptStore; neither runtime
 instance can be injected or retrieved. The Stimulus feeds that Nucleus while each realtime entry
 retains its source Stimulus. `Context`
 builds the trusted base definitions and chronological text/image Percept input. Ciel forwards
 `thought` and `error` events and exposes only a projected snapshot through `getContext()`.
 
 Oculus persists each sampled frame that differs enough from the last accepted frame. Every Sensus result
-is first appended to `Vestigium`; Nucleus and memory archiving then read it through independent cursors.
+is first appended to `PerceptStore`; Nucleus and memory archiving then read it through independent cursors.
 A checkout stays frozen until its consumer commits it, so failed calls retry the same input while records
 arriving during the call remain pending for the next checkout. Nucleus composes up to nine visual frames
-into each context image. Prompt image count is bounded, but original image paths remain in Vestigium.
+into each context image. Prompt image count is bounded, but original image paths remain in PerceptStore.
 
 Nucleus privately adds `memory_update` for replacing refined global memory and `memory_recall` for
 semantic search across historical date threads. Reaching the configured model-input token size, a quiet
@@ -106,13 +108,18 @@ override them, and Context adds their Markdown headings when assembling the mode
 - `Percept`: the `Hearing | Reading | Sight` result union.
 - `Hearing`, `Reading`, `Sight`: percepts retaining their single origin signal constructor.
 
-`triggerPolicy` can promote a newly appended record to `immediate`, leave it `scheduled`, or make it
-`passive`. Hearing defaults to `immediate`: Auris emits a Hearing after the ASR/VAD segment closes, so
-normal speech-end results can bypass `minThinkInterval` without coupling Nucleus to ASR internals.
+After VAD closes a speech segment, ASR emits its result before `speechend`. Auris and Sensus preserve that
+ordering, so Hearing is already in PerceptStore when Ciel calls `Nucleus.speechEnd()`. The first speech end can
+think immediately; later speech ends are coalesced by `minThinkInterval`, while `maxThinkInterval` remains
+the fallback when no speech ends. Other Percepts only enter context and do not trigger thought themselves.
 
-The current Vestigium implementation is process-local. Its record and cursor contract is deliberately
+The current PerceptStore implementation is process-local. Its record and cursor contract is deliberately
 separate from Nucleus so a durable LibSQL adapter can replace the storage backend without changing the
 context or memory consumers.
+
+Memory uses `resourceId` as the namespace for working memory, daily thread IDs, semantic recall, and
+idempotent message IDs. Multiple rooms can therefore share one LibSQL database without colliding or
+reading each other's daily episodes.
 
 ## Development
 

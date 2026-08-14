@@ -4,8 +4,12 @@ import type { EmbeddingModel, LanguageModel } from 'ai';
 export interface BliveAIConfig {
   readonly apiKey: string;
   readonly baseURL: string;
-  readonly embeddingModel: string;
   readonly model: string;
+}
+
+export interface BliveAI {
+  readonly embedder: Exclude<EmbeddingModel, string>;
+  readonly model: LanguageModel;
 }
 
 export function resolveBliveAIConfig(environment: NodeJS.ProcessEnv = process.env): BliveAIConfig {
@@ -15,7 +19,6 @@ export function resolveBliveAIConfig(environment: NodeJS.ProcessEnv = process.en
       'BLIVE_AI_API_KEY',
     ),
     baseURL: environment.BLIVE_AI_BASE_URL ?? 'https://openrouter.ai/api/v1',
-    embeddingModel: requireValue(environment.BLIVE_AI_EMBEDDING_MODEL, 'BLIVE_AI_EMBEDDING_MODEL'),
     model: requireValue(
       environment.BLIVE_AI_VISION_MODEL ?? environment.BLIVE_AI_MODEL,
       'BLIVE_AI_VISION_MODEL',
@@ -23,26 +26,17 @@ export function resolveBliveAIConfig(environment: NodeJS.ProcessEnv = process.en
   };
 }
 
-export function createBliveEmbeddingModel(
-  config: BliveAIConfig = resolveBliveAIConfig(),
-): Exclude<EmbeddingModel, string> {
+/** 从同一个 OpenAI-compatible provider 和模型 ID 创建生成与 embedding 能力。 */
+export function createBliveAI(config: BliveAIConfig = resolveBliveAIConfig()): BliveAI {
   const provider = createOpenAICompatible({
     name: 'blive-ai',
     apiKey: config.apiKey,
     baseURL: config.baseURL,
   });
-  return provider.embeddingModel(config.embeddingModel);
-}
-
-export function createBliveLanguageModel(
-  config: BliveAIConfig = resolveBliveAIConfig(),
-): LanguageModel {
-  const provider = createOpenAICompatible({
-    name: 'blive-ai',
-    apiKey: config.apiKey,
-    baseURL: config.baseURL,
-  });
-  return provider.chatModel(config.model);
+  return {
+    embedder: provider.embeddingModel(config.model),
+    model: provider.chatModel(config.model),
+  };
 }
 
 function requireValue(value: string | undefined, name: string): string {

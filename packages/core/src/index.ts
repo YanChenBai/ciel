@@ -7,4 +7,3 @@ export * from './sensus/index.ts';
 export * from './signals/index.ts';
 export * from './stimulus/index.ts';
 export * from './utils/index.ts';
-export * from './vestigium/index.ts';

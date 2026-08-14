@@ -5,15 +5,14 @@ import { Sensus } from '#sensus';
 import type { SensusLectioOptions, SensusOculusOptions } from '#sensus';
 import { Nucleus } from '#src/nucleus/index.ts';
 import type { NucleusContext, NucleusInput, NucleusOptions } from '#src/nucleus/index.ts';
+import { InMemoryPerceptStore } from '#src/percepts/index.ts';
 import type { Percept } from '#src/percepts/index.ts';
 import type { Signal } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
-import { Vestigium } from '#src/vestigium/index.ts';
 
 import { Identity, Soul } from './prompts.ts';
 
-export type CielNucleusOptions<TOutput = string> = Omit<NucleusOptions<TOutput>, 'vestigium'>;
-
+export type CielNucleusOptions<TOutput = string> = Omit<NucleusOptions<TOutput>, 'perceptStore'>;
 export interface CielOptions<TOutput = string> {
   auris?: ASROptions;
   lectio?: SensusLectioOptions;
@@ -54,7 +53,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   private readonly options: CielOptions<TOutput>;
   private readonly stimulus: Stimulus;
   private readonly nucleus: Nucleus<TOutput>;
-  private readonly vestigium: Vestigium;
+  private readonly perceptStore: InMemoryPerceptStore;
   private runtime?: StimulusRuntime;
   private nucleusStarted = false;
   private state: CielState = 'idle';
@@ -63,9 +62,9 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     super();
     this.stimulus = stimulus;
     this.options = options;
-    this.vestigium = new Vestigium();
-    this.vestigium.register(stimulus);
-    this.nucleus = new Nucleus({ ...options.nucleus, vestigium: this.vestigium }, () => [
+    this.perceptStore = new InMemoryPerceptStore();
+    this.perceptStore.register(stimulus);
+    this.nucleus = new Nucleus({ ...options.nucleus, perceptStore: this.perceptStore }, () => [
       { name: 'SOUL', content: this.Soul },
       { name: 'IDENTITY', content: this.Identity },
     ]);
@@ -134,6 +133,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
         this.nucleus.ingest(runtime.stimulus, percept);
         this.emit('data', percept);
       }),
+      runtime.sensus.on('speechend', () => this.nucleus.speechEnd()),
       runtime.sensus.on('error', error => this.emit('error', error)),
       runtime.stimulus.on('data', signal => this.dispatch(runtime, signal)),
     );

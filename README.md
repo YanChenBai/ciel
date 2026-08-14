@@ -3,7 +3,7 @@
 Ciel 是一个面向 AI Agent 的认知核心系统。
 
 项目名来自《**关于我转生变成史莱姆这档事**》主角
-[**利姆鲁**](https://baike.baidu.com/item/%E5%88%A9%E5%A7%86%E9%B2%81%C2%B7%E7%89%B9%E6%81%A9%E4%BD%A9%E6%96%AF%E7%89%B9/22945511?fromModule=lemma_inlink)
+[**利姆鲁**](https://tensura.fandom.com/wiki/Ciel)
 的技能“智慧之王／夏尔（Ciel）”。这个名字表达了项目的长期目标：构建一个能够接收感官信息、形成上下文，并逐步拥有记忆、推理与行动能力的 Agent 核心。
 
 对于视觉和听觉，Ciel 不会先把外部世界统一转换成文本，而是让 Agent 从原始刺激中形成自己的感知；外部已经提供的符号信息则由 `Lectio` 对齐为 `Reading`，不再执行额外的内容理解：
@@ -14,9 +14,9 @@ World
       → Signals
       → Sensus
       → Percepts
-  → Vestigium
+  → PerceptStore
       → Nucleus / Context / Reasoning
-      → Episode Agent / Memory
+      → summarizeEpisode / Memory
   → Response
 ```
 
@@ -36,7 +36,7 @@ Sensory Path:
 Raw Signal
   → Sensus
   → Percept
-  → Vestigium
+  → PerceptStore
   → Nucleus / Memory
 
 Symbolic Path:
@@ -44,7 +44,7 @@ Script
   → Sensus
   → Lectio
   → Reading
-  → Vestigium
+  → PerceptStore
 ```
 
 `Sensus` 是所有信号统一进入感知层的入口。`Photon`、`Echo` 和 `Script` 分别交由 Oculus、Auris、Lectio 转换；`Script` 已经是外部世界提供的符号信息，因此 Lectio 只将其对齐为 `Reading`，不再执行额外的内容理解。感知层不负责最终推理，高层认知也不直接处理媒体编码细节。
@@ -71,26 +71,26 @@ flowchart TD
   Echo --> Auris --> Hearing
   Script --> Lectio --> Reading
 
-  Sight --> Vestigium["Vestigium<br/>append-only 感知痕迹"]
-  Hearing --> Vestigium
-  Reading --> Vestigium
+  Sight --> PerceptStore["PerceptStore<br/>append-only 感知痕迹"]
+  Hearing --> PerceptStore
+  Reading --> PerceptStore
 
-  Vestigium -->|"nucleus consumer<br/>checkout / commit"| Projector["Context 投影器<br/>近期文字 + 有界视觉拼图"]
+  PerceptStore -->|"nucleus consumer<br/>checkout / commit"| Projector["Context 投影器<br/>近期文字 + 有界视觉拼图"]
   Projector --> Nucleus["Nucleus 主 Agent"]
   Memory["Memory<br/>长期事实 / 最近经历 / 语义召回"] --> Nucleus
   Nucleus --> Thought["Thought / Actions"]
 
-  Vestigium -->|"memory consumer<br/>checkout / commit"| EpisodeAgent["Episode Agent<br/>无工具，只生成摘要"]
-  EpisodeAgent -->|"幂等 appendEpisode"| Memory
+  PerceptStore -->|"memory consumer<br/>checkout / commit"| Summarizer["summarizeEpisode<br/>无工具，只生成摘要"]
+  Summarizer -->|"幂等 appendEpisode"| Memory
 
   classDef journal fill:#302b63,color:#fff,stroke:#6f63d9;
   classDef agent fill:#123b5d,color:#fff,stroke:#3e8cc4;
-  class Vestigium journal;
-  class Nucleus,EpisodeAgent agent;
+  class PerceptStore journal;
+  class Nucleus agent;
 ```
 
-关键边界是：感知结果只追加一次，Context 与 Memory 各自消费。子 Agent 不持有 Memory
-写权限；它只返回摘要，最终落库与 Vestigium 游标提交仍由确定性代码完成。
+关键边界是：感知结果只追加一次，Context 与 Memory 各自消费。经历总结是一个可注入的
+方法，它不持有 Memory 写权限；最终落库与 PerceptStore 游标提交仍由确定性代码完成。
 
 当前仓库是一个 Vite+ monorepo：
 
@@ -114,11 +114,10 @@ ciel/
 packages/core/src/
 ├── signals/              # Photon、Echo、Script
 ├── stimulus/             # 外部刺激输入契约
-├── percepts/             # Sight、Hearing、Reading 感知产物
+├── percepts/             # Sight、Hearing、Reading 感知产物与 store
 ├── sensus/               # Auris、Oculus、Lectio 感官处理层
 ├── context/              # 基础定义与多模态 Percept 上下文构建
-├── vestigium/            # 追加式感知痕迹、独立消费者游标与安全回收
-├── memory/               # 长期记忆、Episode 子 Agent 与工具
+├── memory/               # 长期记忆、经历总结方法与工具
 ├── nucleus/              # 上下文投影、记忆组装、思考与调度
 ├── constants/
 └── utils/
@@ -251,11 +250,11 @@ await ciel.stop();
 - `Photon` 子类创建独立的 `Oculus`；
 - `Script` 子类创建独立的 `Lectio`，对齐为 `Reading` 后再通过 Ciel 的 `data` 事件发送。
 
-Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域。处理后的 Percept 进入该 Ciel 的 Vestigium，每条记录保留 `sequence`、`stimulus`、场景、Signal 来源、时间与原始 Percept。Nucleus 和记忆归档分别通过独立消费者游标读取，不再共享一个会被删除的实时数组。
+Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域。处理后的 Percept 进入该 Ciel 的 PerceptStore，每条记录保留 `sequence`、`stimulus`、场景、Signal 来源、时间与原始 Percept。Nucleus 和记忆归档分别通过独立消费者游标读取，不再共享一个会被删除的实时数组。
 
-### Vestigium、Context、Memory 与 Nucleus
+### PerceptStore、Context、Memory 与 Nucleus
 
-四层保持单一职责：Vestigium 记录感知事实；Context 将指定 checkout 投影成模型输入；Memory 保存长期事实和 Episode；Nucleus 负责思考、工具与调度。Ciel 提供可由子类覆盖的 `Soul` 与 `Identity` 纯文本，Context 统一添加标题：
+四层保持单一职责：PerceptStore 记录感知事实；Context 将指定 checkout 投影成模型输入；Memory 保存长期事实和 Episode；Nucleus 负责思考、工具与调度。Ciel 提供可由子类覆盖的 `Soul` 与 `Identity` 纯文本，Context 统一添加标题：
 
 ```text
 # SOUL
@@ -283,7 +282,7 @@ Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signa
 # 本轮输入
 
 [触发原因]
-感知更新
+语音结束
 
 # 最近经历
 
@@ -305,6 +304,7 @@ Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signa
 import { Ciel, definePrompt, Memory } from '@ciels/core';
 import { isStepCount, jsonSchema, Output, tool } from 'ai';
 
+const roomId = '123456';
 const stimulus = new LiveStimulus();
 
 class LiveCiel extends Ciel {
@@ -326,6 +326,7 @@ const ciel = new LiveCiel(stimulus, {
     memory: new Memory({
       path: '.ciel-data/memory.db',
       embedder: embeddingModel,
+      resourceId: `blive:${roomId}`,
     }),
     memorySummary: { idleTimeout: 60_000, maxTokens: 500_000 },
     tools: {
@@ -353,14 +354,14 @@ await ciel.start();
 const context = await ciel.getContext();
 ```
 
-Memory 复用 Mastra Memory，并通过 LibSQL 持久化：resource-scoped Working Memory 保存精炼后的全局记忆，`YYYY-MM-DD` thread 保存每日经历，LibSQLVector 为经历建立向量。Nucleus 提供 `memory_update` 更新完整全局记忆，并提供 `memory_recall` 让 Agent 按语义跨日期搜索经历；最近日期的经历仍会直接进入 Context。
+Memory 复用 Mastra Memory，并通过 LibSQL 持久化：`resourceId` 同时隔离 Working Memory、每日经历、语义召回与幂等消息 ID。每日 thread 的持久化 ID 由 `resourceId` 与日期组成，展示标题仍为 `YYYY-MM-DD`；LibSQLVector 为经历建立向量。Nucleus 提供 `memory_update` 更新完整全局记忆，并提供 `memory_recall` 让 Agent 按语义跨日期搜索当前 resource 的经历；最近日期的经历仍会直接进入 Context。
 
-单轮模型输入达到 `memorySummary.maxTokens`、超过 `memorySummary.idleTimeout` 没有新事件，或 Ciel 停止时，记忆消费者会 checkout 尚未归档的 Vestigium 记录。无工具的 Episode Agent 将文字与有界视觉拼图总结成纯文本，Nucleus 使用稳定幂等键写入当天 thread，成功后才提交记忆游标；失败会退避重试。损坏图片降级为包含 Vestigium sequence 的文字证据，不会卡住整批归档。主思考与记忆归档使用不同消费者，因此归档模型运行不会占用主思考 checkout。
+单轮模型输入达到 `memorySummary.maxTokens`、超过 `memorySummary.idleTimeout` 没有新事件，或 Ciel 停止时，记忆消费者会 checkout 尚未归档的 PerceptStore 记录。无工具的 `summarizeEpisode` 方法将文字与有界视觉拼图总结成纯文本，Nucleus 使用稳定幂等键写入当天 thread，成功后才提交记忆游标；失败会退避重试。损坏图片降级为包含 PerceptStore sequence 的文字证据，不会卡住整批归档。主思考与记忆归档使用不同消费者，因此归档模型运行不会占用主思考 checkout。
 
-主思考只把新视觉记录组成拼图，成功后提交自己的游标；失败时重复相同 checkout，调用期间追加的记录留到下一轮。近期文字可以按 `perceptWindow` 再次投影为对话上下文。两个消费者都已提交且记录离开实时窗口后，进程内 Vestigium 才会回收该记录。输入 token 优先使用模型提供方返回的实际用量；API 未返回时，图片按 16 像素 patch、2×2 空间合并及 8192–8388608 像素缩放区间估算。
+主思考只把新视觉记录组成拼图，成功后提交自己的游标；失败时重复相同 checkout，调用期间追加的记录留到下一轮。近期文字可以按 `perceptWindow` 再次投影为对话上下文。两个消费者都已提交且记录离开实时窗口后，进程内 PerceptStore 才会回收该记录。输入 token 优先使用模型提供方返回的实际用量；API 未返回时，图片按 16 像素 patch、2×2 空间合并及 8192–8388608 像素缩放区间估算。
 
-`minThinkInterval` 限制普通活跃事件的思考频率；`maxThinkInterval` 在没有新感知时仍会给 Nucleus 一次主动判断的机会，但不强制对外输出。`triggerPolicy(record)` 可以对每条 Vestigium 记录返回 `immediate`、`scheduled` 或 `passive`。`Hearing` 默认立即触发，因此 Auris 在 VAD/ASR 结束一段语音并产出 Hearing 后，可以绕过最小间隔；应用也可让特定弹幕、视觉事件或控制消息提前触发。
-Nucleus 会把 `percept`、`interval` 与 `manual` 三种触发原因放入本轮输入，main Agent 可以据此判断是否需要主动互动。
+VAD 结束一段语音后，ASR 会先输出 Hearing，再通过 `speechend` 触发 Nucleus 思考。第一次语音结束可立即思考；连续语音会按 `minThinkInterval` 合并，避免过密调用模型。`maxThinkInterval` 则在没有 VAD 结束时仍会给 Nucleus 一次主动判断的机会。其他视觉、文字与听觉感知只追加到上下文，不单独触发主思考。
+Nucleus 会把 `speech-end`、`interval` 与 `manual` 三种触发原因放入本轮输入，main Agent 可以据此判断是否需要主动互动。
 
 Nucleus 只区分内部内容与应用自定义内容，并按顺序直接拼接：
 
@@ -394,14 +395,14 @@ Photon[]
   → 低分辨率灰度差异比较
   → 持久化每个变化帧
   → 单帧 Sight
-  → Vestigium 追加记录
+  → PerceptStore 追加记录
   → 消费者 checkout 本轮新增帧
   → 每 9 帧组成 1920 × 1080 上下文拼图
 ```
 
 Oculus 将每个采样帧缩小为 64 × 36 灰度指纹，与上一张已经保留的帧计算平均像素差异；达到 `differenceThreshold` 才持久化并产生单帧 `Sight`。比较只用于去除重复画面，输出给多模态模型的仍是原始 Photon 生成的彩色 JPEG，不使用灰度缩略图。
 
-默认每分钟采样 9 帧。Nucleus 组装一次模型 Context 时，从自己的 Vestigium checkout 中按 Stimulus 与 Photon 类型分组，每 9 帧组成一张 3 × 3 拼图；不足 9 帧也使用自适应排版。`context.maxImages` 限制单轮拼图数量；候选超过预算时在整段时间线上保留首尾并均匀采样，避免长时间讲话只留下最后几秒。模型调用成功后提交整个稳定 checkout，失败时保留同一批供下次重试，调用期间新到的帧留到下一轮。原始 Sight 仍由 Vestigium 管理，不因提示词图片预算而立即丢弃。默认 `differenceThreshold` 为 `0.03`，设为 `0` 可恢复为保留所有采样帧。
+默认每分钟采样 9 帧。Nucleus 组装一次模型 Context 时，从自己的 PerceptStore checkout 中按 Stimulus 与 Photon 类型分组，每 9 帧组成一张 3 × 3 拼图；不足 9 帧也使用自适应排版。`context.maxImages` 限制单轮拼图数量；候选超过预算时在整段时间线上保留首尾并均匀采样，避免长时间讲话只留下最后几秒。模型调用成功后提交整个稳定 checkout，失败时保留同一批供下次重试，调用期间新到的帧留到下一轮。原始 Sight 仍由 PerceptStore 管理，不因提示词图片预算而立即丢弃。默认 `differenceThreshold` 为 `0.03`，设为 `0` 可恢复为保留所有采样帧。
 
 `Sight` 只描述一次已经持久化的视觉观察：
 
@@ -586,7 +587,7 @@ Ciel 使用轻量事件驱动通信。Sensus 统一消费信号并发送结果�
 ```text
 Sensus emits data(Percept)
 Percept.type = hearing | reading | sight
-  → Vestigium.append(record)
+  → PerceptStore.append(record)
       → nucleus consumer
       → memory consumer
 ```
@@ -616,26 +617,26 @@ Percept.type = hearing | reading | sight
 
 ## 当前实现状态
 
-| 能力                         | 状态     |
-| ---------------------------- | -------- |
-| 原始视觉、音频、文字信号     | 已实现   |
-| Stimulus 输入契约与事件      | 已实现   |
-| Oculus 变化采样与上下文拼图  | 已实现   |
-| Sight 持久化                 | 已实现   |
-| Auris 流式输入与 VAD         | 已实现   |
-| ASR 与转写时间戳             | 已实现   |
-| 声纹识别与未知说话人聚类     | 已实现   |
-| 模型安装与声纹创建脚本       | 已实现   |
-| WebSocket 基础服务           | 初步实现 |
-| WebUI                        | 初步实现 |
-| Nucleus Context 聚合         | 已实现   |
-| Vestigium 感知日志与独立游标 | 基础实现 |
-| Episode 总结子 Agent         | 已实现   |
-| Markdown 长期与每日记忆      | 已实现   |
-| Nucleus 思考调度             | 已实现   |
-| 本地持久化与上下文总结       | 基础实现 |
-| AI SDK 多模态推理            | 基础实现 |
-| AI SDK 自主决策与行动        | 基础实现 |
+| 能力                            | 状态     |
+| ------------------------------- | -------- |
+| 原始视觉、音频、文字信号        | 已实现   |
+| Stimulus 输入契约与事件         | 已实现   |
+| Oculus 变化采样与上下文拼图     | 已实现   |
+| Sight 持久化                    | 已实现   |
+| Auris 流式输入与 VAD            | 已实现   |
+| ASR 与转写时间戳                | 已实现   |
+| 声纹识别与未知说话人聚类        | 已实现   |
+| 模型安装与声纹创建脚本          | 已实现   |
+| WebSocket 基础服务              | 初步实现 |
+| WebUI                           | 初步实现 |
+| Nucleus Context 聚合            | 已实现   |
+| PerceptStore 感知日志与独立游标 | 基础实现 |
+| Episode 总结方法                | 已实现   |
+| Markdown 长期与每日记忆         | 已实现   |
+| Nucleus 思考调度                | 已实现   |
+| 本地持久化与上下文总结          | 基础实现 |
+| AI SDK 多模态推理               | 基础实现 |
+| AI SDK 自主决策与行动           | 基础实现 |
 
 ## 开发
 
@@ -663,18 +664,18 @@ Ciel 当前解决的是“如何让 Agent 感受到世界”。后续可以继�
 
 ```mermaid
 flowchart LR
-  Percepts --> Vestigium
-  Vestigium --> Context
+  Percepts --> PerceptStore
+  PerceptStore --> Context
   Context --> Nucleus["Nucleus / Cognition"]
   Memory --> Nucleus
-  Vestigium --> MemoryAgents["Memory Agents"]
-  MemoryAgents --> Coordinator["Memory Coordinator"]
+  PerceptStore --> Summarizer["Episode summarizer"]
+  Summarizer --> Coordinator["Memory Coordinator"]
   Coordinator --> Memory
   Nucleus --> Will["Will / Decision"]
 ```
 
-当前 Vestigium 是进程内实现；后续会在保持同一 record/checkout/commit 契约的前提下接入持久化 evidence、可恢复队列和版本化 MemoryCoordinator。理解可以由多个只读子 Agent 并行完成，但长期记忆提交仍保持单写者、幂等和可审计。
+当前 PerceptStore 是进程内实现；后续会在保持同一 record/checkout/commit 契约的前提下接入持久化 evidence、可恢复队列和版本化 MemoryCoordinator。经历理解保持为可替换的方法，但长期记忆提交仍保持单写者、幂等和可审计。
 
-这些模块应消费 Vestigium 中的 `Sight`、`Hearing`、`Reading` 记录，而不是直接依赖直播流、图片 Buffer、音频编码或原始 `Script`。
+这些模块应消费 PerceptStore 中的 `Sight`、`Hearing`、`Reading` 记录，而不是直接依赖直播流、图片 Buffer、音频编码或原始 `Script`。
 
 最终目标是让 AI Agent 能够持续地看见、听见、记住并理解它所处的世界。

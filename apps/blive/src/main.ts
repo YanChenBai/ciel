@@ -2,13 +2,13 @@ import { fileURLToPath } from 'node:url';
 
 process.env.CIEL_DATA_DIR ??= fileURLToPath(new URL('../../../.ciel-data/', import.meta.url));
 
-const [
-  { Ciel, Memory, definePrompt },
-  { createBliveEmbeddingModel, createBliveLanguageModel },
-  { BilibiliLive },
-] = await Promise.all([import('@ciels/core'), import('./ai.ts'), import('./blive.ts')]);
+const [{ Ciel, Memory, definePrompt }, { createBliveAI }, { BilibiliLive }] = await Promise.all([
+  import('@ciels/core'),
+  import('./ai.ts'),
+  import('./blive.ts'),
+]);
 
-const roomId = 23369901;
+const roomId = 30568146;
 const defaultImageInterval = 60_000 / 9;
 const imageInterval = readOptionalPositiveNumber(process.env.BLIVE_IMAGE_INTERVAL);
 const live = new BilibiliLive({
@@ -16,10 +16,11 @@ const live = new BilibiliLive({
   ...(process.env.BLIVE_FFMPEG_PATH ? { ffmpegPath: process.env.BLIVE_FFMPEG_PATH } : {}),
   ...(imageInterval === undefined ? {} : { imageInterval }),
 });
-const model = createBliveLanguageModel();
+const { embedder, model } = createBliveAI();
 const memory = new Memory({
   path: fileURLToPath(new URL('../../../.ciel-data/memory.db', import.meta.url)),
-  embedder: createBliveEmbeddingModel(),
+  embedder,
+  resourceId: `blive:${roomId}`,
 });
 const ciel = new Ciel(live, {
   nucleus: {
@@ -36,6 +37,7 @@ const ciel = new Ciel(live, {
       你正在观察一个 Bilibili 直播间。
       结合 Hearing、Sight、近期情景与长期记忆理解正在发生的事情。
       只描述有依据的内容，区分事实与推测；没有值得表达的新信息时保持简短。
+      你需要和主播互动，需要返回像发送的弹幕。
       `),
     ],
   },
@@ -70,6 +72,7 @@ ciel.on('error', error => {
 ciel.on('thought', output => {
   console.log(`[thought] ${String(output)}`);
 });
+
 live.onError(error => {
   console.error(`[blive] ${error.stack ?? error.message}`);
 });

@@ -42,6 +42,16 @@ async function createMemory(recentDays = 2, persistent = false): Promise<Memory>
   return memory;
 }
 
+async function createSharedMemory(resourceId: string, databasePath: string): Promise<Memory> {
+  const memory = new Memory({
+    path: databasePath,
+    embedder: createEmbedder(),
+    resourceId,
+  });
+  memories.push(memory);
+  return memory;
+}
+
 afterEach(async () => {
   await Promise.all(memories.splice(0).map(memory => memory.close()));
   await Promise.all(temporaryDirectories.splice(0).map(removeTemporaryDirectory));
@@ -95,5 +105,24 @@ describe('Memory', () => {
 
     expect(recalled).toHaveLength(1);
     expect(recalled[0]?.content).toContain('黑猫');
+  });
+
+  it('使用 resourceId 隔离同一数据库中的长期记忆和每日经历', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'ciel-memory-'));
+    temporaryDirectories.push(root);
+    const databasePath = path.join(root, 'memory.db');
+    const first = await createSharedMemory('blive:100', databasePath);
+    const second = await createSharedMemory('blive:200', databasePath);
+
+    await first.updateLongTerm('一号直播间喜欢简洁回答。');
+    await second.updateLongTerm('二号直播间喜欢详细回答。');
+    await first.appendEpisode('一号直播间的每日经历。', new Date(2026, 7, 14, 10), 'episode:1');
+    await second.appendEpisode('二号直播间的每日经历。', new Date(2026, 7, 14, 11), 'episode:1');
+
+    expect(await first.readLongTerm()).toBe('一号直播间喜欢简洁回答。');
+    expect(await second.readLongTerm()).toBe('二号直播间喜欢详细回答。');
+    expect(await first.readRecent()).toContain('一号直播间的每日经历。');
+    expect(await first.readRecent()).not.toContain('二号直播间的每日经历。');
+    expect(await second.readRecent()).toContain('二号直播间的每日经历。');
   });
 });

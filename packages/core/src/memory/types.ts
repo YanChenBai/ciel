@@ -15,7 +15,7 @@ export interface MemoryOptions {
   /** 单次语义召回的默认结果数。 */
   readonly recallLimit?: number;
 
-  /** 跨日期 thread 共享记忆的主体标识。 */
+  /** 隔离长期记忆、每日经历、语义召回与幂等 ID 的资源标识。 */
   readonly resourceId?: string;
 }
 

@@ -6,14 +6,14 @@ import type { FilePart, TextPart, ToolSet } from 'ai';
 import { OculusComposer } from '#sensus';
 import { Context, createContextPrompt } from '#src/context/index.ts';
 import type { ContextSection } from '#src/context/index.ts';
-import { EpisodeAgent } from '#src/memory/index.ts';
-import type { EpisodeAgentInput, MemoryAgent } from '#src/memory/index.ts';
+import { summarizeEpisode } from '#src/memory/index.ts';
+import type { EpisodeSummarizer } from '#src/memory/index.ts';
 import { createMemoryTools } from '#src/memory/tool.ts';
+import { InMemoryPerceptStore } from '#src/percepts/index.ts';
 import type { Percept } from '#src/percepts/index.ts';
+import type { PerceptCheckout, PerceptRecord, PerceptStore } from '#src/percepts/index.ts';
 import type { Photon, SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
-import { Vestigium } from '#src/vestigium/index.ts';
-import type { VestigiumCheckout, VestigiumRecord, VestigiumStore } from '#src/vestigium/index.ts';
 import { definePrompt } from '#utils';
 
 import { VISION_FRAMES_PER_IMAGE } from './constants.ts';
@@ -55,7 +55,7 @@ const MEMORY_RULES = definePrompt(`
 const SUMMARY_RETRY_DELAY = 1_000;
 
 interface VisionBatch {
-  readonly data: readonly VestigiumRecord[];
+  readonly data: readonly PerceptRecord[];
   readonly signal: SignalConstructor<Photon>;
   readonly stimulus: Stimulus;
 }
@@ -68,9 +68,9 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private readonly signals: SignalConstructor[] = [];
   private readonly stimuli: Stimulus[] = [];
   private readonly context: Context;
-  private readonly vestigium: VestigiumStore;
+  private readonly perceptStore: PerceptStore;
   private readonly agent: NucleusAgent<TOutput>;
-  private readonly episodeAgent: MemoryAgent<EpisodeAgentInput, string>;
+  private readonly summarizeEpisode: EpisodeSummarizer;
   private readonly nucleusConsumer: string;
   private readonly memoryConsumer: string;
   private readonly sightComposer = new OculusComposer();
@@ -78,8 +78,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private startedAt = 0;
   private lastThinkAt?: number;
   private lastInputTokens = 0;
-  private dirty = false;
-  private urgent = false;
+  private speechEndPending = false;
   private timer?: ReturnType<typeof setTimeout>;
   private summaryTimer?: ReturnType<typeof setTimeout>;
   private inFlight?: Promise<TOutput>;
@@ -94,11 +93,12 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     super();
     this.options = normalizeNucleusOptions(options);
     this.context = new Context(this.signals, this.stimuli);
-    this.vestigium = options.vestigium ?? new Vestigium();
-    this.nucleusConsumer = this.vestigium.createConsumer('nucleus');
-    this.memoryConsumer = this.vestigium.createConsumer('memory');
+    this.perceptStore = options.perceptStore ?? new InMemoryPerceptStore();
+    this.nucleusConsumer = this.perceptStore.createConsumer('nucleus');
+    this.memoryConsumer = this.perceptStore.createConsumer('memory');
     this.agent = this.createAgent();
-    this.episodeAgent = options.memoryAgents?.episode ?? new EpisodeAgent(options.model);
+    this.summarizeEpisode =
+      options.summarizeEpisode ?? (input => summarizeEpisode(options.model, input));
   }
 
   private createAgent(): NucleusAgent<TOutput> {
@@ -147,12 +147,23 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
         this.signals.push(Signal);
       }
     }
-    this.vestigium.register(stimulus);
+    this.perceptStore.register(stimulus);
   }
 
   ingest(stimulus: Stimulus, percept: Percept): void {
-    this.vestigium.append(stimulus, percept);
+    this.perceptStore.append(stimulus, percept);
     this.scheduleSummary();
+  }
+
+  /**
+   * 标记 VAD 已完成一段语音，并按最小思考间隔合并连续触发。
+   */
+  speechEnd(): void {
+    if (this.state !== 'running') {
+      return;
+    }
+    this.speechEndPending = true;
+    this.schedule();
   }
 
   start(): void {
@@ -164,17 +175,9 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.startedAt = Date.now();
     this.lastThinkAt = undefined;
     this.lastInputTokens = 0;
-    this.dirty = this.vestigium.hasUnread(
-      this.nucleusConsumer,
-      record => this.resolveTriggerMode(record) !== 'passive',
-    );
-    this.urgent = false;
-    this.unsubscribe = this.vestigium.on('append', record => {
-      const mode = this.resolveTriggerMode(record);
-      if (mode !== 'passive') this.dirty = true;
-      if (mode === 'immediate') this.urgent = true;
+    this.speechEndPending = false;
+    this.unsubscribe = this.perceptStore.on('append', () => {
       this.scheduleSummary();
-      this.schedule();
     });
     this.scheduleSummary();
     this.schedule();
@@ -197,8 +200,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       await this.summarizeMemory();
     } finally {
       this.state = 'idle';
-      this.dirty = false;
-      this.urgent = false;
+      this.speechEndPending = false;
       this.lastThinkAt = undefined;
       this.lastInputTokens = 0;
     }
@@ -209,7 +211,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   async getContext(createdAt: Date = new Date()): Promise<NucleusContext> {
-    const records = this.vestigium
+    const records = this.perceptStore
       .snapshot(createdAt, this.options.context.perceptWindow)
       .records.toSorted(
         (left, right) =>
@@ -246,11 +248,10 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   private async execute(trigger: NucleusTrigger): Promise<TOutput> {
-    this.dirty = false;
-    this.urgent = false;
+    this.speechEndPending = false;
     try {
       const [checkout, longTermMemory, recentMemory] = await Promise.all([
-        Promise.resolve(this.vestigium.checkout(this.nucleusConsumer)),
+        Promise.resolve(this.perceptStore.checkout(this.nucleusConsumer)),
         this.options.memory.readLongTerm(),
         this.options.memory.readRecent(),
       ]);
@@ -291,14 +292,14 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
         messages: await resolveNucleusMessages(input, this.options.messages, prompt),
         options: { input, prompt },
       });
-      this.vestigium.commit(checkout);
-      this.compactVestigium();
+      this.perceptStore.commit(checkout);
+      this.compactPerceptStore();
       this.lastInputTokens = result.usage.inputTokens ?? estimatedImageTokens;
       const output = result.output as TOutput;
       this.emit('thought', output, input);
       return output;
     } catch (error) {
-      this.dirty = this.vestigium.hasUnread(this.nucleusConsumer);
+      if (trigger === 'speech-end') this.speechEndPending = true;
       const normalized = toError(error);
       this.emit('error', normalized);
       throw normalized;
@@ -320,7 +321,11 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   private requestSummary(): void {
-    if (this.inFlight || this.summaryInFlight || !this.vestigium.hasUnread(this.memoryConsumer)) {
+    if (
+      this.inFlight ||
+      this.summaryInFlight ||
+      !this.perceptStore.hasUnread(this.memoryConsumer)
+    ) {
       return;
     }
     this.clearTimer();
@@ -337,23 +342,32 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   private async summarizeMemory(): Promise<void> {
-    const checkout = this.vestigium.checkout(this.memoryConsumer);
-    const data = await this.resolveArchiveData(checkout.records);
-    if (data.length === 0) {
-      this.vestigium.commit(checkout);
+    const checkout = this.perceptStore.checkout(this.memoryConsumer);
+    if (checkout.records.length === 0) {
+      this.perceptStore.commit(checkout);
       return;
     }
-    const summary = await this.summarize(data);
-    if (!summary) throw new Error('EpisodeAgent returned an empty summary');
-    const createdAt = new Date(Math.max(...data.map(entry => entry.time.endAt.getTime())));
-    await this.options.memory.appendEpisode(
-      summary,
-      createdAt,
-      `vestigium:${checkout.consumerId}:${checkout.fromSequence}-${checkout.throughSequence}`,
-    );
-    this.vestigium.commit(checkout);
-    this.summaryRetryAt = undefined;
-    this.compactVestigium();
+    try {
+      const data = await this.resolveArchiveData(checkout.records);
+      if (data.length === 0) {
+        this.perceptStore.commit(checkout);
+        return;
+      }
+      const summary = await this.summarize(data);
+      if (!summary) throw new Error('Episode summarizer returned an empty summary');
+      const createdAt = new Date(Math.max(...data.map(entry => entry.time.endAt.getTime())));
+      await this.options.memory.appendEpisode(
+        summary,
+        createdAt,
+        `percept-store:${checkout.consumerId}:${checkout.fromSequence}-${checkout.throughSequence}`,
+      );
+      this.perceptStore.commit(checkout);
+      this.summaryRetryAt = undefined;
+      this.compactPerceptStore();
+    } catch (error) {
+      const normalized = toError(error);
+      throw normalized;
+    }
   }
 
   private async summarize(data: readonly ContextData[]): Promise<string> {
@@ -384,7 +398,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       }
     }
 
-    return this.episodeAgent.run({ content });
+    return this.summarizeEpisode({ content });
   }
 
   private async estimateImageTokens(data: readonly ContextData[]): Promise<number> {
@@ -421,21 +435,15 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     const now = Date.now();
     const anchor = this.lastThinkAt ?? this.startedAt;
     let dueAt = anchor + this.options.maxThinkInterval;
-    if (this.urgent) {
-      dueAt = now;
-    } else if (this.dirty && this.lastThinkAt === undefined) {
-      dueAt = now;
-    } else if (this.dirty) {
-      dueAt = anchor + this.options.minThinkInterval;
+    if (this.speechEndPending) {
+      // 第一段语音可立即触发；后续语音至少与上一次思考相隔 minThinkInterval。
+      dueAt = this.lastThinkAt === undefined ? now : anchor + this.options.minThinkInterval;
     }
 
     this.timer = setTimeout(
       () => {
         this.timer = undefined;
-        let trigger: NucleusTrigger = 'interval';
-        if (this.dirty) {
-          trigger = 'percept';
-        }
+        const trigger: NucleusTrigger = this.speechEndPending ? 'speech-end' : 'interval';
         void this.requestThink(trigger).catch(() => undefined);
       },
       Math.max(0, dueAt - now),
@@ -446,12 +454,12 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.clearSummaryTimer();
     if (
       this.state !== 'running' ||
-      !this.vestigium.hasUnread(this.memoryConsumer) ||
+      !this.perceptStore.hasUnread(this.memoryConsumer) ||
       this.summaryInFlight
     ) {
       return;
     }
-    const lastIngestAt = this.vestigium.lastAppendAt;
+    const lastIngestAt = this.perceptStore.lastAppendAt;
     if (lastIngestAt === undefined) {
       return;
     }
@@ -484,8 +492,8 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.summaryTimer = undefined;
   }
 
-  private async resolveCheckout(checkout: VestigiumCheckout): Promise<NucleusContext> {
-    const recent = this.vestigium
+  private async resolveCheckout(checkout: PerceptCheckout): Promise<NucleusContext> {
+    const recent = this.perceptStore
       .snapshot(checkout.createdAt, this.options.context.perceptWindow)
       .records.filter(
         record => record.sequence <= checkout.throughSequence && record.content.type === 'text',
@@ -533,13 +541,13 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   private createVisionBatches(
-    records: readonly VestigiumRecord[],
+    records: readonly PerceptRecord[],
     limit: number = this.options.context.maxImages,
   ): readonly VisionBatch[] {
     if (limit === 0) return [];
 
     const sources: Array<{
-      data: VestigiumRecord[];
+      data: PerceptRecord[];
       signal: SignalConstructor<Photon>;
       stimulus: Stimulus;
     }> = [];
@@ -594,8 +602,8 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   private async resolveArchiveData(
-    records: readonly VestigiumRecord[],
-  ): Promise<readonly VestigiumRecord[]> {
+    records: readonly PerceptRecord[],
+  ): Promise<readonly PerceptRecord[]> {
     const texts = records.filter(record => record.content.type === 'text');
     const images = await Promise.all(
       this.createVisionBatches(records, Math.max(1, this.options.context.maxImages)).map(
@@ -621,7 +629,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
               ...first,
               content: {
                 type: 'text' as const,
-                text: `[视觉证据不可读取；Vestigium sequence: ${batch.data
+                text: `[视觉证据不可读取；PerceptStore sequence: ${batch.data
                   .map(record => record.sequence)
                   .join(', ')}]`,
               },
@@ -637,14 +645,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     );
   }
 
-  private compactVestigium(): void {
-    this.vestigium.compact(new Date(), this.options.context.perceptWindow);
-  }
-
-  private resolveTriggerMode(record: VestigiumRecord): 'immediate' | 'scheduled' | 'passive' {
-    return (
-      this.options.triggerPolicy?.(record) ??
-      (record.percept.type === 'hearing' ? 'immediate' : 'scheduled')
-    );
+  private compactPerceptStore(): void {
+    this.perceptStore.compact(new Date(), this.options.context.perceptWindow);
   }
 }

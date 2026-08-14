@@ -3,7 +3,7 @@ import type { ContextPrompt, ContextPromptInput } from './types.ts';
 
 const TRIGGER_NAMES = {
   manual: '手动触发',
-  percept: '感知更新',
+  'speech-end': '语音结束',
   interval: '主动思考',
 } as const;
 

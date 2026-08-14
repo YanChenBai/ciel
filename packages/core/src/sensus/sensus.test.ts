@@ -17,6 +17,7 @@ vi.mock('./auris.ts', async () => {
     Auris: class extends EventHost<{
       data(data: unknown): void;
       error(error: Error): void;
+      speechend(at: Date): void;
     }> {
       constructor(signal: unknown) {
         super();
@@ -25,6 +26,7 @@ vi.mock('./auris.ts', async () => {
 
       process(signal: unknown): void {
         capabilityState.echoes.push(signal);
+        this.emit('speechend', new Date(1));
       }
 
       close(): void {
@@ -79,11 +81,13 @@ describe('Sensus', () => {
   it('unifies all declared sensory capabilities', async () => {
     const sensus = new Sensus({ signals });
     const readings: Reading[] = [];
+    const speechEnds: Date[] = [];
     sensus.on('data', percept => {
       if (percept.type === 'reading') {
         readings.push(percept);
       }
     });
+    sensus.on('speechend', at => speechEnds.push(at));
 
     const echo = new TestEcho({
       data: Buffer.alloc(2),
@@ -113,7 +117,7 @@ describe('Sensus', () => {
       timestamp: script.timestamp,
       originSignal: TestScript,
     });
-
+    expect(speechEnds).toEqual([new Date(1)]);
     await sensus.close();
     expect(capabilityState.flushes).toBe(1);
   });
