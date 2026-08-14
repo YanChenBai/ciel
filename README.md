@@ -251,7 +251,7 @@ Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signa
 
 ### Vestigium、Context、Memory 与 Nucleus
 
-四层保持单一职责：Vestigium 记录感知事实；Context 将指定 checkout 投影成模型输入；Memory 保存长期事实和 Episode；Nucleus 负责思考、工具与调度。Ciel 提供可由子类覆盖的 `Soul` 与 `IDENTITY` 纯文本，Context 统一添加标题：
+四层保持单一职责：Vestigium 记录感知事实；Context 将指定 checkout 投影成模型输入；Memory 保存长期事实和 Episode；Nucleus 负责思考、工具与调度。Ciel 提供可由子类覆盖的 `Soul` 与 `Identity` 纯文本，Context 统一添加标题：
 
 ```text
 # SOUL
@@ -305,7 +305,7 @@ const stimulus = new LiveStimulus();
 
 class LiveCiel extends Ciel {
   protected override readonly Soul = '你是夏尔。保持理性、温和与好奇。';
-  protected override readonly IDENTITY = [
+  protected override readonly Identity = [
     '名字：夏尔',
     '形象：暂无固定形象',
     '身份：长期陪伴用户的认知主体',
@@ -363,7 +363,7 @@ Nucleus 只区分内部内容与应用自定义内容，并按顺序直接拼接
 - `messages`：追加在内部实时消息后的应用自定义 `ModelMessage`；
 - `tools`：真实行动能力；具有外部副作用的工具应按需配置 AI SDK `toolApproval`。
 
-`Soul`、`IDENTITY`、全局记忆、`Stimulus.meta`、`Signal.meta` 和 `system` 都会进入 system，因此只应包含受信任内容；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 注入。
+`Soul`、`Identity`、全局记忆、`Stimulus.meta`、`Signal.meta` 和 `system` 都会进入 system，因此只应包含受信任内容；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 注入。
 
 ### Sensus
 

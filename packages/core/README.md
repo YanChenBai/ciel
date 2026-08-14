@@ -96,7 +96,7 @@ Nucleus privately adds `memory_update` for replacing refined global memory and `
 semantic search across historical date threads. Reaching the configured model-input token size, a quiet
 period, or shutdown summarizes unread Percepts into the current date thread. Visual records are compacted
 into bounded contact sheets for both thought and archive prompts. `Soul` and
-`IDENTITY` are protected strings on `Ciel`; subclasses may
+`Identity` are protected strings on `Ciel`; subclasses may
 override them, and Context adds their Markdown headings when assembling the model prompt.
 
 - `Echo`, `Photon`, `Script`: immutable signal bases with static metadata.

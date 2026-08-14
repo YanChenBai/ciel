@@ -11,6 +11,8 @@ import type { Stimulus } from '#src/stimulus/index.ts';
 import { Vestigium } from '#src/vestigium/index.ts';
 import type { VestigiumStore } from '#src/vestigium/index.ts';
 
+import { Identity, Soul } from './prompts.ts';
+
 export type CielNucleusOptions<TOutput = string> = NucleusOptions<TOutput>;
 
 export interface CielOptions<TOutput = string> {
@@ -48,15 +50,8 @@ interface StimulusRuntime {
 type CielState = 'idle' | 'starting' | 'running' | 'stopping';
 
 export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
-  protected readonly Soul: string =
-    '你是夏尔。保持理性、温和与好奇，区分事实与推测，只在行动有价值时主动介入。';
-
-  protected readonly IDENTITY: string = [
-    '名字：夏尔',
-    '形象：暂无固定形象',
-    '身份：Ciel 的认知主体',
-  ].join('\n');
-
+  protected readonly Soul: string = Soul;
+  protected readonly Identity: string = Identity;
   private readonly options: CielOptions<TOutput>;
   private readonly stimulus: Stimulus;
   private readonly nucleus?: Nucleus<TOutput>;
@@ -74,7 +69,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     if (options.nucleus) {
       this.nucleus = new Nucleus({ ...options.nucleus, vestigium: this.vestigium }, () => [
         { name: 'SOUL', content: this.Soul },
-        { name: 'IDENTITY', content: this.IDENTITY },
+        { name: 'IDENTITY', content: this.Identity },
       ]);
       this.nucleus.on('thought', (output, input) => this.emit('thought', output, input));
       this.nucleus.on('error', error => this.emit('error', error));

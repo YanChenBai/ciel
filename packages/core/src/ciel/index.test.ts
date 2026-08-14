@@ -58,7 +58,7 @@ const { Ciel } = await import('./index.ts');
 
 class CustomCiel extends Ciel {
   protected override readonly Soul = '测试中的内在定义';
-  protected override readonly IDENTITY = '名字：测试夏尔';
+  protected override readonly Identity = '名字：测试夏尔';
 }
 
 const memories: Memory[] = [];
