@@ -48,6 +48,7 @@ const ciel = new Ciel(live, {
     memory: new Memory({
       path: '.ciel-data/memory.db',
       embedder: embeddingModel,
+      model,
     }),
   },
   oculus: {

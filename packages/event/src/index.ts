@@ -13,6 +13,34 @@ export type EventMap<Events> = {
 export type Unsubscribe = () => void;
 
 /**
+ * 将事件名称映射为对应的订阅方法
+ */
+export type EventSubscriptions<Events extends EventMap<Events>> = {
+  readonly [Event in keyof Events]: (listener: Events[Event]) => Unsubscribe;
+};
+
+/**
+ * 将事件名称映射为对应的同步触发方法
+ */
+export type EventEmissions<Events extends EventMap<Events>> = {
+  readonly [Event in keyof Events]: (...args: Parameters<Events[Event]>) => void;
+};
+
+/**
+ * 筛选源与目标中名称相同且参数兼容的事件
+ */
+export type InheritableEvents<
+  TargetEvents extends EventMap<TargetEvents>,
+  SourceEvents extends EventMap<SourceEvents>,
+> = {
+  [Event in keyof TargetEvents & keyof SourceEvents]: Parameters<
+    SourceEvents[Event]
+  > extends Parameters<TargetEvents[Event]>
+    ? Event
+    : never;
+}[keyof TargetEvents & keyof SourceEvents];
+
+/**
  * 将任意抛出值规范化为 Error
  */
 export function toError(error: unknown): Error {
@@ -117,6 +145,26 @@ export abstract class EventHost<Events extends EventMap<Events>> {
   private readonly emitter = new EventEmitter<Events>();
 
   /**
+   * 按事件名称订阅该 Host 的事件
+   */
+  readonly $on = this.createSubscriptions((event, listener) => this.on(event, listener));
+
+  /**
+   * 按事件名称订阅只会执行一次的 Host 事件
+   */
+  readonly $once = this.createSubscriptions((event, listener) => this.once(event, listener));
+
+  /**
+   * 按事件名称同步触发 Host 事件
+   */
+  protected readonly $emit = new Proxy({} as EventEmissions<Events>, {
+    get:
+      (_target, event) =>
+      (...args: Parameters<Events[keyof Events]>) =>
+        this.emitter.emit(event as keyof Events, ...args),
+  });
+
+  /**
    * 订阅该 Host 的事件
    */
   on<Event extends keyof Events>(event: Event, listener: Events[Event]): Unsubscribe {
@@ -162,5 +210,32 @@ export abstract class EventHost<Events extends EventMap<Events>> {
    */
   protected clearEvents<Event extends keyof Events>(event?: Event): void {
     this.emitter.clear(event);
+  }
+
+  /**
+   * 将另一个事件源中名称与参数兼容的事件转发为当前 Host 的事件
+   */
+  protected inheritEvents<SourceEvents extends EventMap<SourceEvents>>(
+    source: EventHost<SourceEvents>,
+    ...events: InheritableEvents<Events, SourceEvents>[]
+  ): Unsubscribe {
+    const unsubscribes = events.map(event =>
+      source.on(event, ((...args: Parameters<SourceEvents[typeof event]>) => {
+        this.emitter.emit(event, ...(args as unknown as Parameters<Events[typeof event]>));
+      }) as SourceEvents[typeof event]),
+    );
+    return () => unsubscribes.forEach(unsubscribe => unsubscribe());
+  }
+
+  /**
+   * 创建按事件名称访问的订阅方法集合
+   */
+  private createSubscriptions(
+    subscribe: <Event extends keyof Events>(event: Event, listener: Events[Event]) => Unsubscribe,
+  ): EventSubscriptions<Events> {
+    return new Proxy({} as EventSubscriptions<Events>, {
+      get: (_target, event) => (listener: Events[keyof Events]) =>
+        subscribe(event as keyof Events, listener),
+    });
   }
 }

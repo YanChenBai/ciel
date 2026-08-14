@@ -64,11 +64,6 @@ vi.mock('#sensus', async () => {
 
 const { Ciel } = await import('./index.ts');
 
-class CustomCiel extends Ciel {
-  protected override readonly Soul = '测试中的内在定义';
-  protected override readonly Identity = '名字：测试夏尔';
-}
-
 const memories: Memory[] = [];
 
 function createEmbedder(): MockEmbeddingModelV3 {
@@ -84,6 +79,7 @@ async function createMemory(): Promise<Memory> {
   const memory = new Memory({
     path: ':memory:',
     embedder: createEmbedder(),
+    model: createModel('经历摘要'),
   });
   memories.push(memory);
   return memory;
@@ -214,7 +210,9 @@ describe('Ciel', () => {
 
     await ciel.start();
     const context = await ciel.getContext();
-    expect(context.definitions.filter(definition => definition.kind === 'scene')).toHaveLength(1);
+    expect(context.definitions.filter(definition => definition.kind === 'stimulus')).toHaveLength(
+      1,
+    );
     expect(context.data).toHaveLength(1);
     expect(context.data[0]?.stimulus).toBe(stimulus);
     await ciel.stop();
@@ -223,11 +221,14 @@ describe('Ciel', () => {
   it('owns one Nucleus and forwards its thoughts', async () => {
     const stimulus = new TestStimulus();
     const model = createModel();
-    const ciel = new CustomCiel(stimulus, {
+    const ciel = new Ciel(stimulus, {
       nucleus: {
+        agent: '测试中的行为定义',
         context: { perceptWindow: Number.MAX_SAFE_INTEGER },
+        identity: '名字：测试夏尔',
         memory: await createMemory(),
         model,
+        soul: '测试中的内在定义',
       },
     });
     const thoughts: unknown[] = [];
@@ -240,10 +241,9 @@ describe('Ciel', () => {
 
     expect(thoughts).toContain('保持安静');
     const prompt = JSON.stringify(model.doGenerateCalls[0]?.prompt);
-    expect(prompt).toContain('# SOUL');
     expect(prompt).toContain('测试中的内在定义');
-    expect(prompt).toContain('# IDENTITY');
     expect(prompt).toContain('名字：测试夏尔');
+    expect(prompt).toContain('测试中的行为定义');
 
     await ciel.stop();
   });

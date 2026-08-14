@@ -3,8 +3,9 @@ import { EventHost, toError } from '@ciels/event';
 
 import { Sensus } from '#sensus';
 import type { SensusLectioOptions, SensusOculusOptions } from '#sensus';
+import type { ContextInput, ContextSnapshot } from '#src/context/index.ts';
 import { Nucleus } from '#src/nucleus/index.ts';
-import type { NucleusContext, NucleusInput, NucleusOptions } from '#src/nucleus/index.ts';
+import type { NucleusOptions } from '#src/nucleus/index.ts';
 import { InMemoryPerceptStore } from '#src/percepts/index.ts';
 import type { Percept } from '#src/percepts/index.ts';
 import type { Signal } from '#src/signals/index.ts';
@@ -23,7 +24,7 @@ export interface CielOptions<TOutput = string> {
 export interface CielEventMap<TOutput = string> {
   data(data: Percept): void;
   error(error: Error): void;
-  thought(output: TOutput, input: NucleusInput): void;
+  thought(output: TOutput, input: ContextInput): void;
 }
 
 interface StimulusRuntime {
@@ -48,8 +49,6 @@ interface StimulusRuntime {
 type CielState = 'idle' | 'starting' | 'running' | 'stopping';
 
 export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
-  protected readonly Soul: string = Soul;
-  protected readonly Identity: string = Identity;
   private readonly options: CielOptions<TOutput>;
   private readonly stimulus: Stimulus;
   private readonly nucleus: Nucleus<TOutput>;
@@ -64,16 +63,17 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     this.options = options;
     this.perceptStore = new InMemoryPerceptStore();
     this.perceptStore.register(stimulus);
-    this.nucleus = new Nucleus({ ...options.nucleus, perceptStore: this.perceptStore }, () => [
-      { name: 'SOUL', content: this.Soul },
-      { name: 'IDENTITY', content: this.Identity },
-    ]);
-    this.nucleus.on('thought', (output, input) => this.emit('thought', output, input));
-    this.nucleus.on('error', error => this.emit('error', error));
+    this.nucleus = new Nucleus({
+      soul: Soul,
+      identity: Identity,
+      ...options.nucleus,
+      perceptStore: this.perceptStore,
+    });
+    this.inheritEvents(this.nucleus, 'thought', 'error');
     this.nucleus.register(stimulus);
   }
 
-  getContext(): Promise<NucleusContext> {
+  getContext(): Promise<ContextSnapshot> {
     return this.nucleus.getContext();
   }
 
@@ -134,7 +134,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
         this.emit('data', percept);
       }),
       runtime.sensus.on('speechend', () => this.nucleus.speechEnd()),
-      runtime.sensus.on('error', error => this.emit('error', error)),
+      this.inheritEvents(runtime.sensus, 'error'),
       runtime.stimulus.on('data', signal => this.dispatch(runtime, signal)),
     );
   }

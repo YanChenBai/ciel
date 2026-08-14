@@ -1,6 +1,10 @@
-import type { Percept } from '#src/percepts/index.ts';
+import type { ModelMessage } from 'ai';
 
-export type ContextDefinitionKind = 'scene' | 'signal';
+import type { PerceptRecord } from '#src/percepts/index.ts';
+
+type MaybePromise<T> = T | Promise<T>;
+
+export type ContextDefinitionKind = 'stimulus' | 'signal';
 
 export interface ContextDefinition {
   readonly kind: ContextDefinitionKind;
@@ -13,25 +17,34 @@ export interface ContextTime {
   readonly endAt: Date;
 }
 
-export type ContextPromptPart =
-  | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'image'; readonly path: string };
-
 export type ContextTrigger = 'manual' | 'speech-end' | 'interval';
 
-export interface ContextSection {
-  readonly name: string;
-  readonly content: string;
+/** 对外可观察的原始上下文快照，不包含任何模型提示词。 */
+export interface ContextSnapshot {
+  readonly createdAt: Date;
+  readonly definitions: readonly ContextDefinition[];
+  readonly data: readonly PerceptRecord[];
 }
 
-export interface ContextPromptInput {
+export interface ContextInput extends ContextSnapshot {
   readonly trigger: ContextTrigger;
-  readonly sections?: readonly ContextSection[];
-  readonly inputSections?: readonly ContextSection[];
-  readonly percepts: readonly Percept[];
 }
 
-export interface ContextPrompt {
-  readonly system: readonly string[];
-  readonly input: readonly ContextPromptPart[];
+export type ContextMessage = (
+  input: ContextInput,
+) => MaybePromise<ModelMessage | readonly ModelMessage[]>;
+
+/** Context 唯一对模型暴露的最终输入。 */
+export interface ModelContext {
+  readonly system: string;
+  readonly messages: readonly ModelMessage[];
+}
+
+export interface ContextBuildInput {
+  readonly input: ContextInput;
+  readonly internalSystem?: readonly string[];
+  readonly longTermMemory: string;
+  readonly recentMemory?: string;
+  readonly system?: readonly string[];
+  readonly messages?: readonly ContextMessage[];
 }

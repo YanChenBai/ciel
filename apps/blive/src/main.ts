@@ -8,7 +8,7 @@ const [{ Ciel, Memory, definePrompt }, { createBliveAI }, { BilibiliLive }] = aw
   import('./blive.ts'),
 ]);
 
-const roomId = 30568146;
+const roomId = 25971921;
 const defaultImageInterval = 60_000 / 9;
 const imageInterval = readOptionalPositiveNumber(process.env.BLIVE_IMAGE_INTERVAL);
 const live = new BilibiliLive({
@@ -20,6 +20,7 @@ const { embedder, model } = createBliveAI();
 const memory = new Memory({
   path: fileURLToPath(new URL('../../../.ciel-data/memory.db', import.meta.url)),
   embedder,
+  model,
   resourceId: `blive:${roomId}`,
 });
 const ciel = new Ciel(live, {

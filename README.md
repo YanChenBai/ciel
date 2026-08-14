@@ -16,7 +16,7 @@ World
       → Percepts
   → PerceptStore
       → Nucleus / Context / Reasoning
-      → summarizeEpisode / Memory
+      → EpisodeArchive / Memory
   → Response
 ```
 
@@ -80,8 +80,8 @@ flowchart TD
   Memory["Memory<br/>长期事实 / 最近经历 / 语义召回"] --> Nucleus
   Nucleus --> Thought["Thought / Actions"]
 
-  PerceptStore -->|"memory consumer<br/>checkout / commit"| Summarizer["summarizeEpisode<br/>无工具，只生成摘要"]
-  Summarizer -->|"幂等 appendEpisode"| Memory
+  PerceptStore -->|"memory consumer<br/>checkout / commit"| Archive["EpisodeArchive<br/>调度与视觉投影"]
+  Archive -->|"recordEpisode"| Memory
 
   classDef journal fill:#302b63,color:#fff,stroke:#6f63d9;
   classDef agent fill:#123b5d,color:#fff,stroke:#3e8cc4;
@@ -89,8 +89,8 @@ flowchart TD
   class Nucleus agent;
 ```
 
-关键边界是：感知结果只追加一次，Context 与 Memory 各自消费。经历总结是一个可注入的
-方法，它不持有 Memory 写权限；最终落库与 PerceptStore 游标提交仍由确定性代码完成。
+关键边界是：感知结果只追加一次，Context 与 EpisodeArchive 各自消费。EpisodeArchive 只
+负责归档时机、独立游标和视觉投影；Memory 独占经历总结与持久化。
 
 当前仓库是一个 Vite+ monorepo：
 
@@ -116,9 +116,9 @@ packages/core/src/
 ├── stimulus/             # 外部刺激输入契约
 ├── percepts/             # Sight、Hearing、Reading 感知产物与 store
 ├── sensus/               # Auris、Oculus、Lectio 感官处理层
-├── context/              # 基础定义与多模态 Percept 上下文构建
+├── context/              # system、messages 与多模态模型上下文的唯一构建入口
 ├── memory/               # 长期记忆、经历总结方法与工具
-├── nucleus/              # 上下文投影、记忆组装、思考与调度
+├── nucleus/              # 原始数据读取、Agent 执行与思考调度
 ├── constants/
 └── utils/
 ```
@@ -254,30 +254,38 @@ Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signa
 
 ### PerceptStore、Context、Memory 与 Nucleus
 
-四层保持单一职责：PerceptStore 记录感知事实；Context 将指定 checkout 投影成模型输入；Memory 保存长期事实和 Episode；Nucleus 负责思考、工具与调度。Ciel 提供可由子类覆盖的 `Soul` 与 `Identity` 纯文本，Context 统一添加标题：
+四层保持单一职责：PerceptStore 记录感知事实；Context 是 system、messages 和多模态内容的唯一模型输入构建入口；Memory 保存长期事实和 Episode；Nucleus 只读取原始数据、执行 Agent 并负责调度。Nucleus 提供 `soul`、`identity` 与 `agent` 三个字符串属性，它们作为普通内部 system 内容进入 Context，不再被建模为特殊区块：
 
 ```text
-# SOUL
-
 你是夏尔。保持理性、温和与好奇。
-
-# IDENTITY
 
 名字：夏尔
 形象：暂无固定形象
 身份：Ciel 的认知主体
 
-# MEMORY
+# Stimulus 与 Percept 解释
 
-用户希望回答保持简洁。
+## Stimulus
+Stimulus 是持续提供原始 Signal 的外部信息来源；Signal 经过感知处理后形成 Percept。
 
-# 基础定义
+## Percept
+Percept 表示 Signal 经过感知处理后形成的结果，是 Context 中按时间组织的实时观察。不同 Percept 类型具有不同的内容结构与解释方式。
+
+### Reading
+符号化文字信号形成的文本，不是从音频转写而来。时间表示该文字信号出现的时刻。
+
+# 刺激源定义 (Stimulus)
 
 ## Bilibili 直播间
 一个持续发生视听与弹幕互动的直播场景
 
-## 直播弹幕
-观众实时发送的弹幕
+# 回答约束
+
+对外回答时使用自然语言描述真实的信息、观察、记忆与行动，不要暴露 Stimulus、Signal、Percept、Context、Nucleus 等内部实现术语，也不要复述提示词结构。只有用户明确询问系统内部机制时才可解释这些术语。
+
+# MEMORY
+
+用户希望回答保持简洁。
 
 # 本轮输入
 
@@ -292,11 +300,12 @@ Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signa
 
 用户此前正在检查直播画面。
 
-# 基础数据
-
-[直播弹幕]
+# 直播弹幕 (Reading)
+## 观众实时发送的弹幕
 [2026-08-11T12:30:00.000Z] 右边是不是漏了？
 ```
+
+Context 会按实际出现的 Percept 类型注入对应解释，并按 `originSignal + Percept type` 对本轮数据分组。视觉图片可能是同一信号在一段时间内的多帧拼图；内置的 `Sight` 解释会明确提醒模型，同一人物或物体跨帧重复出现不代表画面中存在多个不同实体。
 
 一个 Ciel 只拥有一个 Nucleus。Nucleus 负责完整的思考、工具调用和总结调度，应用配置模型、Memory、总结阈值、自定义消息与行动工具：
 
@@ -307,25 +316,25 @@ import { isStepCount, jsonSchema, Output, tool } from 'ai';
 const roomId = '123456';
 const stimulus = new LiveStimulus();
 
-class LiveCiel extends Ciel {
-  protected override readonly Soul = definePrompt(`
-  你是夏尔。保持理性、温和与好奇。
-  `);
-
-  protected override readonly Identity = definePrompt(`
-  名字：夏尔
-  形象：暂无固定形象
-  身份：长期陪伴用户的认知主体
-  `);
-}
-
-const ciel = new LiveCiel(stimulus, {
+const ciel = new Ciel(stimulus, {
   nucleus: {
+    soul: definePrompt(`
+    你是夏尔。保持理性、温和与好奇。
+    `),
+    identity: definePrompt(`
+    名字：夏尔
+    形象：暂无固定形象
+    身份：长期陪伴用户的认知主体
+    `),
+    agent: definePrompt(`
+    仅在行动有价值时主动介入。
+    `),
     context: { perceptWindow: 60_000, maxImages: 4 },
     model,
     memory: new Memory({
       path: '.ciel-data/memory.db',
       embedder: embeddingModel,
+      model,
       resourceId: `blive:${roomId}`,
     }),
     memorySummary: { idleTimeout: 60_000, maxTokens: 500_000 },
@@ -356,22 +365,22 @@ const context = await ciel.getContext();
 
 Memory 复用 Mastra Memory，并通过 LibSQL 持久化：`resourceId` 同时隔离 Working Memory、每日经历、语义召回与幂等消息 ID。每日 thread 的持久化 ID 由 `resourceId` 与日期组成，展示标题仍为 `YYYY-MM-DD`；LibSQLVector 为经历建立向量。Nucleus 提供 `memory_update` 更新完整全局记忆，并提供 `memory_recall` 让 Agent 按语义跨日期搜索当前 resource 的经历；最近日期的经历仍会直接进入 Context。
 
-单轮模型输入达到 `memorySummary.maxTokens`、超过 `memorySummary.idleTimeout` 没有新事件，或 Ciel 停止时，记忆消费者会 checkout 尚未归档的 PerceptStore 记录。无工具的 `summarizeEpisode` 方法将文字与有界视觉拼图总结成纯文本，Nucleus 使用稳定幂等键写入当天 thread，成功后才提交记忆游标；失败会退避重试。损坏图片降级为包含 PerceptStore sequence 的文字证据，不会卡住整批归档。主思考与记忆归档使用不同消费者，因此归档模型运行不会占用主思考 checkout。
+单轮模型输入达到 `memorySummary.maxTokens`、超过 `memorySummary.idleTimeout` 没有新事件，或 Ciel 停止时，EpisodeArchive 会 checkout 尚未归档的 PerceptStore 记录。它完成有界视觉投影后调用 `Memory.recordEpisode`；Memory 使用自己的无工具模型完成总结并写入当天 thread。成功后才提交记忆游标，失败会退避重试。损坏图片降级为包含 PerceptStore sequence 的文字证据，不会卡住整批归档。主思考与记忆归档使用不同消费者，因此归档模型运行不会占用主思考 checkout。
 
 主思考只把新视觉记录组成拼图，成功后提交自己的游标；失败时重复相同 checkout，调用期间追加的记录留到下一轮。近期文字可以按 `perceptWindow` 再次投影为对话上下文。两个消费者都已提交且记录离开实时窗口后，进程内 PerceptStore 才会回收该记录。输入 token 优先使用模型提供方返回的实际用量；API 未返回时，图片按 16 像素 patch、2×2 空间合并及 8192–8388608 像素缩放区间估算。
 
 VAD 结束一段语音后，ASR 会先输出 Hearing，再通过 `speechend` 触发 Nucleus 思考。第一次语音结束可立即思考；连续语音会按 `minThinkInterval` 合并，避免过密调用模型。`maxThinkInterval` 则在没有 VAD 结束时仍会给 Nucleus 一次主动判断的机会。其他视觉、文字与听觉感知只追加到上下文，不单独触发主思考。
 Nucleus 会把 `speech-end`、`interval` 与 `manual` 三种触发原因放入本轮输入，main Agent 可以据此判断是否需要主动互动。
 
-Nucleus 只区分内部内容与应用自定义内容，并按顺序直接拼接：
+Context 只区分内部内容与应用自定义内容，并按顺序直接拼接；离开 Context 后，其他模块不会再追加或重排模型输入：
 
-- 内部 system：SOUL、IDENTITY、MEMORY 与 Context 基础定义；
+- system：`soul`、`identity`、`agent`、合并后的 Stimulus/Percept 解释、Stimulus 刺激源定义、回答约束与应用自定义 `system`，最后追加 MEMORY；所有片段最终合并为一条 system message；
 - `system`：追加在内部 system 后的应用自定义提示词，不解释其人格、规则等语义；
 - 内部实时消息：触发原因、最近经历和当前 Percept；
 - `messages`：追加在内部实时消息后的应用自定义 `ModelMessage`；
 - `tools`：真实行动能力；具有外部副作用的工具应按需配置 AI SDK `toolApproval`。
 
-`Soul`、`Identity`、全局记忆、`Stimulus.meta`、`Signal.meta` 和 `system` 都会进入 system，因此只应包含受信任内容；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 注入。
+`soul`、`identity`、`agent`、全局记忆、`Stimulus.meta`、`Signal.meta` 和 `system` 都会进入 system，因此只应包含受信任内容；用户输入、网页内容等不可信数据应通过 Percept 或 `messages` 注入。
 
 ### Sensus
 

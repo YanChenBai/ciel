@@ -21,7 +21,7 @@ export type StoredPerceptContent = StoredPerceptTextContent | StoredPerceptImage
 export interface PerceptRecord {
   readonly sequence: number;
   readonly stimulus: Stimulus;
-  readonly scene: ContextDefinition;
+  readonly stimulusDefinition: ContextDefinition;
   readonly signal: ContextDefinition;
   readonly time: ContextTime;
   readonly content: StoredPerceptContent;

@@ -52,6 +52,7 @@ function createMemory(): Memory {
         warnings: [],
       }),
     }),
+    model: createModel('经历摘要'),
   });
   memories.push(memory);
   return memory;
@@ -110,12 +111,20 @@ describe('Nucleus Prompt', () => {
     const call = model.doGenerateCalls[0];
     const serialized = JSON.stringify(call);
     expect(serialized).toContain('你是夏尔。');
+    expect(serialized).toContain('# Stimulus 与 Percept 解释');
+    expect(serialized).toContain('# 刺激源定义 (Stimulus)');
     expect(serialized).toContain('## 直播间');
-    expect(serialized).toContain('## 画面');
-    expect(serialized).toContain('[对话]');
+    expect(serialized).toContain('# 回答约束');
+    expect(serialized).toContain('不要暴露 Stimulus、Signal、Percept、Context、Nucleus');
+    expect(serialized).toContain('# 对话 (Reading)');
+    expect(serialized).toContain('## 场景中的消息');
+    expect(serialized).toContain('# 画面 (Sight)');
+    expect(serialized).toContain('同一人物或物体可能在不同帧重复出现');
     expect(serialized).toContain('当前任务');
     expect(serialized.indexOf('## 直播间')).toBeLessThan(serialized.indexOf('你是夏尔。'));
-    expect(serialized.indexOf('[对话]')).toBeLessThan(serialized.indexOf('当前任务'));
+    expect(serialized.indexOf('你是夏尔。')).toBeLessThan(serialized.indexOf('# MEMORY'));
+    expect(serialized.indexOf('# 对话 (Reading)')).toBeLessThan(serialized.indexOf('当前任务'));
+    expect(call?.prompt.filter(message => message.role === 'system')).toHaveLength(1);
     expect(call?.prompt.some(message => message.role === 'user')).toBe(true);
   });
 

@@ -1,8 +1,5 @@
 // @env node
 
-import { readFile } from 'node:fs/promises';
-
-import type { FilePart } from 'ai';
 import sharp from 'sharp';
 
 const PATCH_SIZE = 16;
@@ -39,27 +36,11 @@ export function calculateImageTokens(width: number, height: number): number {
   return Math.floor((gridHeight * gridWidth) / SPATIAL_MERGE_SIZE ** 2);
 }
 
-/**
- * 按模型图片缩放规则估算 token，实际用量以 API 响应为准
- */
+/** 按模型图片缩放规则估算 token，实际用量以 API 响应为准。 */
 export async function estimateImageTokens(path: string): Promise<number> {
   const { width, height } = await sharp(path).metadata();
   if (!width || !height) {
     throw new Error(`Cannot read image dimensions: ${path}`);
   }
   return calculateImageTokens(width, height);
-}
-
-/**
- * 将本地 JPEG 转成 OpenAI-compatible provider 可序列化为 data URL 的图片 part
- */
-export async function resolveImagePart(path: string): Promise<FilePart> {
-  return {
-    type: 'file',
-    mediaType: 'image/jpeg',
-    data: {
-      type: 'data',
-      data: (await readFile(path)).toString('base64'),
-    },
-  };
 }

@@ -8,13 +8,13 @@ import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
+import type { ContextInput } from '#src/context/index.ts';
 import { Memory } from '#src/memory/index.ts';
 import { Reading, Sight } from '#src/percepts/index.ts';
 import { Photon, Script } from '#src/signals/index.ts';
 import { Stimulus } from '#src/stimulus/index.ts';
 
 import { Nucleus } from './nucleus.ts';
-import type { NucleusInput } from './types.ts';
 
 class TestPhoton extends Photon.WithMeta({ name: '画面', description: '当前场景中的画面' }) {}
 class TestScript extends Script.WithMeta({ name: '对话', description: '当前场景中的消息' }) {}
@@ -59,16 +59,17 @@ function createEmbedder(): MockEmbeddingModelV3 {
   });
 }
 
-async function createMemory(): Promise<Memory> {
-  const memory = createMemoryAt();
+async function createMemory(model = createModel('经历摘要')): Promise<Memory> {
+  const memory = createMemoryAt(model);
   await memory.readLongTerm();
   return memory;
 }
 
-function createMemoryAt(): Memory {
+function createMemoryAt(model = createModel('经历摘要')): Memory {
   const memory = new Memory({
     path: ':memory:',
     embedder: createEmbedder(),
+    model,
   });
   memories.push(memory);
   return memory;
@@ -121,13 +122,24 @@ afterEach(async () => {
 });
 
 describe('Nucleus', () => {
+  it('提供默认为空的 identity、soul 与 agent 属性', async () => {
+    const nucleus = new Nucleus({
+      memory: await createMemory(),
+      model: createModel(),
+    });
+
+    expect(nucleus.identity).toBe('');
+    expect(nucleus.soul).toBe('');
+    expect(nucleus.agent).toBe('');
+  });
+
   it('在 VAD 结束后触发思考，限制最小间隔并保留最大间隔兜底', async () => {
     const memory = await createMemory();
     vi.useFakeTimers();
     vi.setSystemTime(0);
     const stimulus = new TestStimulus();
     const model = createModel();
-    const inputs: NucleusInput[] = [];
+    const inputs: ContextInput[] = [];
     const thoughtTimes: number[] = [];
     const nucleus = new Nucleus({
       model,
@@ -218,10 +230,9 @@ describe('Nucleus', () => {
     const stimulus = new TestStimulus();
     const directory = await createTemporaryDirectory();
     const imagePath = await writeImage(directory, 'scene.jpg', '#ffffff');
-    const memory = createMemoryAt();
-    const model = new MockLanguageModelV3({
-      doGenerate: [response('已处理', 100), response('画面中出现了一只猫。')],
-    });
+    const summaryModel = createModel('画面中出现了一只猫。');
+    const memory = createMemoryAt(summaryModel);
+    const model = new MockLanguageModelV3({ doGenerate: response('已处理', 100) });
     const nucleus = new Nucleus({
       model,
       memory,
@@ -241,9 +252,9 @@ describe('Nucleus', () => {
     nucleus.ingest(stimulus, createReading('画面中出现了一只猫。', Date.now()));
     nucleus.speechEnd();
 
-    await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(2));
+    await vi.waitFor(() => expect(summaryModel.doGenerateCalls).toHaveLength(1));
     expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).toContain('image/jpeg');
-    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain('image/jpeg');
+    expect(JSON.stringify(summaryModel.doGenerateCalls[0]?.prompt)).toContain('image/jpeg');
     expect(await memory.readRecent()).toContain('画面中出现了一只猫。');
     expect((await nucleus.getContext()).data.map(data => data.percept.type)).toEqual([
       'sight',
@@ -314,7 +325,7 @@ describe('Nucleus', () => {
     const stimulus = new TestStimulus();
     const directory = await createTemporaryDirectory();
     const nucleus = new Nucleus({ memory: await createMemory(), model: createModel() });
-    const inputs: NucleusInput[] = [];
+    const inputs: ContextInput[] = [];
     nucleus.register(stimulus);
     nucleus.on('thought', (_output, input) => inputs.push(input));
     const paths = await Promise.all(
@@ -359,15 +370,14 @@ describe('Nucleus', () => {
   });
 
   it('长时间没有新事件后总结经历', async () => {
-    const memory = await createMemory();
+    const summaryModel = createModel('这段时间用户发来了一条消息。');
+    const memory = await createMemory(summaryModel);
     const stimulus = new TestStimulus();
     const model = createModel('已处理');
-    const summarizeEpisode = vi.fn(async () => '这段时间用户发来了一条消息。');
     const nucleus = new Nucleus({
       model,
       memory,
       memorySummary: { idleTimeout: 50, maxTokens: 10_000 },
-      summarizeEpisode,
     });
     nucleus.register(stimulus);
     nucleus.start();
@@ -377,8 +387,45 @@ describe('Nucleus', () => {
       expect(await memory.readRecent()).toContain('这段时间用户发来了一条消息。'),
     );
     expect(model.doGenerateCalls).toHaveLength(0);
-    expect(summarizeEpisode).toHaveBeenCalledOnce();
+    expect(summaryModel.doGenerateCalls).toHaveLength(1);
     expect(await memory.readRecent()).toContain('这段时间用户发来了一条消息。');
+    await nucleus.stop();
+  });
+
+  it('归档失败时保留 checkout 并在退避后重试', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let attempts = 0;
+    const summaryModel = new MockLanguageModelV3({
+      doGenerate: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('temporary summary failure');
+        return response('重试后保存的经历。');
+      },
+    });
+    const memory = await createMemory(summaryModel);
+    const stimulus = new TestStimulus();
+    const nucleus = new Nucleus({
+      model: createModel(),
+      memory,
+      memorySummary: { idleTimeout: 50, maxTokens: 10_000 },
+    });
+    const errors: Error[] = [];
+    nucleus.on('error', error => errors.push(error));
+    nucleus.register(stimulus);
+    nucleus.start();
+    nucleus.ingest(stimulus, createReading('需要归档的消息', 0));
+
+    await vi.advanceTimersByTimeAsync(50);
+    expect(attempts).toBe(1);
+    expect(errors[0]?.message).toBe('temporary summary failure');
+    expect(await memory.readRecent()).not.toContain('重试后保存的经历。');
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(attempts).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(attempts).toBe(2);
+    expect(await memory.readRecent()).toContain('重试后保存的经历。');
     await nucleus.stop();
   });
 });

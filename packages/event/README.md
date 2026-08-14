@@ -29,7 +29,32 @@ Extend `EventHost` when consumers should subscribe publicly but only the class i
 ```ts
 class Channel extends EventHost<{ value(value: number): void }> {
   publish(value: number) {
-    this.emit('value', value);
+    this.$emit.value(value);
+  }
+}
+
+const channel = new Channel();
+const off = channel.$on.value(value => console.log(value));
+channel.$once.value(value => console.log('once', value));
+off();
+```
+
+`$on.<event>()` and `$once.<event>()` provide event-name completion while preserving each
+event's listener signature. The existing `on(event, listener)` and `once(event, listener)` APIs
+remain available.
+
+`$emit.<event>()` provides the same event-name completion to subclasses while remaining
+protected. The existing `emit(event, ...args)` API remains available.
+
+`inheritEvents(source, ...events)` forwards selected same-name events from another typed event
+source. Only events whose source parameters are compatible with the host event are accepted, and
+the returned function stops all forwarding:
+
+```ts
+class Parent extends EventHost<{ error(error: Error): void }> {
+  constructor(child: EventHost<{ error(error: Error): void }>) {
+    super();
+    this.inheritEvents(child, 'error');
   }
 }
 ```

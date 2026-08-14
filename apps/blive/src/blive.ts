@@ -24,7 +24,7 @@ type State = BilibiliLiveHealth['state'];
 /** 将一个 Bilibili 直播间作为 Ciel 的音视频 Stimulus。 */
 export class BilibiliLive extends Stimulus<typeof bilibiliLiveSignals> {
   static readonly meta = {
-    name: 'Bilibili 直播间',
+    name: '场景',
     description: '正在浏览的 Bilibili 直播间及其连续音视频内容',
   };
 

@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { MockEmbeddingModelV3 } from 'ai/test';
+import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { Memory } from './memory.ts';
@@ -26,6 +26,20 @@ function createEmbedder(): MockEmbeddingModelV3 {
   });
 }
 
+function createModel(): MockLanguageModelV3 {
+  return new MockLanguageModelV3({
+    doGenerate: {
+      content: [{ type: 'text', text: '经历摘要' }],
+      finishReason: { unified: 'stop', raw: undefined },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+      warnings: [],
+    },
+  });
+}
+
 async function createMemory(recentDays = 2, persistent = false): Promise<Memory> {
   let databasePath = ':memory:';
   if (persistent) {
@@ -36,6 +50,7 @@ async function createMemory(recentDays = 2, persistent = false): Promise<Memory>
   const memory = new Memory({
     path: databasePath,
     embedder: createEmbedder(),
+    model: createModel(),
     recentDays,
   });
   memories.push(memory);
@@ -46,6 +61,7 @@ async function createSharedMemory(resourceId: string, databasePath: string): Pro
   const memory = new Memory({
     path: databasePath,
     embedder: createEmbedder(),
+    model: createModel(),
     resourceId,
   });
   memories.push(memory);

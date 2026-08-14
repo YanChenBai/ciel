@@ -1,4 +1,6 @@
-import type { EmbeddingModel } from 'ai';
+import type { EmbeddingModel, LanguageModel } from 'ai';
+
+import type { PerceptRecord } from '#src/percepts/index.ts';
 
 export type MemoryEmbeddingModel = Exclude<EmbeddingModel, string>;
 
@@ -8,6 +10,9 @@ export interface MemoryOptions {
 
   /** 用于历史经历语义召回的 embedding model。 */
   readonly embedder: MemoryEmbeddingModel;
+
+  /** 用于将一批感知记录总结为经历的模型。 */
+  readonly model: LanguageModel;
 
   /** 注入上下文的最近日期数量。 */
   readonly recentDays?: number;
@@ -25,12 +30,12 @@ export interface MemoryRecall {
   readonly id: string;
 }
 
-/** Nucleus、工具与后续 MemoryCoordinator 共享的最小记忆存储契约。 */
+/** Nucleus 与记忆工具共享的最小记忆契约。 */
 export interface CielMemoryStore {
+  recordEpisode(data: readonly PerceptRecord[], idempotencyKey?: string): Promise<void>;
   readLongTerm(): Promise<string>;
   readRecent(): Promise<string>;
   updateLongTerm(content: string): Promise<void>;
-  appendEpisode(content: string, createdAt?: Date, idempotencyKey?: string): Promise<void>;
   recall(query: string, limit?: number): Promise<MemoryRecall[]>;
 }
 

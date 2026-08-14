@@ -58,25 +58,23 @@ flowchart TD
   Memory --> Nucleus
   Nucleus -->|"success"| NucleusCommit["commit nucleus cursor"]
 
-  PerceptStore -->|"independent checkout"| Summarizer["summarizeEpisode"]
-  Summarizer -->|"summary only"| Coordinator["deterministic append"]
-  Coordinator --> Memory["Memory / LibSQL"]
-  Coordinator -->|"success"| MemoryCommit["commit memory cursor"]
+  PerceptStore -->|"independent checkout"| Archive["EpisodeArchive"]
+  Archive -->|"recordEpisode"| Memory["Memory / LibSQL"]
+  Archive -->|"success"| MemoryCommit["commit memory cursor"]
 ```
 
 Both consumers receive stable checkouts. A failed call keeps its checkout for retry, while later
-percepts continue to append. The episode summarizer is a replaceable function that receives multimodal
-prompt parts but no tools or store handle; only deterministic Nucleus code appends the resulting Episode
-and advances the memory cursor.
+percepts continue to append. `EpisodeArchive` owns scheduling, retry, projection, and the memory consumer
+cursor. `Memory.recordEpisode` owns summary generation and persistence.
 
 `Ciel.stop()` stops its stimulus, removes subscriptions, and closes its `Sensus`. Closing flushes stateful capabilities and releases their event listeners.
 
 ## Exports
 
 - `Ciel`: lifecycle orchestration for the single Stimulus passed to its constructor.
-- `Context`: trusted Stimulus/Signal definition and multimodal Percept prompt builder.
+- `Context`: the only builder for final system instructions, messages, and multimodal model input.
 - `Memory`: Mastra Working Memory, date threads, and semantic recall backed by LibSQL and LibSQLVector.
-- `Nucleus<TOutput>`: the thought and memory-summary scheduler.
+- `Nucleus<TOutput>`: the main thought scheduler.
 - `PerceptStore`: the storage contract shared by context construction and memory archiving.
 - `InMemoryPerceptStore`: the process-local append-only Percept store with independent consumer cursors.
 - `Sensus`: unified signal routing, sensory capability, events, and lifecycle.
@@ -86,9 +84,24 @@ and advances the memory cursor.
 Pass one Stimulus as the first `Ciel` constructor argument and its required Nucleus configuration
 as the second argument. Ciel privately creates and owns both Nucleus and InMemoryPerceptStore; neither runtime
 instance can be injected or retrieved. The Stimulus feeds that Nucleus while each realtime entry
-retains its source Stimulus. `Context`
-builds the trusted base definitions and chronological text/image Percept input. Ciel forwards
+retains its source Stimulus. `Context` combines internal system content, trusted Stimulus definitions,
+chronological text/image Percepts, application-provided system/messages, and Memory. All system sections
+are emitted as one system message, with Memory as its final section. Ciel forwards
 `thought` and `error` events and exposes only a projected snapshot through `getContext()`.
+
+Context groups model-facing Percepts by `originSignal` and Percept type. Each group uses the signal's
+name and description, followed by chronological `[time] content` entries. It also injects explanations
+for the Percept types present in the current input; the `Sight` explanation warns that a composed image
+may contain multiple chronological frames, so repeated people or objects must not be counted as distinct
+entities solely because they appear more than once.
+
+Stimulus and Percept explanations share one section. It describes Stimulus as the external source of
+Signals and subsequent Percepts, then adds explanations only for the Percept types present in the current
+input before listing the concrete source definitions.
+
+A built-in response constraint asks the model to describe real information, observations, memory, and
+actions naturally without exposing internal terms such as Stimulus, Signal, Percept, Context, or Nucleus,
+unless the user explicitly asks about the internal mechanism.
 
 Oculus persists each sampled frame that differs enough from the last accepted frame. Every Sensus result
 is first appended to `PerceptStore`; Nucleus and memory archiving then read it through independent cursors.
@@ -99,9 +112,9 @@ into each context image. Prompt image count is bounded, but original image paths
 Nucleus privately adds `memory_update` for replacing refined global memory and `memory_recall` for
 semantic search across historical date threads. Reaching the configured model-input token size, a quiet
 period, or shutdown summarizes unread Percepts into the current date thread. Visual records are compacted
-into bounded contact sheets for both thought and archive prompts. `Soul` and
-`Identity` are protected strings on `Ciel`; subclasses may
-override them, and Context adds their Markdown headings when assembling the model prompt.
+into bounded contact sheets for both thought and archive prompts. Nucleus exposes `soul`, `identity`,
+and `agent` strings. They default to empty strings and Context treats non-empty values as ordinary
+internal system content rather than special semantic sections.
 
 - `Echo`, `Photon`, `Script`: immutable signal bases with static metadata.
 - `Auris`, `Oculus`, `Lectio`: lower-level signal-bound sensory capabilities.

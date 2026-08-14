@@ -47,7 +47,7 @@ describe('InMemoryPerceptStore', () => {
     expect([hearing.sequence, sight.sequence]).toEqual([1, 2]);
     expect(hearing.content).toEqual({ type: 'text', text: 'hello', speaker: 'host' });
     expect(sight.content).toEqual({ type: 'image', path: 'scene.jpg' });
-    expect(hearing.scene.name).toBe('Live room');
+    expect(hearing.stimulusDefinition.name).toBe('Live room');
   });
 
   it('keeps checkout stable until commit while accepting later records', () => {

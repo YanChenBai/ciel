@@ -18,7 +18,7 @@ interface PerceptStoreEventMap {
 }
 
 interface PerceptSource {
-  readonly scene: ContextDefinition;
+  readonly stimulusDefinition: ContextDefinition;
   readonly signals: Map<SignalConstructor, ContextDefinition>;
 }
 
@@ -78,8 +78,8 @@ export class InMemoryPerceptStore extends EventHost<PerceptStoreEventMap> implem
       });
     }
     this.sources.set(stimulus, {
-      scene: {
-        kind: 'scene',
+      stimulusDefinition: {
+        kind: 'stimulus',
         name: Stimulus.meta.name,
         description: Stimulus.meta.description,
       },
@@ -96,7 +96,7 @@ export class InMemoryPerceptStore extends EventHost<PerceptStoreEventMap> implem
     const record: PerceptRecord = {
       sequence: this.nextSequence++,
       stimulus,
-      scene: source.scene,
+      stimulusDefinition: source.stimulusDefinition,
       signal,
       time: getPerceptTime(percept),
       content: getPerceptContent(percept),
