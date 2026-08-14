@@ -141,3 +141,55 @@ vp check
 vp test
 vp pack
 ```
+
+## Vigilia observability
+
+Every `Ciel` owns an independent, in-process `vigilia` journal. It records immutable,
+JSON-safe runtime facts for state changes, signal processing, percept commits, Nucleus thinking,
+and Episode archiving. The domain event API remains transient; Vigilia is the replayable
+observability boundary.
+
+```ts
+const ciel = new Ciel(stimulus, {
+  nucleus,
+  vigilia: {
+    signals: false,
+    capture: {
+      context: true,
+      memory: true,
+      reasoning: true,
+      result: true,
+      toolInput: true,
+      toolOutput: true,
+    },
+    capturePerceptContent: false,
+  },
+});
+
+const unsubscribe = ciel.vigilia.subscribe((event, snapshot) => {
+  console.log(event.sequence, event.type, snapshot.state);
+});
+
+const history = ciel.vigilia.events({ after: 0, limit: 100 });
+```
+
+Sensitive details are opt-in. Core defaults to lifecycle metadata only; `capture` independently
+controls the final model request context, provider-returned reasoning, result, tool input/output,
+and memory reads/summaries. Binary audio, typed arrays, and inline image/base64 content are replaced
+with bounded metadata before journal commit. `signals: false` disables only high-frequency raw
+Signal events; sensory processing, ASR segments, Percepts, and thinking continue normally.
+
+Every running operation uses a UUID. A think is the root operation; context construction, memory
+reads, model steps, and tool executions have their own UUID and retain the think UUID as
+`parentOperationId`. Provider `toolCallId` values are retained separately. This makes starts and
+settlements unambiguous across concurrent Ciel instances and process restarts.
+
+Vigilia records only reasoning explicitly returned by the model provider. It does not infer or
+manufacture hidden reasoning. Error messages and stacks are retained for diagnosis, so
+applications should still sanitize errors at their source.
+
+OpenTelemetry is an optional projection and does not install an SDK or exporter:
+
+```ts
+const detach = new VigiliaOpenTelemetry().attach(ciel.vigilia);
+```

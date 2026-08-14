@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { EventHost, toError } from '@ciels/event';
 import { Output, ToolLoopAgent } from 'ai';
 import type { ToolSet } from 'ai';
@@ -20,7 +22,13 @@ import type { Stimulus } from '#src/stimulus/index.ts';
 
 import { normalizeNucleusOptions } from './options.ts';
 import type { NormalizedNucleusOptions } from './options.ts';
-import type { NucleusEventMap, NucleusOptions } from './types.ts';
+import type {
+  NucleusEventMap,
+  NucleusObservedOperationStarted,
+  NucleusOperationCategory,
+  NucleusOptions,
+  NucleusThinkStarted,
+} from './types.ts';
 
 type NucleusState = 'idle' | 'running' | 'stopping';
 
@@ -79,9 +87,18 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       retainDuration: this.options.context.perceptWindow,
       vision,
     });
-    this.inheritEvents(this.episodeArchive, 'error');
-    this.episodeArchive.on('settled', () => this.schedule());
-    this.episodeArchive.on('start', () => this.clearTimer());
+    this.episodeArchive.on('error', (error, operation, durationMs) => {
+      this.emit('archiveFailed', error, operation, durationMs);
+      this.emit('error', error);
+    });
+    this.episodeArchive.on('settled', (operation, durationMs, succeeded, result) => {
+      if (succeeded) this.emit('archiveCompleted', operation, durationMs, result);
+      this.schedule();
+    });
+    this.episodeArchive.on('start', operation => {
+      this.emit('archiveStarted', operation);
+      this.clearTimer();
+    });
     this.modelAgent = this.createAgent();
   }
 
@@ -204,39 +221,191 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
 
   private async execute(trigger: ContextTrigger): Promise<TOutput> {
     this.speechEndPending = false;
+    const checkout = this.perceptStore.checkout(this.nucleusConsumer);
+    const operation: NucleusThinkStarted = {
+      fromSequence: checkout.fromSequence,
+      operationId: randomUUID(),
+      startedAt: Date.now(),
+      throughSequence: checkout.throughSequence,
+      trigger,
+    };
+    this.emit('thinkStarted', operation);
     try {
-      const [checkout, longTermMemory, recentMemory] = await Promise.all([
-        Promise.resolve(this.perceptStore.checkout(this.nucleusConsumer)),
-        this.options.memory.readLongTerm(),
-        this.options.memory.readRecent(),
+      const [longTermMemory, recentMemory] = await Promise.all([
+        this.observeOperation(operation.operationId, 'memory', 'read-long-term', () =>
+          this.options.memory.readLongTerm(),
+        ),
+        this.observeOperation(operation.operationId, 'memory', 'read-recent', () =>
+          this.options.memory.readRecent(),
+        ),
       ]);
-      const context = await this.resolveCheckout(checkout);
+      const context = await this.observeOperation(
+        operation.operationId,
+        'context',
+        'resolve-percepts',
+        () => this.resolveCheckout(checkout),
+      );
       const input: ContextInput = { ...context, trigger };
-      const modelContext = await this.context.build({
-        input,
-        internalSystem: [this.soul, this.identity, this.agent],
-        longTermMemory,
-        recentMemory,
-        system: this.options.system,
-        messages: this.options.messages,
-      });
+      const modelContext = await this.observeOperation(
+        operation.operationId,
+        'context',
+        'build-model-request',
+        () =>
+          this.context.build({
+            input,
+            internalSystem: [this.soul, this.identity, this.agent],
+            longTermMemory,
+            recentMemory,
+            system: this.options.system,
+            messages: this.options.messages,
+          }),
+      );
       const estimatedImageTokens = await this.context.estimateInputTokens(context.data);
-      const result = await this.modelAgent.generate({
-        messages: [...modelContext.messages],
-        options: { input, context: modelContext },
-      });
+      const toolOperations = new Map<string, NucleusObservedOperationStarted>();
+      const stepOperations = new Map<number, NucleusObservedOperationStarted>();
+      const result = await this.observeOperation(
+        operation.operationId,
+        'model',
+        'generate',
+        async () => {
+          try {
+            return await this.modelAgent.generate({
+              messages: [...modelContext.messages],
+              options: { input, context: modelContext },
+              onStepStart: step => {
+                stepOperations.set(
+                  step.stepNumber,
+                  this.startOperation(operation.operationId, 'model', `step:${step.stepNumber}`),
+                );
+              },
+              onStepEnd: step => {
+                const stepOperation = stepOperations.get(step.stepNumber);
+                if (!stepOperation) return;
+                stepOperations.delete(step.stepNumber);
+                this.completeOperation(stepOperation, {
+                  callId: step.callId,
+                  finishReason: step.finishReason,
+                  reasoning: step.reasoningText,
+                  text: step.text,
+                  usage: step.usage,
+                });
+              },
+              onToolExecutionStart: event => {
+                const toolOperation = this.startOperation(
+                  operation.operationId,
+                  'tool',
+                  event.toolCall.toolName,
+                  {
+                    input: event.toolCall.input,
+                    toolCallId: event.toolCall.toolCallId,
+                  },
+                );
+                toolOperations.set(event.toolCall.toolCallId, toolOperation);
+              },
+              onToolExecutionEnd: event => {
+                const toolOperation = toolOperations.get(event.toolCall.toolCallId);
+                if (!toolOperation) return;
+                toolOperations.delete(event.toolCall.toolCallId);
+                if (event.toolOutput.type === 'tool-error') {
+                  this.failOperation(toolOperation, event.toolOutput.error);
+                  return;
+                }
+                this.completeOperation(toolOperation, {
+                  output: event.toolOutput,
+                  toolCallId: event.toolCall.toolCallId,
+                });
+              },
+            });
+          } catch (error) {
+            for (const child of [...stepOperations.values(), ...toolOperations.values()]) {
+              this.failOperation(child, error);
+            }
+            stepOperations.clear();
+            toolOperations.clear();
+            throw error;
+          }
+        },
+        modelContext,
+      );
       this.perceptStore.commit(checkout);
       this.compactPerceptStore();
       this.lastInputTokens = result.usage.inputTokens ?? estimatedImageTokens;
       const output = result.output as TOutput;
       this.emit('thought', output, input);
+      this.emit('thinkCompleted', {
+        ...operation,
+        durationMs: Date.now() - operation.startedAt,
+        inputTokens: result.usage.inputTokens,
+        output,
+        outputTokens: result.usage.outputTokens,
+        reasoning: result.reasoningText,
+      });
       return output;
     } catch (error) {
       if (trigger === 'speech-end') this.speechEndPending = true;
       const normalized = toError(error);
+      this.emit('thinkFailed', {
+        ...operation,
+        durationMs: Date.now() - operation.startedAt,
+        error: normalized,
+      });
       this.emit('error', normalized);
       throw normalized;
     }
+  }
+
+  private async observeOperation<T>(
+    parentOperationId: string,
+    category: NucleusOperationCategory,
+    name: string,
+    action: () => Promise<T>,
+    detail?: unknown,
+  ): Promise<T> {
+    const operation = this.startOperation(parentOperationId, category, name, detail);
+    try {
+      const result = await action();
+      this.completeOperation(operation, result);
+      return result;
+    } catch (error) {
+      const normalized = this.failOperation(operation, error);
+      throw normalized;
+    }
+  }
+
+  private startOperation(
+    parentOperationId: string,
+    category: NucleusOperationCategory,
+    name: string,
+    detail?: unknown,
+  ): NucleusObservedOperationStarted {
+    const operation: NucleusObservedOperationStarted = {
+      category,
+      ...(detail === undefined ? {} : { detail }),
+      name,
+      operationId: randomUUID(),
+      parentOperationId,
+      startedAt: Date.now(),
+    };
+    this.emit('operationStarted', operation);
+    return operation;
+  }
+
+  private completeOperation(operation: NucleusObservedOperationStarted, result?: unknown): void {
+    this.emit('operationCompleted', {
+      ...operation,
+      durationMs: Date.now() - operation.startedAt,
+      ...(result === undefined ? {} : { result }),
+    });
+  }
+
+  private failOperation(operation: NucleusObservedOperationStarted, error: unknown): Error {
+    const normalized = toError(error);
+    this.emit('operationFailed', {
+      ...operation,
+      durationMs: Date.now() - operation.startedAt,
+      error: normalized,
+    });
+    return normalized;
   }
 
   private finish(pending: Promise<TOutput>): void {

@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.7",
+    "@ciels/bridge": "workspace:*",
     "@ciels/core": "workspace:*",
     "ai": "^7.0.58"
   },

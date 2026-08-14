@@ -8,6 +8,8 @@ import type { OculusOptions } from './oculus/types.ts';
 export interface SensusEventMap<TData> {
   data(data: TData): void;
   error(error: Error): void;
+  /** VAD 检测到一段语音开始。 */
+  speechstart(at: Date): void;
   /** 仅听觉能力在 VAD 完成一段语音后触发。 */
   speechend(at: Date): void;
 }
@@ -32,6 +34,8 @@ export interface SensusOptions {
 export interface SensusOutputEventMap {
   data(data: Percept): void;
   error(error: Error): void;
+  /** VAD 检测到一段语音开始。 */
+  speechstart(at: Date): void;
   /** VAD 完成一段语音；此时对应 Hearing 已先发送。 */
   speechend(at: Date): void;
 }

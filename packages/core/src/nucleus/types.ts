@@ -1,7 +1,8 @@
 import type { LanguageModel, Output, ToolLoopAgentSettings, ToolSet } from 'ai';
 
-import type { ContextInput, ContextMessage } from '#src/context/index.ts';
-import type { CielMemoryStore } from '#src/memory/index.ts';
+import type { ContextInput, ContextMessage, ContextTrigger } from '#src/context/index.ts';
+import type { EpisodeArchiveOperation } from '#src/memory/episode-archive.ts';
+import type { CielMemoryStore, EpisodeRecordResult } from '#src/memory/index.ts';
 import type { PerceptStore } from '#src/percepts/index.ts';
 
 export interface NucleusContextOptions {
@@ -42,6 +43,61 @@ export interface NucleusOptions<TOutput = string> extends NucleusGenerationOptio
 }
 
 export interface NucleusEventMap<TOutput = string> {
+  archiveCompleted(
+    operation: EpisodeArchiveOperation,
+    durationMs: number,
+    result?: EpisodeRecordResult,
+  ): void;
+  archiveFailed(error: Error, operation: EpisodeArchiveOperation, durationMs: number): void;
+  archiveStarted(operation: EpisodeArchiveOperation): void;
   thought(output: TOutput, input: ContextInput): void;
+  thinkCompleted(event: NucleusThinkCompleted<TOutput>): void;
+  thinkFailed(event: NucleusThinkFailed): void;
+  thinkStarted(event: NucleusThinkStarted): void;
+  operationCompleted(event: NucleusObservedOperationCompleted): void;
+  operationFailed(event: NucleusObservedOperationFailed): void;
+  operationStarted(event: NucleusObservedOperationStarted): void;
   error(error: Error): void;
+}
+
+export type NucleusOperationCategory = 'context' | 'memory' | 'model' | 'tool';
+
+export interface NucleusObservedOperationStarted {
+  readonly category: NucleusOperationCategory;
+  readonly detail?: unknown;
+  readonly name: string;
+  readonly operationId: string;
+  readonly parentOperationId: string;
+  readonly startedAt: number;
+}
+
+export interface NucleusObservedOperationCompleted extends NucleusObservedOperationStarted {
+  readonly durationMs: number;
+  readonly result?: unknown;
+}
+
+export interface NucleusObservedOperationFailed extends NucleusObservedOperationStarted {
+  readonly durationMs: number;
+  readonly error: Error;
+}
+
+export interface NucleusThinkStarted {
+  readonly fromSequence: number;
+  readonly operationId: string;
+  readonly startedAt: number;
+  readonly throughSequence: number;
+  readonly trigger: ContextTrigger;
+}
+
+export interface NucleusThinkCompleted<TOutput> extends NucleusThinkStarted {
+  readonly durationMs: number;
+  readonly inputTokens?: number;
+  readonly output: TOutput;
+  readonly outputTokens?: number;
+  readonly reasoning?: string;
+}
+
+export interface NucleusThinkFailed extends NucleusThinkStarted {
+  readonly durationMs: number;
+  readonly error: Error;
 }

@@ -30,9 +30,17 @@ export interface MemoryRecall {
   readonly id: string;
 }
 
+export interface EpisodeRecordResult {
+  readonly createdAt: Date;
+  readonly summary: string;
+}
+
 /** Nucleus 与记忆工具共享的最小记忆契约。 */
 export interface CielMemoryStore {
-  recordEpisode(data: readonly PerceptRecord[], idempotencyKey?: string): Promise<void>;
+  recordEpisode(
+    data: readonly PerceptRecord[],
+    idempotencyKey?: string,
+  ): Promise<EpisodeRecordResult | void>;
   readLongTerm(): Promise<string>;
   readRecent(): Promise<string>;
   updateLongTerm(content: string): Promise<void>;

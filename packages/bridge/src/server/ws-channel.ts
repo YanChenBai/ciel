@@ -2,11 +2,14 @@ import type { ElysiaWS } from 'elysia/ws';
 
 import type { BridgeMessage } from '#protocol';
 
-class WsChannel {
+export class WsChannel {
   private clients = new Set<ElysiaWS>();
+  private bootstrap?: () => BridgeMessage;
 
   add(ws: ElysiaWS) {
     this.clients.add(ws);
+    const message = this.bootstrap?.();
+    if (message) ws.send(message);
   }
 
   remove(ws: ElysiaWS) {
@@ -15,11 +18,15 @@ class WsChannel {
 
   emit(data: BridgeMessage) {
     for (const ws of this.clients) {
-      if (ws.readyState === 1) {
+      try {
         ws.send(data);
+      } catch {
+        this.clients.delete(ws);
       }
     }
   }
-}
 
-export const wsChannel = new WsChannel();
+  setBootstrap(bootstrap?: () => BridgeMessage): void {
+    this.bootstrap = bootstrap;
+  }
+}

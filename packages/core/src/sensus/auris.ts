@@ -21,6 +21,7 @@ export class Auris extends SensusBase<Echo, Hearing> {
     this.asr.on('result', result => {
       this.emitData(new Hearing({ ...result, originSignal: this.signal }));
     });
+    this.asr.on('speechstart', at => this.emit('speechstart', at));
     // ASR 保证先发送 result，再发送 speechend；上层可在完整 Hearing 入库后触发思考。
     this.asr.on('speechend', at => this.emit('speechend', at));
     this.asr.on('error', error => this.emitError(error));

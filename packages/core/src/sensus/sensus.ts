@@ -103,7 +103,7 @@ export class Sensus extends EventHost<SensusOutputEventMap> {
     capability: SensusBase<TSignal, TPercept>,
   ): void {
     capability.on('data', percept => this.emit('data', percept));
-    this.inheritEvents(capability, 'error', 'speechend');
+    this.inheritEvents(capability, 'error', 'speechstart', 'speechend');
 
     this.handlers.set(signal, value => capability.process(value as TSignal));
     this.cleanups.push(() => capability.close());

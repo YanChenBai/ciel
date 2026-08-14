@@ -14,18 +14,34 @@ export function createClient(domain: string | App, config?: Treaty.Config<{}>) {
 
   let socket: Socket | undefined;
   let refCount = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  let shouldConnect = false;
 
   function connect() {
+    shouldConnect = true;
     if (socket) return;
 
-    socket = eden.ws.subscribe();
+    const current = eden.ws.subscribe();
+    socket = current;
 
-    socket.subscribe(event => {
+    current.subscribe(event => {
       emitter.emit('message', event.data);
+    });
+    current.on('close', () => {
+      if (socket !== current) return;
+      socket = undefined;
+      if (!shouldConnect || reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined;
+        connect();
+      }, 1_000);
     });
   }
 
   function disconnect() {
+    shouldConnect = false;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
     socket?.close();
     socket = undefined;
   }

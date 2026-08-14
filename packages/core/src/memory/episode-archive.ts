@@ -1,10 +1,12 @@
+import { randomUUID } from 'node:crypto';
+
 import { EventHost, toError } from '@ciels/event';
 import type { Unsubscribe } from '@ciels/event';
 
 import type { VisionProjector } from '#src/context/vision.ts';
 import type { PerceptRecord, PerceptStore } from '#src/percepts/index.ts';
 
-import type { CielMemoryStore } from './types.ts';
+import type { CielMemoryStore, EpisodeRecordResult } from './types.ts';
 
 const RETRY_DELAY = 1_000;
 
@@ -19,15 +21,28 @@ export interface EpisodeArchiveOptions {
 }
 
 export interface EpisodeArchiveEventMap {
-  error(error: Error): void;
-  settled(): void;
-  start(): void;
+  error(error: Error, operation: EpisodeArchiveOperation, durationMs: number): void;
+  settled(
+    operation: EpisodeArchiveOperation,
+    durationMs: number,
+    succeeded: boolean,
+    result?: EpisodeRecordResult,
+  ): void;
+  start(operation: EpisodeArchiveOperation): void;
+}
+
+export interface EpisodeArchiveOperation {
+  readonly fromSequence: number;
+  readonly operationId: string;
+  readonly recordCount: number;
+  readonly startedAt: number;
+  readonly throughSequence: number;
 }
 
 /** 独立调度未归档感知记录，并交由 Memory 生成和持久化 Episode。 */
 export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
   private readonly consumerId: string;
-  private inFlight?: Promise<void>;
+  private inFlight?: Promise<EpisodeRecordResult | void>;
   private retryAt?: number;
   private running = false;
   private timer?: ReturnType<typeof setTimeout>;
@@ -54,7 +69,9 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     await this.inFlight;
-    await this.archive();
+    if (this.options.perceptStore.hasUnread(this.consumerId)) {
+      await this.archiveObserved();
+    }
   }
 
   request(): void {
@@ -66,14 +83,16 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
       return;
     }
     this.clearTimer();
-    this.emit('start');
-    const pending = this.archive();
+    const checkout = this.options.perceptStore.checkout(this.consumerId);
+    const operation = this.createOperation(checkout);
+    this.emit('start', operation);
+    const pending = this.archive(checkout);
     this.inFlight = pending;
     void pending.then(
-      () => this.finish(pending, true),
+      result => this.finish(pending, operation, true, result),
       error => {
-        this.emit('error', toError(error));
-        this.finish(pending, false);
+        this.emit('error', toError(error), operation, Date.now() - operation.startedAt);
+        this.finish(pending, operation, false);
       },
     );
   }
@@ -101,20 +120,58 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     );
   }
 
-  private async archive(): Promise<void> {
-    const checkout = this.options.perceptStore.checkout(this.consumerId);
+  private async archive(
+    checkout = this.options.perceptStore.checkout(this.consumerId),
+  ): Promise<EpisodeRecordResult | void> {
     if (checkout.records.length === 0) {
       this.options.perceptStore.commit(checkout);
       return;
     }
     const data = await this.project(checkout.records);
-    await this.options.memory.recordEpisode(
+    const result = await this.options.memory.recordEpisode(
       data,
       `percept-store:${checkout.consumerId}:${checkout.fromSequence}-${checkout.throughSequence}`,
     );
     this.options.perceptStore.commit(checkout);
     this.retryAt = undefined;
     this.options.perceptStore.compact(new Date(), this.options.retainDuration);
+    return result;
+  }
+
+  private async archiveObserved(): Promise<void> {
+    const checkout = this.options.perceptStore.checkout(this.consumerId);
+    const operation = this.createOperation(checkout);
+    this.emit('start', operation);
+    try {
+      const result = await this.archive(checkout);
+      this.emit(
+        'settled',
+        operation,
+        Date.now() - operation.startedAt,
+        true,
+        result === undefined ? undefined : result,
+      );
+    } catch (error) {
+      const normalized = toError(error);
+      const durationMs = Date.now() - operation.startedAt;
+      this.emit('error', normalized, operation, durationMs);
+      this.emit('settled', operation, durationMs, false);
+      throw normalized;
+    }
+  }
+
+  private createOperation(checkout: {
+    readonly fromSequence: number;
+    readonly records: readonly PerceptRecord[];
+    readonly throughSequence: number;
+  }): EpisodeArchiveOperation {
+    return {
+      fromSequence: checkout.fromSequence,
+      operationId: randomUUID(),
+      recordCount: checkout.records.length,
+      startedAt: Date.now(),
+      throughSequence: checkout.throughSequence,
+    };
   }
 
   private async project(records: readonly PerceptRecord[]): Promise<readonly PerceptRecord[]> {
@@ -141,12 +198,23 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     );
   }
 
-  private finish(pending: Promise<void>, succeeded: boolean): void {
+  private finish(
+    pending: Promise<EpisodeRecordResult | void>,
+    operation: EpisodeArchiveOperation,
+    succeeded: boolean,
+    result?: EpisodeRecordResult | void,
+  ): void {
     if (this.inFlight !== pending) return;
     this.inFlight = undefined;
     if (!succeeded) this.retryAt = Date.now() + RETRY_DELAY;
     this.schedule();
-    this.emit('settled');
+    this.emit(
+      'settled',
+      operation,
+      Date.now() - operation.startedAt,
+      succeeded,
+      result ?? undefined,
+    );
   }
 
   private clearTimer(): void {

@@ -27,6 +27,7 @@ vi.mock('#sensus', async () => {
       data(data: unknown): void;
       error(error: Error): void;
       speechend(at: Date): void;
+      speechstart(at: Date): void;
     }> {
       constructor(options: { signals: readonly unknown[] }) {
         super();
@@ -38,6 +39,7 @@ vi.mock('#sensus', async () => {
         if (value.type === 'echo') {
           processorState.echoes.push(signal);
           // 真实 Auris 会先输出 Hearing，再转发 ASR 的 VAD 结束时间。
+          this.emit('speechstart', (signal as Echo).startAt);
           this.emit('speechend', (signal as Echo).endAt);
         } else if (value.type === 'photon') {
           await Promise.resolve();
@@ -183,6 +185,92 @@ describe('Ciel', () => {
     await ciel.stop();
     expect(stimulus.stopped).toBe(true);
     expect(processorState.closes).toBe(1);
+  });
+
+  it('records replayable runtime facts through Vigilia', async () => {
+    const ciel = await createCiel(new TestStimulus());
+
+    await ciel.start();
+    await vi.waitFor(() => expect(ciel.vigilia.snapshot().totals.thoughts).toBe(1));
+    await ciel.stop();
+
+    const events = ciel.vigilia.events({ limit: 100 });
+    expect(events.map(event => event.type)).toEqual(
+      expect.arrayContaining([
+        'ciel.state.changed',
+        'signal.processing.started',
+        'signal.processing.completed',
+        'percept.appended',
+        'nucleus.think.started',
+        'nucleus.think.completed',
+      ]),
+    );
+    expect(events.map(event => event.sequence)).toEqual(events.map((_, index) => index + 1));
+    expect(ciel.vigilia.snapshot()).toMatchObject({
+      activeOperations: [],
+      state: 'idle',
+      totals: { percepts: 1, signals: 3, thoughts: 1 },
+    });
+    expect(JSON.stringify(events)).not.toContain('Buffer');
+
+    const thinkStarted = events.find(event => event.type === 'nucleus.think.started');
+    expect(thinkStarted?.data.operationId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    const child = events.find(
+      event =>
+        event.type === 'operation.started' &&
+        event.data.parentOperationId === thinkStarted?.data.operationId,
+    );
+    expect(child?.type === 'operation.started' ? child.data.operationId : undefined).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it('可关闭高频 Signal，同时保留 ASR、上下文、结果与记忆详情', async () => {
+    const ciel = new Ciel(new TestStimulus(), {
+      nucleus: {
+        context: { perceptWindow: Number.MAX_SAFE_INTEGER },
+        memory: await createMemory(),
+        model: createModel('思考结果'),
+      },
+      vigilia: {
+        capture: { context: true, memory: true, result: true },
+        signals: false,
+      },
+    });
+
+    await ciel.start();
+    await vi.waitFor(() => expect(ciel.vigilia.snapshot().totals.thoughts).toBe(1));
+    await ciel.stop();
+
+    const events = ciel.vigilia.events({ limit: 500 });
+    expect(events.some(event => event.type.startsWith('signal.processing.'))).toBe(false);
+    expect(
+      events.some(
+        event =>
+          event.type === 'operation.completed' &&
+          event.data.category === 'sensory' &&
+          event.data.name === 'asr',
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        event =>
+          event.type === 'operation.completed' &&
+          event.data.category === 'context' &&
+          event.data.name === 'build-model-request' &&
+          event.data.detail !== undefined,
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        event => event.type === 'nucleus.think.completed' && event.data.output === '思考结果',
+      ),
+    ).toBe(true);
+    expect(
+      events.some(event => event.type === 'memory.archive.completed' && event.data.summary),
+    ).toBe(true);
   });
 
   it('creates an isolated Sensus for its stimulus', async () => {

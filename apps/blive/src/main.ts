@@ -2,13 +2,15 @@ import { fileURLToPath } from 'node:url';
 
 process.env.CIEL_DATA_DIR ??= fileURLToPath(new URL('../../../.ciel-data/', import.meta.url));
 
-const [{ Ciel, Memory, definePrompt }, { createBliveAI }, { BilibiliLive }] = await Promise.all([
-  import('@ciels/core'),
-  import('./ai.ts'),
-  import('./blive.ts'),
-]);
+const [{ Ciel, Memory, definePrompt }, { createBridge }, { createBliveAI }, { BilibiliLive }] =
+  await Promise.all([
+    import('@ciels/core'),
+    import('@ciels/bridge'),
+    import('./ai.ts'),
+    import('./blive.ts'),
+  ]);
 
-const roomId = 25971921;
+const roomId = 6374209;
 const defaultImageInterval = 60_000 / 9;
 const imageInterval = readOptionalPositiveNumber(process.env.BLIVE_IMAGE_INTERVAL);
 const live = new BilibiliLive({
@@ -24,6 +26,18 @@ const memory = new Memory({
   resourceId: `blive:${roomId}`,
 });
 const ciel = new Ciel(live, {
+  vigilia: {
+    capture: {
+      context: true,
+      memory: true,
+      reasoning: true,
+      result: true,
+      toolInput: true,
+      toolOutput: true,
+    },
+    // 原始音频/视频 signal 很密集；ASR、视觉处理和 Percept 仍会独立观察。
+    signals: false,
+  },
   nucleus: {
     model,
     memory,
@@ -48,6 +62,9 @@ const ciel = new Ciel(live, {
     differenceThreshold: 0.03,
   },
 });
+const bridgePort = readOptionalPositiveNumber(process.env.CIEL_BRIDGE_PORT) ?? 3000;
+const bridge = createBridge(ciel);
+bridge.listen(bridgePort);
 
 let hearings = 0;
 let sights = 0;
@@ -108,6 +125,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     await ciel.stop();
     cielStarted = false;
   }
+  await bridge.stop();
   resolveClosed?.();
 }
 
@@ -116,6 +134,7 @@ process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
 try {
   console.log(`[blive] 正在通过 Ciel 连接 Bilibili 直播间 ${roomId}…`);
+  console.log(`[vigilia] 可观测 Bridge 已监听 http://localhost:${bridgePort}`);
   await ciel.start();
   cielStarted = true;
   console.log(
@@ -131,6 +150,7 @@ try {
   console.error(error instanceof Error ? (error.stack ?? error.message) : error);
   process.exitCode = 1;
 } finally {
+  await bridge.stop().catch(() => undefined);
   await memory.close().catch(error => {
     console.error(
       `[memory] ${formatCielError(error instanceof Error ? error : new Error(String(error)))}`,

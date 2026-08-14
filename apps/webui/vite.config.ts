@@ -6,15 +6,7 @@ import { lazyPlugins } from 'vite-plus';
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: lazyPlugins(() => [
-    vue({
-      features: {
-        vapor: true,
-      },
-    }),
-    tailwindcss(),
-    vueDevTools(),
-  ]),
+  plugins: lazyPlugins(() => [vue(), tailwindcss(), vueDevTools()]),
   resolve: {
     tsconfigPaths: true,
   },

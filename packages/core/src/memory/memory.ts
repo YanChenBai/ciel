@@ -20,6 +20,7 @@ import {
   MEMORY_KIND_METADATA,
 } from './constants.ts';
 import type {
+  EpisodeRecordResult,
   CielMemoryStore,
   MemoryEmbeddingModel,
   MemoryOptions,
@@ -179,7 +180,10 @@ export class Memory implements CielMemoryStore {
   }
 
   /** 将一批感知记录总结并持久化为一次经历。 */
-  async recordEpisode(data: readonly PerceptRecord[], idempotencyKey?: string): Promise<void> {
+  async recordEpisode(
+    data: readonly PerceptRecord[],
+    idempotencyKey?: string,
+  ): Promise<EpisodeRecordResult | void> {
     if (data.length === 0) {
       return;
     }
@@ -205,6 +209,7 @@ export class Memory implements CielMemoryStore {
     }
     const createdAt = new Date(Math.max(...data.map(entry => entry.time.endAt.getTime())));
     await this.appendEpisode(summary, createdAt, idempotencyKey);
+    return { createdAt, summary };
   }
 
   /** 读取跨日期共享的全局记忆。 */
