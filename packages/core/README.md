@@ -32,7 +32,9 @@ class MicrophoneStimulus extends Stimulus<typeof signals> {
   async stop() {}
 }
 
-const ciel = new Ciel(new MicrophoneStimulus());
+const ciel = new Ciel(new MicrophoneStimulus(), {
+  nucleus: { model, memory },
+});
 await ciel.start();
 ```
 
@@ -79,12 +81,12 @@ handle; only deterministic Nucleus code appends the resulting Episode and advanc
 - `SensusBase<TSignal, TData>`: common signal binding and `data/error` event contract for sensory capabilities.
 - `Stimulus`: typed event source with explicit `signals` and async `send()`.
 
-Pass one Stimulus as the first `Ciel` constructor argument and `nucleus` in the optional second
-argument to create its single lifecycle-managed `Nucleus`. The Stimulus feeds that Nucleus while
-each realtime entry retains its source Stimulus. `Context`
+Pass one Stimulus as the first `Ciel` constructor argument and its required Nucleus configuration
+as the second argument. Ciel privately creates and owns both Nucleus and Vestigium; neither runtime
+instance can be injected or retrieved. The Stimulus feeds that Nucleus while each realtime entry
+retains its source Stimulus. `Context`
 builds the trusted base definitions and chronological text/image Percept input. Ciel forwards
-`thought` and `error` events and exposes the runtime through `getNucleus()` and its current
-realtime state through `getContext()`.
+`thought` and `error` events and exposes only a projected snapshot through `getContext()`.
 
 Oculus persists each sampled frame that differs enough from the last accepted frame. Every Sensus result
 is first appended to `Vestigium`; Nucleus and memory archiving then read it through independent cursors.

@@ -18,6 +18,11 @@ const processorState = vi.hoisted(() => ({
 vi.mock('#sensus', async () => {
   const { EventHost } = await import('@ciels/event');
   return {
+    OculusComposer: class {
+      compose(): never {
+        throw new Error('OculusComposer is not exercised by Ciel tests');
+      }
+    },
     Sensus: class extends EventHost<{
       data(data: unknown): void;
       error(error: Error): void;
@@ -99,6 +104,16 @@ function createModel(text = '保持安静'): MockLanguageModelV3 {
   });
 }
 
+async function createCiel(stimulus: TestStimulus): Promise<InstanceType<typeof Ciel>> {
+  return new Ciel(stimulus, {
+    nucleus: {
+      context: { perceptWindow: Number.MAX_SAFE_INTEGER },
+      memory: await createMemory(),
+      model: createModel(),
+    },
+  });
+}
+
 class TestEcho extends Echo.WithMeta({
   name: 'Test audio',
   description: 'Audio emitted by a test stimulus',
@@ -148,7 +163,7 @@ describe('Ciel', () => {
   it('discovers signals and routes emitted instances to automatic processors', async () => {
     const stimulus = new TestStimulus();
     const readings: Reading[] = [];
-    const ciel = new Ciel(stimulus);
+    const ciel = await createCiel(stimulus);
     ciel.on('data', percept => {
       if (percept.type === 'reading') {
         readings.push(percept);
@@ -165,12 +180,7 @@ describe('Ciel', () => {
       content: 'hello',
       originSignal: TestScript,
     });
-    expect(
-      ciel
-        .getVestigium()
-        .snapshot()
-        .records.map(record => record.percept),
-    ).toEqual(readings);
+    expect((await ciel.getContext()).data.map(record => record.percept)).toEqual(readings);
     await ciel.stop();
     expect(stimulus.stopped).toBe(true);
     expect(processorState.closes).toBe(1);
@@ -178,8 +188,8 @@ describe('Ciel', () => {
 
   it('creates an isolated Sensus for its stimulus', async () => {
     processorState.sensusSignals.length = 0;
-    const first = new Ciel(new TestStimulus());
-    const second = new Ciel(new TestStimulus());
+    const first = await createCiel(new TestStimulus());
+    const second = await createCiel(new TestStimulus());
 
     await first.start();
     await second.start();
@@ -223,10 +233,8 @@ describe('Ciel', () => {
     });
 
     await ciel.start();
-    const nucleus = ciel.getNucleus();
     await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(1));
 
-    expect(nucleus).toBe(ciel.getNucleus());
     expect(thoughts).toContain('保持安静');
     const prompt = JSON.stringify(model.doGenerateCalls[0]?.prompt);
     expect(prompt).toContain('# SOUL');
@@ -235,12 +243,5 @@ describe('Ciel', () => {
     expect(prompt).toContain('名字：测试夏尔');
 
     await ciel.stop();
-  });
-
-  it('rejects Nucleus access when it is not configured', () => {
-    const stimulus = new TestStimulus();
-    const ciel = new Ciel(stimulus);
-
-    expect(() => ciel.getNucleus()).toThrow('Ciel has no Nucleus configuration');
   });
 });

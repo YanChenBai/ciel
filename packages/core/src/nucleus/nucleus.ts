@@ -3,7 +3,7 @@ import type { Unsubscribe } from '@ciels/event';
 import { Output, ToolLoopAgent } from 'ai';
 import type { FilePart, TextPart, ToolSet } from 'ai';
 
-import { composeSight } from '#sensus';
+import { OculusComposer } from '#sensus';
 import { Context, createContextPrompt } from '#src/context/index.ts';
 import type { ContextSection } from '#src/context/index.ts';
 import { EpisodeAgent } from '#src/memory/index.ts';
@@ -72,6 +72,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private readonly episodeAgent: MemoryAgent<EpisodeAgentInput, string>;
   private readonly nucleusConsumer: string;
   private readonly memoryConsumer: string;
+  private readonly sightComposer = new OculusComposer();
   private state: NucleusState = 'idle';
   private startedAt = 0;
   private lastThinkAt?: number;
@@ -499,7 +500,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
           return entry.percept;
         });
         try {
-          const sight = await composeSight(frames);
+          const sight = await this.sightComposer.compose(frames);
           return {
             ...first,
             time: {
@@ -600,7 +601,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
         async batch => {
           const first = batch.data[0]!;
           try {
-            const sight = await composeSight(
+            const sight = await this.sightComposer.compose(
               batch.data.map(record => {
                 if (record.percept.type !== 'sight') {
                   throw new Error('Vision batches can only contain Sight percepts');

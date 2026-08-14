@@ -11,6 +11,7 @@ import type { Photon } from '#signals';
 import { DEFAULT_OCULUS_OUTPUT_DIR } from '#src/constants/index.ts';
 
 import { SensusBase } from '../base.ts';
+import { OculusDiffer } from './differ.ts';
 import type { OculusOptions } from './types.ts';
 
 /**
@@ -19,35 +20,26 @@ import type { OculusOptions } from './types.ts';
 export class Oculus extends SensusBase<Photon, Sight> {
   static readonly COLS = 3;
   static readonly ROWS = 3;
-  static readonly DIFFERENCE_WIDTH = 64;
-  static readonly DIFFERENCE_HEIGHT = 36;
-  static readonly DEFAULT_DIFFERENCE_THRESHOLD = 0.03;
 
   static get FRAME_COUNT() {
     return Oculus.COLS * Oculus.ROWS;
   }
 
   private lastSampleAt?: number;
-  private lastAcceptedFingerprint?: Buffer;
+  private readonly differ: OculusDiffer;
   private readonly sampleInterval: number;
-  private readonly differenceThreshold: number;
   private readonly outputDir: string;
   private processing: Promise<void> = Promise.resolve();
 
   constructor(signal: typeof Photon, options: OculusOptions = {}) {
     super(signal);
     this.sampleInterval = options.sampleInterval ?? 60_000 / Oculus.FRAME_COUNT;
-    this.differenceThreshold = options.differenceThreshold ?? Oculus.DEFAULT_DIFFERENCE_THRESHOLD;
+    this.differ = new OculusDiffer(
+      options.differenceThreshold === undefined ? {} : { threshold: options.differenceThreshold },
+    );
     this.outputDir = options.outputDir ?? DEFAULT_OCULUS_OUTPUT_DIR;
     if (!Number.isFinite(this.sampleInterval) || this.sampleInterval < 0) {
       throw new Error('oculus.sampleInterval must be a non-negative finite number');
-    }
-    if (
-      !Number.isFinite(this.differenceThreshold) ||
-      this.differenceThreshold < 0 ||
-      this.differenceThreshold > 1
-    ) {
-      throw new Error('oculus.differenceThreshold must be a finite number between 0 and 1');
     }
   }
 
@@ -68,37 +60,19 @@ export class Oculus extends SensusBase<Photon, Sight> {
         return;
       }
 
-      const fingerprint = await this.createFingerprint(photon);
+      // 先评估变化，只有持久化成功后才提交新的差异比较基准。
+      const difference = await this.differ.evaluate(photon);
       this.lastSampleAt = sampledAt;
-      if (
-        this.lastAcceptedFingerprint !== undefined &&
-        this.getDifference(this.lastAcceptedFingerprint, fingerprint) < this.differenceThreshold
-      ) {
+      if (!difference.changed) {
         return;
       }
 
       const sight = await this.persist(photon);
-      this.lastAcceptedFingerprint = fingerprint;
+      difference.commit();
       this.emitData(sight);
     } catch (error) {
       this.emitError(error);
     }
-  }
-
-  private async createFingerprint(photon: Photon): Promise<Buffer> {
-    return sharp(photon.data)
-      .resize(Oculus.DIFFERENCE_WIDTH, Oculus.DIFFERENCE_HEIGHT, { fit: 'fill' })
-      .grayscale()
-      .raw()
-      .toBuffer();
-  }
-
-  private getDifference(previous: Buffer, current: Buffer): number {
-    let difference = 0;
-    for (let index = 0; index < current.length; index += 1) {
-      difference += Math.abs(current[index]! - previous[index]!);
-    }
-    return difference / (current.length * 255);
   }
 
   private async persist(photon: Photon): Promise<Sight> {

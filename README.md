@@ -228,6 +228,10 @@ class LiveStimulus extends Stimulus<typeof signals> {
 
 ```ts
 const ciel = new Ciel(new LiveStimulus(), {
+  nucleus: {
+    model,
+    memory,
+  },
   auris: {
     bufferSeconds: 30,
   },
@@ -341,9 +345,7 @@ const ciel = new LiveCiel(stimulus, {
 });
 
 await ciel.start();
-const nucleus = ciel.getNucleus();
 const context = await ciel.getContext();
-const vestigium = ciel.getVestigium();
 ```
 
 Memory 复用 Mastra Memory，并通过 LibSQL 持久化：resource-scoped Working Memory 保存精炼后的全局记忆，`YYYY-MM-DD` thread 保存每日经历，LibSQLVector 为经历建立向量。Nucleus 提供 `memory_update` 更新完整全局记忆，并提供 `memory_recall` 让 Agent 按语义跨日期搜索经历；最近日期的经历仍会直接进入 Context。

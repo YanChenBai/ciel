@@ -9,16 +9,15 @@ import type { Percept } from '#src/percepts/index.ts';
 import type { Signal } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
 import { Vestigium } from '#src/vestigium/index.ts';
-import type { VestigiumStore } from '#src/vestigium/index.ts';
 
 import { Identity, Soul } from './prompts.ts';
 
-export type CielNucleusOptions<TOutput = string> = NucleusOptions<TOutput>;
+export type CielNucleusOptions<TOutput = string> = Omit<NucleusOptions<TOutput>, 'vestigium'>;
 
 export interface CielOptions<TOutput = string> {
   auris?: ASROptions;
   lectio?: SensusLectioOptions;
-  nucleus?: CielNucleusOptions<TOutput>;
+  nucleus: CielNucleusOptions<TOutput>;
   oculus?: SensusOculusOptions;
 }
 
@@ -54,42 +53,29 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   protected readonly Identity: string = Identity;
   private readonly options: CielOptions<TOutput>;
   private readonly stimulus: Stimulus;
-  private readonly nucleus?: Nucleus<TOutput>;
-  private readonly vestigium: VestigiumStore;
+  private readonly nucleus: Nucleus<TOutput>;
+  private readonly vestigium: Vestigium;
   private runtime?: StimulusRuntime;
   private nucleusStarted = false;
   private state: CielState = 'idle';
 
-  constructor(stimulus: Stimulus, options: CielOptions<TOutput> = {}) {
+  constructor(stimulus: Stimulus, options: CielOptions<TOutput>) {
     super();
     this.stimulus = stimulus;
     this.options = options;
-    this.vestigium = options.nucleus?.vestigium ?? new Vestigium();
+    this.vestigium = new Vestigium();
     this.vestigium.register(stimulus);
-    if (options.nucleus) {
-      this.nucleus = new Nucleus({ ...options.nucleus, vestigium: this.vestigium }, () => [
-        { name: 'SOUL', content: this.Soul },
-        { name: 'IDENTITY', content: this.Identity },
-      ]);
-      this.nucleus.on('thought', (output, input) => this.emit('thought', output, input));
-      this.nucleus.on('error', error => this.emit('error', error));
-      this.nucleus.register(stimulus);
-    }
+    this.nucleus = new Nucleus({ ...options.nucleus, vestigium: this.vestigium }, () => [
+      { name: 'SOUL', content: this.Soul },
+      { name: 'IDENTITY', content: this.Identity },
+    ]);
+    this.nucleus.on('thought', (output, input) => this.emit('thought', output, input));
+    this.nucleus.on('error', error => this.emit('error', error));
+    this.nucleus.register(stimulus);
   }
 
   getContext(): Promise<NucleusContext> {
-    return this.getNucleus().getContext();
-  }
-
-  getNucleus(): Nucleus<TOutput> {
-    if (!this.nucleus) {
-      throw new Error('Ciel has no Nucleus configuration');
-    }
-    return this.nucleus;
-  }
-
-  getVestigium(): VestigiumStore {
-    return this.vestigium;
+    return this.nucleus.getContext();
   }
 
   async start(): Promise<void> {
@@ -103,8 +89,8 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
       this.runtime = this.createRuntime(this.stimulus);
       this.subscribe(this.runtime);
 
-      this.nucleus?.start();
-      this.nucleusStarted = this.nucleus !== undefined;
+      this.nucleus.start();
+      this.nucleusStarted = true;
       this.runtime.started = true;
       await this.runtime.stimulus.start();
 
@@ -145,11 +131,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   private subscribe(runtime: StimulusRuntime): void {
     runtime.unsubscribers.push(
       runtime.sensus.on('data', percept => {
-        if (this.nucleus) {
-          this.nucleus.ingest(runtime.stimulus, percept);
-        } else {
-          this.vestigium.append(runtime.stimulus, percept);
-        }
+        this.nucleus.ingest(runtime.stimulus, percept);
         this.emit('data', percept);
       }),
       runtime.sensus.on('error', error => this.emit('error', error)),
@@ -172,7 +154,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
       }
     }
 
-    if (this.nucleusStarted && this.nucleus) {
+    if (this.nucleusStarted) {
       try {
         await this.nucleus.stop();
       } catch (error) {
