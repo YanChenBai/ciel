@@ -148,7 +148,7 @@ describe('Ciel', () => {
   it('discovers signals and routes emitted instances to automatic processors', async () => {
     const stimulus = new TestStimulus();
     const readings: Reading[] = [];
-    const ciel = new Ciel().use(stimulus);
+    const ciel = new Ciel(stimulus);
     ciel.on('data', percept => {
       if (percept.type === 'reading') {
         readings.push(percept);
@@ -176,47 +176,47 @@ describe('Ciel', () => {
     expect(processorState.closes).toBe(1);
   });
 
-  it('creates an isolated Sensus for each stimulus', async () => {
+  it('creates an isolated Sensus for its stimulus', async () => {
     processorState.sensusSignals.length = 0;
-    const ciel = new Ciel().use(new TestStimulus()).use(new TestStimulus());
+    const first = new Ciel(new TestStimulus());
+    const second = new Ciel(new TestStimulus());
 
-    await ciel.start();
+    await first.start();
+    await second.start();
 
     expect(processorState.sensusSignals).toEqual([testSignals, testSignals]);
-    await ciel.stop();
+    await first.stop();
+    await second.stop();
   });
 
-  it('merges every stimulus into the Nucleus context', async () => {
-    const first = new TestStimulus();
-    const second = new TestStimulus();
-    const ciel = new Ciel({
+  it('registers its stimulus in the Nucleus context', async () => {
+    const stimulus = new TestStimulus();
+    const ciel = new Ciel(stimulus, {
       nucleus: {
         context: { perceptWindow: Number.MAX_SAFE_INTEGER },
         memory: await createMemory(),
         model: createModel(),
       },
-    })
-      .use(first)
-      .use(second);
+    });
 
     await ciel.start();
     const context = await ciel.getContext();
     expect(context.definitions.filter(definition => definition.kind === 'scene')).toHaveLength(1);
-    expect(context.data).toHaveLength(2);
-    expect(context.data.map(data => data.stimulus)).toEqual([first, second]);
+    expect(context.data).toHaveLength(1);
+    expect(context.data[0]?.stimulus).toBe(stimulus);
     await ciel.stop();
   });
 
   it('owns one Nucleus and forwards its thoughts', async () => {
     const stimulus = new TestStimulus();
     const model = createModel();
-    const ciel = new CustomCiel({
+    const ciel = new CustomCiel(stimulus, {
       nucleus: {
         context: { perceptWindow: Number.MAX_SAFE_INTEGER },
         memory: await createMemory(),
         model,
       },
-    }).use(stimulus);
+    });
     const thoughts: unknown[] = [];
     ciel.on('thought', output => {
       thoughts.push(output);
@@ -239,7 +239,7 @@ describe('Ciel', () => {
 
   it('rejects Nucleus access when it is not configured', () => {
     const stimulus = new TestStimulus();
-    const ciel = new Ciel().use(stimulus);
+    const ciel = new Ciel(stimulus);
 
     expect(() => ciel.getNucleus()).toThrow('Ciel has no Nucleus configuration');
   });

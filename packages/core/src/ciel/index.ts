@@ -58,17 +58,19 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   ].join('\n');
 
   private readonly options: CielOptions<TOutput>;
-  private readonly stimuli: Stimulus[] = [];
+  private readonly stimulus: Stimulus;
   private readonly nucleus?: Nucleus<TOutput>;
   private readonly vestigium: VestigiumStore;
-  private runtimes: StimulusRuntime[] = [];
+  private runtime?: StimulusRuntime;
   private nucleusStarted = false;
   private state: CielState = 'idle';
 
-  constructor(options: CielOptions<TOutput> = {}) {
+  constructor(stimulus: Stimulus, options: CielOptions<TOutput> = {}) {
     super();
+    this.stimulus = stimulus;
     this.options = options;
     this.vestigium = options.nucleus?.vestigium ?? new Vestigium();
+    this.vestigium.register(stimulus);
     if (options.nucleus) {
       this.nucleus = new Nucleus({ ...options.nucleus, vestigium: this.vestigium }, () => [
         { name: 'SOUL', content: this.Soul },
@@ -76,23 +78,8 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
       ]);
       this.nucleus.on('thought', (output, input) => this.emit('thought', output, input));
       this.nucleus.on('error', error => this.emit('error', error));
+      this.nucleus.register(stimulus);
     }
-  }
-
-  use(stimulus: Stimulus): this {
-    if (this.state !== 'idle') {
-      throw new Error('Cannot add a stimulus while Ciel is active');
-    }
-
-    if (this.stimuli.includes(stimulus)) {
-      throw new Error('Stimulus is already registered');
-    }
-
-    this.stimuli.push(stimulus);
-    this.vestigium.register(stimulus);
-    this.nucleus?.register(stimulus);
-
-    return this;
   }
 
   getContext(): Promise<NucleusContext> {
@@ -118,18 +105,13 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     this.state = 'starting';
 
     try {
-      this.runtimes = [];
-      for (const stimulus of this.stimuli) {
-        this.runtimes.push(this.createRuntime(stimulus));
-      }
-      this.runtimes.forEach(runtime => this.subscribe(runtime));
+      this.runtime = this.createRuntime(this.stimulus);
+      this.subscribe(this.runtime);
 
       this.nucleus?.start();
       this.nucleusStarted = this.nucleus !== undefined;
-      for (const runtime of this.runtimes) {
-        runtime.started = true;
-        await runtime.stimulus.start();
-      }
+      this.runtime.started = true;
+      await this.runtime.stimulus.start();
 
       this.state = 'running';
     } catch (error) {
@@ -186,13 +168,10 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
 
   private async teardown(): Promise<Error[]> {
     const errors: Error[] = [];
-    // Keep subscriptions alive until each stimulus has finished stopping.
-    for (const runtime of [...this.runtimes].reverse()) {
-      if (!runtime.started) {
-        continue;
-      }
+    // Keep subscriptions alive until the stimulus has finished stopping.
+    if (this.runtime?.started) {
       try {
-        await runtime.stimulus.stop();
+        await this.runtime.stimulus.stop();
       } catch (error) {
         errors.push(toError(error));
       }
@@ -207,18 +186,16 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
       this.nucleusStarted = false;
     }
 
-    this.runtimes.forEach(runtime => {
-      runtime.unsubscribers.forEach(unsubscribe => unsubscribe());
-    });
+    this.runtime?.unsubscribers.forEach(unsubscribe => unsubscribe());
 
-    for (const runtime of this.runtimes) {
+    if (this.runtime) {
       try {
-        await runtime.sensus.close();
+        await this.runtime.sensus.close();
       } catch (error) {
         errors.push(toError(error));
       }
     }
-    this.runtimes = [];
+    this.runtime = undefined;
     errors.forEach(error => this.emit('error', error));
     return errors;
   }

@@ -61,11 +61,11 @@ Script
 
 ```mermaid
 flowchart TD
-  World["直播流 / 外部世界"] --> Stimuli["Stimulus A ... Stimulus N"]
+  World["直播流 / 外部世界"] --> Stimulus["Stimulus"]
 
-  Stimuli --> Photon
-  Stimuli --> Echo
-  Stimuli --> Script
+  Stimulus --> Photon
+  Stimulus --> Echo
+  Stimulus --> Script
 
   Photon --> Oculus --> Sight
   Echo --> Auris --> Hearing
@@ -227,7 +227,7 @@ class LiveStimulus extends Stimulus<typeof signals> {
 `Ciel` 负责绑定刺激源、发现信号、自动创建处理器和管理生命周期：
 
 ```ts
-const ciel = new Ciel({
+const ciel = new Ciel(new LiveStimulus(), {
   auris: {
     bufferSeconds: 30,
   },
@@ -237,19 +237,17 @@ const ciel = new Ciel({
   },
 });
 
-ciel.use(new LiveStimulus());
-
 await ciel.start();
 await ciel.stop();
 ```
 
-启动时，Ciel 为每个 Stimulus 创建一个独立的 `Sensus`。Sensus 接收该 Stimulus 声明的全部 Signal class，并自动匹配感官能力：
+每个 Ciel 在实例化时必须传入且只绑定一个 Stimulus。启动时，Ciel 为它创建一个独立的 `Sensus`。Sensus 接收该 Stimulus 声明的全部 Signal class，并自动匹配感官能力：
 
 - `Echo` 子类创建独立的 `Auris`；
 - `Photon` 子类创建独立的 `Oculus`；
 - `Script` 子类创建独立的 `Lectio`，对齐为 `Reading` 后再通过 Ciel 的 `data` 事件发送。
 
-Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域，因此不同刺激源不会共享音频缓冲、说话人状态或视觉帧集合。所有处理后的 Percept 先进入同一个 Vestigium，每条记录保留 `sequence`、`stimulus`、场景、Signal 来源、时间与原始 Percept。Nucleus 和记忆归档分别通过独立消费者游标读取，不再共享一个会被删除的实时数组。
+Sensus 以 Stimulus 实例为作用域，其内部的感官能力以具体 Signal class 为作用域。处理后的 Percept 进入该 Ciel 的 Vestigium，每条记录保留 `sequence`、`stimulus`、场景、Signal 来源、时间与原始 Percept。Nucleus 和记忆归档分别通过独立消费者游标读取，不再共享一个会被删除的实时数组。
 
 ### Vestigium、Context、Memory 与 Nucleus
 
@@ -314,7 +312,7 @@ class LiveCiel extends Ciel {
   ].join('\n');
 }
 
-const ciel = new LiveCiel({
+const ciel = new LiveCiel(stimulus, {
   nucleus: {
     context: { perceptWindow: 60_000, maxImages: 4 },
     model,
@@ -340,7 +338,7 @@ const ciel = new LiveCiel({
     minThinkInterval: 10_000,
     maxThinkInterval: 60_000,
   },
-}).use(stimulus);
+});
 
 await ciel.start();
 const nucleus = ciel.getNucleus();

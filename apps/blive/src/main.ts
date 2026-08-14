@@ -21,7 +21,7 @@ const memory = new Memory({
   path: fileURLToPath(new URL('../../../.ciel-data/memory.db', import.meta.url)),
   embedder: createBliveEmbeddingModel(),
 });
-const ciel = new Ciel({
+const ciel = new Ciel(live, {
   nucleus: {
     model,
     memory,
@@ -40,7 +40,7 @@ const ciel = new Ciel({
     sampleInterval: 0,
     differenceThreshold: 0.03,
   },
-}).use(live);
+});
 
 let hearings = 0;
 let sights = 0;

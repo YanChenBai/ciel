@@ -32,8 +32,7 @@ class MicrophoneStimulus extends Stimulus<typeof signals> {
   async stop() {}
 }
 
-const ciel = new Ciel();
-ciel.use(new MicrophoneStimulus());
+const ciel = new Ciel(new MicrophoneStimulus());
 await ciel.start();
 ```
 
@@ -67,21 +66,22 @@ Both consumers receive stable checkouts. A failed call keeps its checkout for re
 percepts continue to append. The Episode Agent receives multimodal prompt parts but no tools or store
 handle; only deterministic Nucleus code appends the resulting Episode and advances the memory cursor.
 
-`Ciel.stop()` stops stimuli, removes subscriptions, and closes each `Sensus`. Closing flushes stateful capabilities and releases their event listeners.
+`Ciel.stop()` stops its stimulus, removes subscriptions, and closes its `Sensus`. Closing flushes stateful capabilities and releases their event listeners.
 
 ## Exports
 
-- `Ciel`: stimulus registration and lifecycle orchestration.
+- `Ciel`: lifecycle orchestration for the single Stimulus passed to its constructor.
 - `Context`: trusted Stimulus/Signal definition and multimodal Percept prompt builder.
 - `Memory`: Mastra Working Memory, date threads, and semantic recall backed by LibSQL and LibSQLVector.
-- `Nucleus<TOutput>`: the many-stimuli thought and memory-summary scheduler.
+- `Nucleus<TOutput>`: the thought and memory-summary scheduler.
 - `Vestigium`: the append-only sensory journal shared by context construction and memory archiving.
 - `Sensus`: unified signal routing, sensory capability, events, and lifecycle.
 - `SensusBase<TSignal, TData>`: common signal binding and `data/error` event contract for sensory capabilities.
 - `Stimulus`: typed event source with explicit `signals` and async `send()`.
 
-Pass `nucleus` to `Ciel` to create its single lifecycle-managed `Nucleus`. Every registered
-Stimulus feeds the same Nucleus while each realtime entry retains its source Stimulus. `Context`
+Pass one Stimulus as the first `Ciel` constructor argument and `nucleus` in the optional second
+argument to create its single lifecycle-managed `Nucleus`. The Stimulus feeds that Nucleus while
+each realtime entry retains its source Stimulus. `Context`
 builds the trusted base definitions and chronological text/image Percept input. Ciel forwards
 `thought` and `error` events and exposes the runtime through `getNucleus()` and its current
 realtime state through `getContext()`.

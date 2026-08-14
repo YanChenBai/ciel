@@ -33,7 +33,7 @@ $env:BLIVE_AI_BASE_URL='https://openrouter.ai/api/v1'
 vp run --filter @ciels/blive start
 ```
 
-启动入口使用 `oxnode ./src/main.ts`。入口会先将默认 `CIEL_DATA_DIR` 解析到 monorepo 根目录的 `.ciel-data`，再动态加载 Core；从 app 子目录启动时仍会复用同一套 ASR 模型。入口通过 `new Ciel({ nucleus: { model, memory } }).use(live)` 启动完整链路，原始 `BilibiliAudio`/`BilibiliVideo` 会依次进入 Auris/Oculus，形成 `Hearing`/`Sight` 后交给 Nucleus 思考，结果通过 `thought` 输出。`BLIVE_FFMPEG_PATH` 可以指定 FFmpeg 路径，`BLIVE_IMAGE_INTERVAL` 可以覆盖默认的 `10000` 毫秒截图间隔。
+启动入口使用 `oxnode ./src/main.ts`。入口会先将默认 `CIEL_DATA_DIR` 解析到 monorepo 根目录的 `.ciel-data`，再动态加载 Core；从 app 子目录启动时仍会复用同一套 ASR 模型。入口通过 `new Ciel(live, { nucleus: { model, memory } })` 启动完整链路，原始 `BilibiliAudio`/`BilibiliVideo` 会依次进入 Auris/Oculus，形成 `Hearing`/`Sight` 后交给 Nucleus 思考，结果通过 `thought` 输出。`BLIVE_FFMPEG_PATH` 可以指定 FFmpeg 路径，`BLIVE_IMAGE_INTERVAL` 可以覆盖默认的 `10000` 毫秒截图间隔。
 
 作为 Ciel Stimulus 使用：
 
@@ -42,7 +42,7 @@ import { BilibiliLive } from '@ciels/blive';
 import { Ciel, Memory } from '@ciels/core';
 
 const live = new BilibiliLive({ roomId: 24680 });
-const ciel = new Ciel({
+const ciel = new Ciel(live, {
   nucleus: {
     model,
     memory: new Memory({
@@ -55,7 +55,7 @@ const ciel = new Ciel({
     sampleInterval: 0,
     differenceThreshold: 0.03,
   },
-}).use(live);
+});
 
 live.onError(console.error);
 await ciel.start();
