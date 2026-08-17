@@ -23,12 +23,12 @@
   },
   "dependencies": {
     "@ciels/event": "workspace:*",
-    "sherpa-onnx-node": "^1.13.4"
+    "sherpa-onnx-node": "^1.13.5"
   },
   "devDependencies": {
     "@oxc-node/cli": "catalog:",
-    "@types/node": "^26.1.1",
-    "bumpp": "^11.1.0",
+    "@types/node": "^26.2.0",
+    "bumpp": "^12.2.1",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

@@ -20,14 +20,13 @@ vp run asr:install
 
 ```powershell
 $env:BLIVE_AI_API_KEY='...'
-$env:BLIVE_AI_VISION_MODEL='provider/vision-model'
+$env:BLIVE_AI_MODEL='provider/shared-model'
 # 默认 https://openrouter.ai/api/v1；使用其他服务时再覆盖
 $env:BLIVE_AI_BASE_URL='https://openrouter.ai/api/v1'
 ```
 
-blive 会复用同一个模型 ID 创建视觉生成与 embedding handle，因此服务端模型必须同时支持
-`image input` 和 embeddings 接口；embedding 用于历史经历的语义检索。`BLIVE_AI_MODEL`
-仍可兼容使用，但建议通过 `BLIVE_AI_VISION_MODEL` 明确配置视觉模型；Nucleus 会把本轮尚未成功提交的变化帧每九张组合成一张 JPEG，不足九张也会立即提交。
+blive 只保留一套 AI 配置，并复用 `BLIVE_AI_MODEL` 创建生成与 embedding handle，因此服务端模型必须同时支持
+`image input` 和 embeddings 接口；embedding 用于历史经历的语义检索。Nucleus 会把本轮尚未成功提交的变化帧每九张组合成一张 JPEG，不足九张也会立即提交。
 
 ```bash
 vp run --filter @ciels/blive start

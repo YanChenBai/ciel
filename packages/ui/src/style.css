@@ -1,0 +1,19 @@
+@import 'tailwindcss';
+
+@source './**/*.{ts,vue}';
+
+@theme {
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  *,
+  ::before,
+  ::after {
+    border-color: rgb(255 255 255 / 0.08);
+  }
+}

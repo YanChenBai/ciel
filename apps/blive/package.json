@@ -23,15 +23,15 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.7",
+    "@ai-sdk/openai-compatible": "^3.0.30",
     "@ciels/bridge": "workspace:*",
     "@ciels/core": "workspace:*",
-    "ai": "^7.0.58"
+    "ai": "^7.0.66"
   },
   "devDependencies": {
     "@oxc-node/cli": "catalog:",
     "@types/node": "catalog:",
-    "bumpp": "^11.1.0",
+    "bumpp": "^12.2.1",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

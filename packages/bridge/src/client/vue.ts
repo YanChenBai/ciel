@@ -11,18 +11,23 @@ export function createBridge(...args: ClientArgs) {
   function getClient() {
     if (!client) {
       client = createClient(...args);
-      client.connect();
     }
 
     return client;
   }
 
   function onMessage(listener: MessageListener) {
-    const off = getClient().onMessage(listener);
+    const current = getClient();
+    const off = current.onMessage(listener);
+    const release = current.retain();
+    const dispose = () => {
+      off();
+      release();
+    };
 
-    onBeforeUnmount(off);
+    onBeforeUnmount(dispose);
 
-    return off;
+    return dispose;
   }
 
   function destroy() {

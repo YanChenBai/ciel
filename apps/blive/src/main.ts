@@ -178,7 +178,7 @@ function formatCielError(error: Error): string {
   if (error.message.includes('No endpoints found that support image input')) {
     return [
       '当前 AI 模型不支持图片输入。',
-      '请将 BLIVE_AI_VISION_MODEL 设置为支持 image input 的多模态模型；',
+      '请将 BLIVE_AI_MODEL 设置为同时支持 image input 与 embeddings 的模型；',
       'Oculus 会将 9 帧合成为一张 1920x1080 JPEG 后提交。',
       detail,
     ].join(' ');

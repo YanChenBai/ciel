@@ -14,15 +14,9 @@ export interface BliveAI {
 
 export function resolveBliveAIConfig(environment: NodeJS.ProcessEnv = process.env): BliveAIConfig {
   return {
-    apiKey: requireValue(
-      environment.BLIVE_AI_API_KEY ?? environment.OPENROUTER_API_KEY,
-      'BLIVE_AI_API_KEY',
-    ),
+    apiKey: requireValue(environment.BLIVE_AI_API_KEY, 'BLIVE_AI_API_KEY'),
     baseURL: environment.BLIVE_AI_BASE_URL ?? 'https://openrouter.ai/api/v1',
-    model: requireValue(
-      environment.BLIVE_AI_VISION_MODEL ?? environment.BLIVE_AI_MODEL,
-      'BLIVE_AI_VISION_MODEL',
-    ),
+    model: requireValue(environment.BLIVE_AI_MODEL, 'BLIVE_AI_MODEL'),
   };
 }
 
