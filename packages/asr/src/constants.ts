@@ -14,7 +14,7 @@ export const AURIS_MODELS_PATH = path.join(DATA_PATH, 'models');
 export const AURIS_VOICEPRINTS_PATH = path.join(DATA_PATH, 'voiceprints');
 
 export const AURIS_MODEL_PATHS = {
-  asr: path.join(AURIS_MODELS_PATH, 'asr', 'sense-voice'),
+  asr: path.join(AURIS_MODELS_PATH, 'asr', 'qwen3-asr-1.7b-int8'),
   vad: path.join(AURIS_MODELS_PATH, 'vad', 'ten-vad.int8.onnx'),
   speaker: path.join(AURIS_MODELS_PATH, 'speaker', 'model.onnx'),
 } as const;

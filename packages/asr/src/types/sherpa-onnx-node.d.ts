@@ -157,6 +157,19 @@ declare module 'sherpa-onnx-node' {
     language?: string | undefined;
     useInverseTextNormalization?: number | undefined;
   };
+  /** 离线 Qwen3-ASR 模型配置。 */
+  export type OfflineQwen3AsrModelConfig = {
+    convFrontend?: string | undefined;
+    encoder?: string | undefined;
+    decoder?: string | undefined;
+    tokenizer?: string | undefined;
+    hotwords?: string | undefined;
+    maxTotalLen?: number | undefined;
+    maxNewTokens?: number | undefined;
+    temperature?: number | undefined;
+    topP?: number | undefined;
+    seed?: number | undefined;
+  };
   /** 离线 Cohere Transcribe 模型配置。 */
   export type OfflineCohereTranscribeModelConfig = {
     encoder?: string | undefined;
@@ -181,6 +194,7 @@ declare module 'sherpa-onnx-node' {
     moonshine?: OfflineMoonshineModelConfig | undefined;
     tdnn?: OfflineTdnnModelConfig | undefined;
     senseVoice?: OfflineSenseVoiceModelConfig | undefined;
+    qwen3Asr?: OfflineQwen3AsrModelConfig | undefined;
     cohereTranscribe?: OfflineCohereTranscribeModelConfig | undefined;
     tokens?: string | undefined;
     numThreads?: number | undefined;

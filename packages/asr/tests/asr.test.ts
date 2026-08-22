@@ -80,14 +80,14 @@ vi.mock('sherpa-onnx-node', () => {
 
     getResult(): object {
       return {
-        text: '你好',
+        text: 'language Chinese<asr_text>你好',
         lang: '<|zh|>',
         emotion: '<|NEUTRAL|>',
         event: '<|Speech|>',
-        tokens: ['你', '好'],
-        timestamps: [0, 0.5],
+        tokens: [],
+        timestamps: [],
         durations: [],
-        ys_log_probs: [Math.log(0.9), Math.log(0.7)],
+        ys_log_probs: [],
         words: [],
       };
     }
@@ -141,19 +141,8 @@ describe('ASR', () => {
       startAt: new Date('2026-08-09T00:00:00.100Z'),
       endAt: new Date('2026-08-09T00:00:01.100Z'),
     });
-    expect(results[0]!.confidence).toBeCloseTo(0.8);
-    expect(results[0]!.tokens).toEqual([
-      {
-        content: '你',
-        startAt: new Date('2026-08-09T00:00:00.100Z'),
-        endAt: new Date('2026-08-09T00:00:00.600Z'),
-      },
-      {
-        content: '好',
-        startAt: new Date('2026-08-09T00:00:00.600Z'),
-        endAt: new Date('2026-08-09T00:00:01.100Z'),
-      },
-    ]);
+    expect(results[0]!.confidence).toBeUndefined();
+    expect(results[0]!.tokens).toBeUndefined();
   });
 
   it('emits input errors without throwing from write', () => {

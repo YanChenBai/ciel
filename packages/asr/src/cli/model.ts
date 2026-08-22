@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { access, mkdir, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -10,8 +9,16 @@ import { DATA_PATH } from '../constants.ts';
 import { loading, progress } from './utils/index.ts';
 
 const RELEASE = 'https://github.com/k2-fsa/sherpa-onnx/releases/download';
-const ASR_ARCHIVE = 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2';
-const ASR_URL = RELEASE + '/asr-models/' + ASR_ARCHIVE;
+const QWEN3_ASR_REPOSITORY =
+  'https://modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx/resolve/master';
+const QWEN3_ASR_FILES = [
+  'model_1.7B/conv_frontend.onnx',
+  'model_1.7B/encoder.int8.onnx',
+  'model_1.7B/decoder.int8.onnx',
+  'tokenizer/merges.txt',
+  'tokenizer/tokenizer_config.json',
+  'tokenizer/vocab.json',
+] as const;
 const VAD_URL = RELEASE + '/asr-models/ten-vad.int8.onnx';
 const SPEAKER_URL =
   RELEASE +
@@ -31,7 +38,7 @@ export async function installModel(args: readonly string[]): Promise<void> {
   if (values.help) {
     process.stdout.write(
       'Usage: vp run asr:install -- [--force]\n\n' +
-        'Models are installed into .ciel-data/models.\n',
+        'Qwen3-ASR, VAD, and speaker models are installed into .ciel-data/models.\n',
     );
     return;
   }
@@ -41,32 +48,16 @@ export async function installModel(args: readonly string[]): Promise<void> {
 
 async function installModels(force: boolean): Promise<void> {
   const modelsDir = path.join(DATA_PATH, 'models');
-  const downloadsDir = path.join(DATA_PATH, 'downloads');
-  const asrDir = path.join(modelsDir, 'asr', 'sense-voice');
+  const asrDir = path.join(modelsDir, 'asr', 'qwen3-asr-1.7b-int8');
   const vadFile = path.join(modelsDir, 'vad', 'ten-vad.int8.onnx');
   const speakerFile = path.join(modelsDir, 'speaker', 'model.onnx');
 
-  await mkdir(downloadsDir, { recursive: true });
-  const archive = path.join(downloadsDir, ASR_ARCHIVE);
-  if (
-    force ||
-    !(await exists(path.join(asrDir, 'tokens.txt'))) ||
-    !(await exists(path.join(asrDir, 'model.int8.onnx')))
-  ) {
-    await download(ASR_URL, archive);
-    const temporaryAsrDir = asrDir + '.installing';
-    await rm(temporaryAsrDir, { recursive: true, force: true });
-    await mkdir(temporaryAsrDir, { recursive: true });
-    await extractArchive(archive, temporaryAsrDir);
-    if (
-      !(await exists(path.join(temporaryAsrDir, 'tokens.txt'))) ||
-      !(await exists(path.join(temporaryAsrDir, 'model.int8.onnx')))
-    ) {
-      throw new Error('The SenseVoice archive is incomplete');
+  const asrFiles = QWEN3_ASR_FILES.map(file => resolveQwenTarget(asrDir, file));
+  if (force || !(await allExist(asrFiles))) {
+    for (const file of QWEN3_ASR_FILES) {
+      const target = resolveQwenTarget(asrDir, file);
+      await installFile(`${QWEN3_ASR_REPOSITORY}/${file}`, target, force);
     }
-    await rm(asrDir, { recursive: true, force: true });
-    await rename(temporaryAsrDir, asrDir);
-    await rm(archive, { force: true });
   } else {
     process.stdout.write('ASR model already installed\n');
   }
@@ -120,23 +111,15 @@ async function download(url: string, target: string): Promise<void> {
   }
 }
 
-async function extractArchive(archive: string, target: string): Promise<void> {
-  const stop = loading('Extracting ' + path.basename(archive));
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn('tar', ['-xjf', archive, '-C', target, '--strip-components=1'], {
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-      child.once('error', reject);
-      child.once('close', code => {
-        if (code === 0) resolve();
-        else reject(new Error(`tar exited with status ${code}`));
-      });
-    });
-  } finally {
-    stop();
-  }
+async function allExist(targets: readonly string[]): Promise<boolean> {
+  const results = await Promise.all(targets.map(exists));
+  return results.every(Boolean);
+}
+
+function resolveQwenTarget(directory: string, file: string): string {
+  return file.startsWith('tokenizer/')
+    ? path.join(directory, file)
+    : path.join(directory, path.basename(file));
 }
 
 async function exists(target: string): Promise<boolean> {

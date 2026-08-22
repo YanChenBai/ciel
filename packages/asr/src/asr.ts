@@ -6,7 +6,6 @@ import sherpaOnnx from 'sherpa-onnx-node';
 import type {
   CircularBuffer as CircularBufferInstance,
   OfflineRecognizer as OfflineRecognizerInstance,
-  OfflineRecognizerResult,
   SpeechSegment,
   Vad as VadInstance,
 } from 'sherpa-onnx-node';
@@ -21,9 +20,10 @@ import {
 import { createAurisModelConfig } from './models.ts';
 import { ProcessASR } from './process-asr.ts';
 import { SpeakerTracker } from './speaker.ts';
-import type { ASREventMap, ASROptions, ASRSegment, ASRToken } from './types.ts';
+import type { ASREventMap, ASROptions, ASRSegment } from './types.ts';
 
 const { CircularBuffer, OfflineRecognizer, SpeakerEmbeddingExtractor, Vad } = sherpaOnnx;
+const QWEN3_ASR_TEXT_MARKER = '<asr_text>';
 
 export class NativeASR {
   private readonly emitter = new EventEmitter<ASREventMap>();
@@ -139,15 +139,13 @@ export class NativeASR {
     });
     this.recognizer.decode(stream);
     const result = this.recognizer.getResult(stream);
-    const content = result.text.trim();
+    const content = parseQwen3AsrText(result.text);
     if (content) {
       this.emit('result', {
         content,
         speaker: this.speaker.assign(segment.samples, AURIS_SAMPLE_RATE),
-        confidence: averageConfidence(result),
         startAt: segmentStartAt,
         endAt: segmentEndAt,
-        tokens: createTokens(result, segmentStartAt, segmentEndAt),
       });
     }
     this.emit('speechend', segmentEndAt);
@@ -194,35 +192,9 @@ function pcm16ToFloat32(data: Buffer): Float32Array {
   return samples;
 }
 
-function createTokens(
-  result: OfflineRecognizerResult,
-  segmentStartAt: Date,
-  segmentEndAt: Date,
-): readonly ASRToken[] | undefined {
-  if (result.tokens.length === 0 || result.timestamps.length === 0) {
-    return undefined;
-  }
-  return result.tokens.map((content, index) => {
-    const startAt = addSeconds(segmentStartAt, result.timestamps[index] ?? 0);
-    const duration = result.durations[index];
-    const nextTimestamp = result.timestamps[index + 1];
-    return {
-      content,
-      startAt,
-      endAt:
-        duration !== undefined
-          ? addSeconds(startAt, duration)
-          : nextTimestamp === undefined
-            ? segmentEndAt
-            : addSeconds(segmentStartAt, nextTimestamp),
-    };
-  });
-}
-
-function averageConfidence(result: OfflineRecognizerResult): number | undefined {
-  const probabilities = result.ys_log_probs.filter(Number.isFinite).map(Math.exp);
-  if (probabilities.length === 0) return undefined;
-  return probabilities.reduce((sum, value) => sum + value, 0) / probabilities.length;
+function parseQwen3AsrText(text: string): string {
+  const marker = text.indexOf(QWEN3_ASR_TEXT_MARKER);
+  return (marker < 0 ? text : text.slice(marker + QWEN3_ASR_TEXT_MARKER.length)).trim();
 }
 
 function addSamples(at: Date, samples: number): Date {
