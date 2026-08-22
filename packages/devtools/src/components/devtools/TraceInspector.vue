@@ -42,9 +42,9 @@ function formatDuration(duration?: number): string {
 
 <template>
   <aside class="flex h-full min-h-0 flex-col overflow-hidden bg-[#222324]">
-    <header class="flex h-[51px] shrink-0 items-center border-b border-white/10 px-4">
+    <header class="flex h-12.75 shrink-0 items-center border-b border-white/10 px-4">
       <span
-        class="mr-3 font-mono text-[11px] font-semibold tracking-wide uppercase"
+        class="text-2xs mr-3 font-mono font-semibold tracking-wide uppercase"
         :class="step ? laneClass(step.lane) : 'text-zinc-500'"
       >
         {{ step?.lane ?? 'step' }}
@@ -65,13 +65,13 @@ function formatDuration(duration?: number): string {
 
     <Tabs v-model="tab" class="min-h-0 flex-1 gap-0">
       <TabsList
-        class="h-[43px] w-full shrink-0 justify-start gap-0 rounded-none border-b border-white/10 bg-transparent p-0"
+        class="h-10.75 w-full shrink-0 justify-start gap-0 rounded-none border-b border-white/10 bg-transparent p-0"
       >
         <TabsTrigger
           v-for="value in ['summary', 'payload', 'result', 'events'] as const"
           :key="value"
           :value="value"
-          class="h-full rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-0 text-xs text-zinc-500 capitalize shadow-none data-[state=active]:border-[#FB7299] data-[state=active]:bg-white/[0.035] data-[state=active]:text-zinc-100 data-[state=active]:shadow-none"
+          class="data-[state=active]:border-primary! h-full rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-0 text-xs text-zinc-500 capitalize shadow-none data-[state=active]:bg-white/3.5 data-[state=active]:text-zinc-100 data-[state=active]:shadow-none"
         >
           {{ value }}
         </TabsTrigger>
@@ -82,7 +82,7 @@ function formatDuration(duration?: number): string {
           <TabsContent value="summary" class="mt-0">
             <section v-if="step" class="border-t border-white/10 text-xs">
               <InspectorSection title="Overview" default-open>
-                <dl class="grid grid-cols-[92px_minmax(0,1fr)] gap-y-2.5">
+                <dl class="grid grid-cols-[5.75rem_minmax(0,1fr)] gap-y-2.5">
                   <dt class="text-zinc-500">Hierarchy</dt>
                   <dd class="flex items-center gap-1 text-zinc-300">
                     Trace <ChevronRight class="size-3 text-zinc-600" /> {{ step.lane }}
@@ -128,26 +128,26 @@ function formatDuration(duration?: number): string {
 
 <style scoped>
 .lane-sensory {
-  color: #7eabff;
+  color: var(--trace-sensory-foreground);
 }
 
 .lane-context {
-  color: #72d7a5;
+  color: var(--trace-context-foreground);
 }
 
 .lane-memory {
-  color: #65cbd8;
+  color: var(--trace-memory-foreground);
 }
 
 .lane-model {
-  color: #c59be8;
+  color: var(--trace-model-foreground);
 }
 
 .lane-tool {
-  color: #ffb160;
+  color: var(--trace-tool-foreground);
 }
 
 .lane-nucleus {
-  color: #ff8eb0;
+  color: var(--primary);
 }
 </style>

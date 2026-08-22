@@ -183,14 +183,12 @@ function exportTrace(): void {
 <template>
   <Tabs
     v-model="viewTab"
-    class="flex h-dvh min-h-[620px] flex-col gap-0 overflow-hidden bg-[#171819] text-[#d8d8da]"
+    class="flex h-dvh min-h-155 flex-col gap-0 overflow-hidden bg-[#171819] text-[#d8d8da]"
   >
     <header class="flex h-16 shrink-0 flex-col border-b border-[#343537] bg-[#1c1d1e]">
-      <div
-        class="flex h-9 min-w-0 shrink-0 items-center border-b border-white/[0.07] px-3 py-2 sm:px-4"
-      >
+      <div class="flex h-9 min-w-0 shrink-0 items-center border-b border-white/7 px-3 py-2 sm:px-4">
         <div class="flex min-w-0 flex-1 items-center gap-3">
-          <h1 class="truncate text-[14px] font-medium tracking-[-0.005em] text-[#eeeeef]">
+          <h1 class="truncate text-sm font-medium tracking-[-0.005em] text-[#eeeeef]">
             {{ title }}
           </h1>
           <slot name="title-extra" />
@@ -205,13 +203,13 @@ function exportTrace(): void {
       >
         <TabsTrigger
           value="conversation"
-          class="h-full rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent! px-0 text-xs text-zinc-400 shadow-none data-[state=active]:border-[#FB7299] data-[state=active]:bg-transparent! data-[state=active]:text-[#FB7299] data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent!"
+          class="data-[state=active]:border-primary! data-[state=active]:text-primary! h-full rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent! px-0 text-xs text-zinc-400 shadow-none data-[state=active]:bg-transparent! data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent!"
         >
           对话
         </TabsTrigger>
         <TabsTrigger
           value="trace"
-          class="h-full rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent! px-0 text-xs text-zinc-400 shadow-none data-[state=active]:border-[#FB7299] data-[state=active]:bg-transparent! data-[state=active]:text-[#FB7299] data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent!"
+          class="data-[state=active]:border-primary! data-[state=active]:text-primary! h-full rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent! px-0 text-xs text-zinc-400 shadow-none data-[state=active]:bg-transparent! data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent!"
         >
           轨迹
         </TabsTrigger>
@@ -222,25 +220,23 @@ function exportTrace(): void {
       <ScrollArea class="h-full bg-[#1c1d1e]">
         <template v-if="selectedRun">
           <div
-            class="flex h-7 items-center border-b border-white/[0.07] bg-[#18191a] px-4 font-mono text-[9px] text-zinc-600"
+            class="text-4xs flex h-7 items-center border-b border-white/7 bg-[#18191a] px-4 font-mono text-zinc-600"
           >
             Conversation · {{ shortId(selectedRun.id) }} · {{ formatClock(selectedRun.startedAt) }}
           </div>
           <article
             v-for="percept in selectedRun.inputPercepts"
             :key="percept.sequence"
-            class="grid grid-cols-[86px_minmax(0,1fr)] border-b border-white/[0.07]"
+            class="grid grid-cols-[5.375rem_minmax(0,1fr)] border-b border-white/7"
           >
             <div class="flex justify-end px-3 py-4">
-              <Badge class="h-fit border-0 bg-[#5B8FF9]/20 font-mono text-[10px] text-[#7EABFF]"
-                >ASR</Badge
-              >
+              <Badge class="lane-sensory text-3xs h-fit border-0 font-mono">ASR</Badge>
             </div>
             <div class="min-w-0 py-4 pr-6">
-              <p class="text-[14px] leading-6 whitespace-pre-wrap text-zinc-100">
+              <p class="text-sm leading-6 whitespace-pre-wrap text-zinc-100">
                 {{ displayText(percept.content) }}
               </p>
-              <p class="mt-2 font-mono text-[10px] text-zinc-600">
+              <p class="text-3xs mt-2 font-mono text-zinc-600">
                 {{ percept.perceptType }} · {{ percept.stimulus }} / {{ percept.signal }} ·
                 {{ formatClock(percept.time) }}
               </p>
@@ -248,18 +244,16 @@ function exportTrace(): void {
           </article>
           <article
             v-if="selectedRun.output !== undefined"
-            class="grid grid-cols-[86px_minmax(0,1fr)] border-b border-white/[0.07]"
+            class="grid grid-cols-[5.375rem_minmax(0,1fr)] border-b border-white/7"
           >
             <div class="flex justify-end px-3 py-4">
-              <Badge class="h-fit border-0 bg-[#A779D2]/20 font-mono text-[10px] text-[#C59BE8]"
-                >MODEL</Badge
-              >
+              <Badge class="lane-model text-3xs h-fit border-0 font-mono">MODEL</Badge>
             </div>
             <div class="min-w-0 py-4 pr-6">
-              <p class="text-[14px] leading-6 whitespace-pre-wrap text-zinc-100">
+              <p class="text-sm leading-6 whitespace-pre-wrap text-zinc-100">
                 {{ displayText(selectedRun.output) }}
               </p>
-              <p class="mt-2 font-mono text-[10px] text-zinc-600">
+              <p class="text-3xs mt-2 font-mono text-zinc-600">
                 Final response · {{ formatClock(selectedRun.completedAt) }} ·
                 {{ formatDuration(selectedRun.durationMs) }}
               </p>
@@ -277,7 +271,7 @@ function exportTrace(): void {
 
     <TabsContent value="trace" class="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
       <section
-        class="flex h-8 shrink-0 items-center gap-1 border-b border-white/10 bg-[#202122] px-2 text-[11px] text-zinc-400"
+        class="text-2xs flex h-8 shrink-0 items-center gap-1 border-b border-white/10 bg-[#202122] px-2 text-zinc-400"
       >
         <span class="flex h-full items-center gap-1.5 px-2">
           <Clock3 class="size-3.5" /> {{ formatDuration(selectedRun?.durationMs) }}
@@ -292,7 +286,7 @@ function exportTrace(): void {
         <Button
           variant="ghost"
           size="xs"
-          class="h-5 gap-1 px-1.5 text-[10px] text-zinc-400 hover:bg-white/5 hover:text-zinc-100"
+          class="text-3xs h-5 gap-1 px-1.5 text-zinc-400 hover:bg-white/5 hover:text-zinc-100"
           @click="exportTrace"
         >
           <Download class="size-3" /> Export
@@ -305,7 +299,7 @@ function exportTrace(): void {
             v-model="search"
             type="search"
             placeholder="搜索步骤"
-            class="h-6 w-48 border-transparent bg-white/[0.045] pr-2 pl-8 text-[11px] text-zinc-200 shadow-none placeholder:text-zinc-600 focus-visible:border-transparent focus-visible:ring-[#FB7299]/25 md:text-[11px] lg:w-56"
+            class="focus-visible:ring-primary/25 text-2xs md:text-2xs h-6 w-48 border-transparent bg-white/4.5 pr-2 pl-8 text-zinc-200 shadow-none placeholder:text-zinc-600 focus-visible:border-transparent lg:w-56"
           />
         </label>
         <TooltipProvider>
@@ -345,7 +339,7 @@ function exportTrace(): void {
           </div>
         </ResizablePanel>
 
-        <ResizableHandle with-handle class="h-px bg-white/10 hover:bg-[#FB7299]/70" />
+        <ResizableHandle with-handle class="hover:bg-primary/70 h-px bg-white/10" />
 
         <ResizablePanel :default-size="66" :min-size="30">
           <ResizablePanelGroup direction="horizontal" class="min-h-0">
@@ -353,7 +347,7 @@ function exportTrace(): void {
               <ScrollArea class="h-full bg-[#1c1d1e]">
                 <div
                   v-if="selectedRun"
-                  class="flex h-6 items-center border-b border-white/[0.06] bg-[#18191a] px-2 font-mono text-[9px] text-zinc-600"
+                  class="text-4xs flex h-6 items-center border-b border-white/6 bg-[#18191a] px-2 font-mono text-zinc-600"
                 >
                   Trace · {{ shortId(selectedRun.id) }}
                 </div>
@@ -361,11 +355,11 @@ function exportTrace(): void {
                   v-for="step in filteredSteps"
                   :key="step.id"
                   type="button"
-                  class="group grid w-full grid-cols-[26px_68px_minmax(0,1fr)_76px] items-center border-b border-white/[0.07] text-left transition hover:bg-white/[0.035]"
+                  class="group grid w-full grid-cols-[1.625rem_4.25rem_minmax(0,1fr)_4.75rem] items-center border-b border-white/7 text-left transition hover:bg-white/3.5"
                   :class="
                     selectedStep?.id === step.id
-                      ? 'border-l-[3px] border-l-[#FB7299] bg-white/[0.045]'
-                      : 'border-l-[3px] border-l-transparent'
+                      ? 'border-l-primary border-l-3 bg-white/4.5'
+                      : 'border-l-3 border-l-transparent'
                   "
                   @click="selectStep(step)"
                 >
@@ -383,21 +377,21 @@ function exportTrace(): void {
                   </span>
                   <span class="py-1.5">
                     <Badge
-                      class="inline-flex rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold tracking-wide uppercase"
+                      class="text-4xs inline-flex rounded px-1.5 py-0.5 font-mono font-semibold tracking-wide uppercase"
                       :class="laneClass(step.lane)"
                     >
                       {{ step.lane }}
                     </Badge>
                   </span>
                   <span class="flex min-w-0 items-baseline gap-3 py-2 pr-3">
-                    <strong class="shrink-0 font-mono text-[12px] font-normal text-zinc-200">{{
+                    <strong class="shrink-0 font-mono text-xs font-normal text-zinc-200">{{
                       step.name
                     }}</strong>
-                    <span class="truncate font-mono text-[11px] text-zinc-500">{{
+                    <span class="text-2xs truncate font-mono text-zinc-500">{{
                       preview(step)
                     }}</span>
                   </span>
-                  <span class="pr-3 text-right font-mono text-[10px] text-zinc-600">{{
+                  <span class="text-3xs pr-3 text-right font-mono text-zinc-600">{{
                     formatDuration(step.durationMs)
                   }}</span>
                 </button>
@@ -420,7 +414,7 @@ function exportTrace(): void {
             <ResizableHandle
               v-if="inspectorOpen"
               with-handle
-              class="w-px bg-white/10 hover:bg-[#FB7299]/70"
+              class="hover:bg-primary/70 w-px bg-white/10"
             />
             <ResizablePanel v-if="inspectorOpen" :default-size="38" :min-size="25">
               <TraceInspector :step="selectedStep" @close="inspectorOpen = false" />
@@ -434,33 +428,33 @@ function exportTrace(): void {
 
 <style scoped>
 .lane-sensory {
-  background: rgb(91 143 249 / 0.18);
-  color: #7eabff;
+  background: color-mix(in srgb, var(--trace-sensory) 18%, transparent);
+  color: var(--trace-sensory-foreground);
 }
 
 .lane-context {
-  background: rgb(79 195 139 / 0.18);
-  color: #72d7a5;
+  background: color-mix(in srgb, var(--trace-context) 18%, transparent);
+  color: var(--trace-context-foreground);
 }
 
 .lane-memory {
-  background: rgb(66 184 198 / 0.18);
-  color: #65cbd8;
+  background: color-mix(in srgb, var(--trace-memory) 18%, transparent);
+  color: var(--trace-memory-foreground);
 }
 
 .lane-model {
-  background: rgb(167 121 210 / 0.2);
-  color: #c59be8;
+  background: color-mix(in srgb, var(--trace-model) 20%, transparent);
+  color: var(--trace-model-foreground);
 }
 
 .lane-tool {
-  background: rgb(245 158 66 / 0.18);
-  color: #ffb160;
+  background: color-mix(in srgb, var(--trace-tool) 18%, transparent);
+  color: var(--trace-tool-foreground);
 }
 
 .lane-nucleus {
-  background: rgb(251 114 153 / 0.18);
-  color: #ff8eb0;
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--primary);
 }
 
 .console-scrollbar {

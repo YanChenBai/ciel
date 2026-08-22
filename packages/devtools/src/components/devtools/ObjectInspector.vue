@@ -50,13 +50,13 @@ const data = computed<JSONDataType>(() => {
 .object-inspector :deep(.vjs-tree) {
   min-width: max-content;
   color: #a1a1aa;
-  font-size: 11px;
-  line-height: 20px;
+  font-size: 0.6875rem;
+  line-height: 1.25rem;
 }
 
 .object-inspector :deep(.vjs-tree-node) {
-  border-radius: 2px;
-  line-height: 20px;
+  border-radius: 0.125rem;
+  line-height: 1.25rem;
 }
 
 .object-inspector :deep(.vjs-tree-node.dark:hover) {
@@ -95,7 +95,7 @@ const data = computed<JSONDataType>(() => {
 
 .object-inspector :deep(.vjs-tree-brackets:hover),
 .object-inspector :deep(.vjs-carets:hover) {
-  color: #fb7299;
+  color: var(--primary);
 }
 
 .object-inspector :deep(.vjs-comment) {

@@ -146,32 +146,32 @@ function formatOffset(offsetMs: number): string {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #202123;
+  background: var(--trace-surface);
 }
 
 .vigilia-timeline .vis-timeline,
 .vigilia-timeline .vis-panel,
 .vigilia-timeline .vis-labelset .vis-label,
 .vigilia-timeline .vis-foreground .vis-group {
-  border-color: #2b2c2e !important;
+  border-color: var(--trace-grid) !important;
 }
 
 .vigilia-timeline .vis-panel.vis-left {
-  width: 80px !important;
-  border-right-color: #2b2c2e !important;
-  background: #202123;
+  width: 5rem !important;
+  border-right-color: var(--trace-grid) !important;
+  background: var(--trace-surface);
 }
 
 .vigilia-timeline .vis-panel.vis-center,
 .vigilia-timeline .vis-panel.vis-background,
 .vigilia-timeline .vis-panel.vis-top,
 .vigilia-timeline .vis-panel.vis-bottom {
-  left: 80px !important;
+  left: 5rem !important;
 }
 
 .vigilia-timeline .vis-labelset .vis-label,
 .vigilia-timeline .vis-foreground .vis-group {
-  min-height: 22px;
+  min-height: 1.375rem;
   box-sizing: border-box;
 }
 
@@ -180,37 +180,37 @@ function formatOffset(offsetMs: number): string {
   box-sizing: border-box;
   height: 100%;
   align-items: center;
-  padding: 0 14px;
-  color: #777a7e;
+  padding: 0 0.875rem;
+  color: var(--trace-muted-foreground);
   font:
-    10px/13px SFMono-Regular,
+    0.625rem/0.8125rem SFMono-Regular,
     Consolas,
     monospace;
 }
 
 .vigilia-timeline .vis-time-axis {
-  background: #252628;
+  background: var(--trace-axis);
 }
 
 .vigilia-timeline .vis-time-axis .vis-text {
-  padding-top: 4px;
-  color: #777a7e;
+  padding-top: 0.25rem;
+  color: var(--trace-muted-foreground);
   font:
-    9px/13px SFMono-Regular,
+    0.5625rem/0.8125rem SFMono-Regular,
     Consolas,
     monospace;
 }
 
 .vigilia-timeline .vis-panel .vis-grid {
-  border-color: #2b2c2e !important;
+  border-color: var(--trace-grid) !important;
 }
 
 .vigilia-timeline .vis-item.trace-item {
-  min-width: 8px;
-  height: 10px;
+  min-width: 0.5rem;
+  height: 0.625rem;
   border: 0;
-  border-radius: 1px;
-  top: 6px !important;
+  border-radius: 0.0625rem;
+  top: 0.375rem !important;
   cursor: pointer;
 }
 
@@ -219,27 +219,27 @@ function formatOffset(offsetMs: number): string {
 }
 
 .vigilia-timeline .vis-item.trace-item-sensory {
-  background: #5b8ff9;
+  background: var(--trace-sensory);
 }
 
 .vigilia-timeline .vis-item.trace-item-context {
-  background: #4fc38b;
+  background: var(--trace-context);
 }
 
 .vigilia-timeline .vis-item.trace-item-memory {
-  background: #42b8c6;
+  background: var(--trace-memory);
 }
 
 .vigilia-timeline .vis-item.trace-item-model {
-  background: #a779d2;
+  background: var(--trace-model);
 }
 
 .vigilia-timeline .vis-item.trace-item-tool {
-  background: #f59e42;
+  background: var(--trace-tool);
 }
 
 .vigilia-timeline .vis-item.trace-item-nucleus {
-  background: #fb7299;
+  background: var(--trace-nucleus);
 }
 
 .vigilia-timeline .vis-item.trace-item-running {
@@ -247,12 +247,12 @@ function formatOffset(offsetMs: number): string {
 }
 
 .vigilia-timeline .vis-item.trace-item-failed {
-  background: #f05b67;
+  background: var(--destructive);
 }
 
 .vigilia-timeline .vis-item.vis-selected {
-  outline: 1px solid #fb7299;
-  outline-offset: 2px;
+  outline: 0.0625rem solid var(--primary);
+  outline-offset: 0.125rem;
 }
 
 @keyframes trace-pulse {
