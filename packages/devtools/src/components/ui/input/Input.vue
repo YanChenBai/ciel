@@ -26,9 +26,9 @@ const modelValue = useVModel(props, 'modelValue', emits, {
     data-slot="input"
     :class="
       cn(
-        'file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-3',
-        'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
+        'cl:file:text-foreground cl:placeholder:text-muted-foreground cl:selection:bg-primary cl:selection:text-primary-foreground cl:dark:bg-input/30 cl:border-input cl:h-9 cl:w-full cl:min-w-0 cl:rounded-md cl:border cl:bg-transparent cl:px-3 cl:py-1 cl:text-base cl:shadow-xs cl:transition-[color,box-shadow] cl:outline-none cl:file:inline-flex cl:file:h-7 cl:file:border-0 cl:file:bg-transparent cl:file:text-sm cl:file:font-medium cl:disabled:pointer-events-none cl:disabled:cursor-not-allowed cl:disabled:opacity-50 cl:md:text-sm',
+        'cl:focus-visible:border-ring cl:focus-visible:ring-ring/50 cl:focus-visible:ring-3',
+        'cl:aria-invalid:ring-destructive/20 cl:dark:aria-invalid:ring-destructive/40 cl:aria-invalid:border-destructive',
         props.class,
       )
     "

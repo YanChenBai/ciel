@@ -50,13 +50,13 @@ const data = computed<JSONDataType>(() => {
 .object-inspector :deep(.vjs-tree) {
   min-width: max-content;
   color: #a1a1aa;
-  font-size: 0.6875rem;
-  line-height: 1.25rem;
+  font-size: 11px;
+  line-height: 20px;
 }
 
 .object-inspector :deep(.vjs-tree-node) {
-  border-radius: 0.125rem;
-  line-height: 1.25rem;
+  border-radius: 2px;
+  line-height: 20px;
 }
 
 .object-inspector :deep(.vjs-tree-node.dark:hover) {

@@ -6,6 +6,10 @@ export default defineConfig({
   },
   pack: {
     dts: {},
+    entry: {
+      index: './src/index.ts',
+      worker: './src/worker.ts',
+    },
     exports: true,
   },
   lint: {

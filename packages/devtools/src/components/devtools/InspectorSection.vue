@@ -22,17 +22,17 @@ const open = ref(props.defaultOpen);
 </script>
 
 <template>
-  <CollapsibleRoot v-model:open="open" class="border-b border-white/10">
+  <CollapsibleRoot v-model:open="open" class="cl:border-b cl:border-white/10">
     <CollapsibleTrigger
-      class="group flex h-8 w-full items-center gap-1.5 bg-white/2.5 px-3 text-left text-xs font-medium text-zinc-300 transition-colors hover:bg-white/5 hover:text-zinc-100"
+      class="cl:group cl:flex cl:h-8 cl:w-full cl:items-center cl:gap-1.5 cl:bg-white/2.5 cl:px-3 cl:text-left cl:text-xs cl:font-medium cl:text-zinc-300 cl:transition-colors cl:hover:bg-white/5 cl:hover:text-zinc-100"
     >
       <ChevronRight
-        class="size-3.5 shrink-0 text-zinc-500 transition-transform group-data-[state=open]:rotate-90"
+        class="cl:size-3.5 cl:shrink-0 cl:text-zinc-500 cl:transition-transform cl:group-data-[state=open]:rotate-90"
       />
       {{ title }}
     </CollapsibleTrigger>
     <CollapsibleContent>
-      <div class="overflow-x-auto px-4 py-3">
+      <div class="cl:overflow-x-auto cl:px-4 cl:py-3">
         <slot>
           <ObjectInspector :value="value" :deep="deep" />
         </slot>

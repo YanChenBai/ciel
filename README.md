@@ -201,14 +201,14 @@ packages/core/src/
 
 ### Package 职责
 
-| Package             | 职责                                 |
-| ------------------- | ------------------------------------ |
-| **@ciels/core**     | Ciel 的主要运行时和公共 API。        |
-| **@ciels/asr**      | 底层语音识别、VAD 和说话人能力。     |
-| **@ciels/event**    | 运行时内部使用的类型化事件基础设施。 |
-| **@ciels/bridge**   | 将 Vigilia 暴露为 WebSocket 服务。   |
-| **@ciels/devtools** | 可嵌入组件和完整可部署检查器。       |
-| **@ciels/blive**    | Bilibili 直播 Stimulus 与示例应用。  |
+| Package                   | 职责                                 |
+| ------------------------- | ------------------------------------ |
+| **@ciels/core**           | Ciel 的主要运行时和公共 API。        |
+| **@ciels/asr**            | 底层语音识别、VAD 和说话人能力。     |
+| **@ciels/event**          | 运行时内部使用的类型化事件基础设施。 |
+| **@ciels/vigilia-bridge** | 将 Vigilia 暴露为 WebSocket 服务。   |
+| **@ciels/devtools**       | 可嵌入组件和完整可部署检查器。       |
+| **@ciels/blive**          | Bilibili 直播 Stimulus 与示例应用。  |
 
 ## 6. 开发
 

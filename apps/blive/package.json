@@ -24,8 +24,8 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.30",
-    "@ciels/bridge": "workspace:*",
     "@ciels/core": "workspace:*",
+    "@ciels/vigilia-bridge": "workspace:*",
     "ai": "^7.0.66"
   },
   "devDependencies": {

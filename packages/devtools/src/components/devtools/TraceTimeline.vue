@@ -4,7 +4,7 @@ import type { DataGroup, DataItem, TimelineOptions } from 'vis-timeline/standalo
 
 import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
 import { Timeline } from 'vis-timeline/standalone';
-import { computed, onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 
 import type { VigiliaStep, VigiliaStepLane } from '@/lib/trace';
 
@@ -25,11 +25,12 @@ const laneDefinitions: readonly { id: VigiliaStepLane; label: string }[] = [
   { id: 'memory', label: 'Memory' },
   { id: 'model', label: 'Model' },
   { id: 'tool', label: 'Tools' },
-  { id: 'nucleus', label: 'Nucleus' },
 ];
 
 const root = useTemplateRef('root');
+const hovered = ref(false);
 let timeline: Timeline | undefined;
+const MINIMUM_WINDOW_MS = 15_000;
 
 useResizeObserver(root, entries => {
   const height = Math.floor(entries[0]?.contentRect.height ?? 0);
@@ -58,12 +59,12 @@ const items = computed<DataItem[]>(() =>
 
 onMounted(() => {
   if (!root.value) return;
-  const padding = Math.max(3, (props.end - props.start) * 0.025);
   const height = Math.max(80, Math.floor(root.value.clientHeight));
+  const range = timelineRange(props.start, props.end);
   const options: TimelineOptions = {
     autoResize: true,
     editable: false,
-    end: new Date(props.end + padding),
+    end: new Date(range.end),
     format: {
       minorLabels: date => formatOffset(Number(date) - props.start),
     },
@@ -73,8 +74,8 @@ onMounted(() => {
       laneDefinitions.findIndex(lane => lane.id === right.id),
     height,
     margin: { axis: 0, item: { horizontal: 0, vertical: 4 } },
-    max: new Date(props.end + padding * 12),
-    min: new Date(props.start - padding * 12),
+    max: new Date(range.max),
+    min: new Date(range.min),
     moveable: true,
     orientation: { axis: 'top', item: 'top' },
     selectable: true,
@@ -82,9 +83,9 @@ onMounted(() => {
     showMajorLabels: false,
     showMinorLabels: true,
     stack: false,
-    start: new Date(props.start),
+    start: new Date(range.start),
     verticalScroll: true,
-    zoomMax: Math.max(10, (props.end - props.start) * 24),
+    zoomMax: Math.max(MINIMUM_WINDOW_MS, props.end - props.start) * 24,
     zoomKey: 'ctrlKey',
     zoomMin: Math.min(10, Math.max(1, props.end - props.start)),
     zoomable: true,
@@ -108,15 +109,39 @@ watch(
 watch(
   () => [props.start, props.end] as const,
   ([start, end]) => {
-    const padding = Math.max(3, (end - start) * 0.025);
-    timeline?.setOptions({
-      end: new Date(end + padding),
-      max: new Date(end + padding * 12),
-      min: new Date(start - padding * 12),
-      start: new Date(start),
-    });
+    if (hovered.value) return;
+    followLatest(start, end);
   },
 );
+
+function followLatest(start = props.start, end = props.end): void {
+  const range = timelineRange(start, end);
+  timeline?.setOptions({
+    max: new Date(range.max),
+    min: new Date(range.min),
+    zoomMax: Math.max(MINIMUM_WINDOW_MS, end - start) * 24,
+  });
+  timeline?.setWindow(new Date(range.start), new Date(range.end), { animation: false });
+}
+
+function timelineRange(start: number, end: number) {
+  const contentDuration = Math.max(1, end - start);
+  const windowDuration = Math.max(MINIMUM_WINDOW_MS, contentDuration);
+  const padding = Math.max(250, windowDuration * 0.025);
+  const visibleEnd = end + padding;
+  const visibleStart = Math.min(start, visibleEnd - windowDuration - padding);
+  return {
+    end: visibleEnd,
+    max: visibleEnd + windowDuration * 12,
+    min: visibleStart - windowDuration * 12,
+    start: visibleStart,
+  };
+}
+
+function resumeFollowing(): void {
+  hovered.value = false;
+  followLatest();
+}
 
 onBeforeUnmount(() => timeline?.destroy());
 
@@ -138,6 +163,8 @@ function formatOffset(offsetMs: number): string {
     ref="root"
     class="vigilia-timeline"
     aria-label="执行轨迹时间轴；拖动横向平移，Ctrl 加滚轮缩放，滚轮纵向滚动"
+    @mouseenter="hovered = true"
+    @mouseleave="resumeFollowing"
   />
 </template>
 
@@ -157,7 +184,7 @@ function formatOffset(offsetMs: number): string {
 }
 
 .vigilia-timeline .vis-panel.vis-left {
-  width: 5rem !important;
+  width: 80px !important;
   border-right-color: var(--trace-grid) !important;
   background: var(--trace-surface);
 }
@@ -166,12 +193,12 @@ function formatOffset(offsetMs: number): string {
 .vigilia-timeline .vis-panel.vis-background,
 .vigilia-timeline .vis-panel.vis-top,
 .vigilia-timeline .vis-panel.vis-bottom {
-  left: 5rem !important;
+  left: 80px !important;
 }
 
 .vigilia-timeline .vis-labelset .vis-label,
 .vigilia-timeline .vis-foreground .vis-group {
-  min-height: 1.375rem;
+  min-height: 22px;
   box-sizing: border-box;
 }
 
@@ -180,10 +207,10 @@ function formatOffset(offsetMs: number): string {
   box-sizing: border-box;
   height: 100%;
   align-items: center;
-  padding: 0 0.875rem;
+  padding: 0 14px;
   color: var(--trace-muted-foreground);
   font:
-    0.625rem/0.8125rem SFMono-Regular,
+    10px/13px SFMono-Regular,
     Consolas,
     monospace;
 }
@@ -193,10 +220,10 @@ function formatOffset(offsetMs: number): string {
 }
 
 .vigilia-timeline .vis-time-axis .vis-text {
-  padding-top: 0.25rem;
+  padding-top: 4px;
   color: var(--trace-muted-foreground);
   font:
-    0.5625rem/0.8125rem SFMono-Regular,
+    9px/13px SFMono-Regular,
     Consolas,
     monospace;
 }
@@ -206,11 +233,11 @@ function formatOffset(offsetMs: number): string {
 }
 
 .vigilia-timeline .vis-item.trace-item {
-  min-width: 0.5rem;
-  height: 0.625rem;
+  min-width: 8px;
+  height: 10px;
   border: 0;
-  border-radius: 0.0625rem;
-  top: 0.375rem !important;
+  border-radius: 1px;
+  top: 6px !important;
   cursor: pointer;
 }
 
@@ -238,10 +265,6 @@ function formatOffset(offsetMs: number): string {
   background: var(--trace-tool);
 }
 
-.vigilia-timeline .vis-item.trace-item-nucleus {
-  background: var(--trace-nucleus);
-}
-
 .vigilia-timeline .vis-item.trace-item-running {
   animation: trace-pulse 1.1s ease-in-out infinite;
 }
@@ -251,8 +274,8 @@ function formatOffset(offsetMs: number): string {
 }
 
 .vigilia-timeline .vis-item.vis-selected {
-  outline: 0.0625rem solid var(--primary);
-  outline-offset: 0.125rem;
+  outline: 1px solid var(--primary);
+  outline-offset: 2px;
 }
 
 @keyframes trace-pulse {

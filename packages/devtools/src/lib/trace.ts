@@ -38,9 +38,48 @@ export interface VigiliaPerceptRecord {
   readonly time: number;
 }
 
+export type VigiliaConversationEntryKind = 'asr' | 'model' | 'percept' | 'reading' | 'visual';
+
+export interface VigiliaConversationEntry {
+  readonly content?: unknown;
+  readonly id: string;
+  readonly kind: VigiliaConversationEntryKind;
+  readonly label: string;
+  readonly metadata: string;
+  readonly time: number;
+}
+
+export function buildVigiliaConversationEntries(
+  events: readonly AnyVigiliaEvent[],
+): readonly VigiliaConversationEntry[] {
+  return buildVigiliaThoughtRuns(events)
+    .flatMap(run => [
+      ...run.inputPercepts
+        .filter(percept => percept.perceptType.toLocaleLowerCase() !== 'sight')
+        .map(percept => perceptConversationEntry(run.id, percept)),
+      ...(run.output === undefined
+        ? []
+        : [
+            {
+              content: run.output,
+              id: `model:${run.id}`,
+              kind: 'model' as const,
+              label: 'MODEL',
+              metadata: `Final response${run.durationMs === undefined ? '' : ` · ${formatDuration(run.durationMs)}`}`,
+              time: run.completedAt ?? run.startedAt,
+            },
+          ]),
+    ])
+    .sort((left, right) => left.time - right.time);
+}
+
 export function buildVigiliaThoughtRuns(
   events: readonly AnyVigiliaEvent[],
 ): readonly VigiliaThoughtRun[] {
+  return splitJournals(events).flatMap(journal => buildJournalThoughtRuns(journal));
+}
+
+function buildJournalThoughtRuns(events: readonly AnyVigiliaEvent[]): readonly VigiliaThoughtRun[] {
   const starts = events.filter(event => event.type === 'nucleus.think.started');
 
   return starts.map(start => {
@@ -90,6 +129,17 @@ export function buildVigiliaThoughtRuns(
       trigger: start.data.trigger,
     };
   });
+}
+
+function splitJournals(events: readonly AnyVigiliaEvent[]): readonly AnyVigiliaEvent[][] {
+  const journals: AnyVigiliaEvent[][] = [];
+  for (const event of events) {
+    const journal = journals.at(-1);
+    const previous = journal?.at(-1);
+    if (!journal || (previous && event.sequence <= previous.sequence)) journals.push([event]);
+    else journal.push(event);
+  }
+  return journals;
 }
 
 function belongsToThought(
@@ -156,21 +206,37 @@ function createOperationStep(
       ? settlement
       : undefined;
 
-  return {
-    ...(completed ? { completedAt: completed.time, durationMs: completed.data.durationMs } : {}),
+  const common = {
     events: completed ? [start, completed] : [start],
     id: start.data.operationId,
     ...(start.data.detail === undefined ? {} : { input: start.data.detail }),
     lane: laneFor(start.data.category),
     name: start.data.name,
-    ...(completed?.type === 'operation.completed'
-      ? { output: completed.data.detail }
-      : completed?.type === 'operation.failed'
-        ? { output: completed.data.error }
-        : {}),
     ...(start.data.parentOperationId ? { parentId: start.data.parentOperationId } : {}),
     startedAt: start.time,
-    status: completed?.type === 'operation.failed' ? 'failed' : completed ? 'completed' : 'running',
+  };
+
+  if (!completed) return { ...common, status: 'running' };
+
+  const timing = {
+    completedAt: completed.time,
+    durationMs: completed.data.durationMs,
+  };
+
+  if (completed.type === 'operation.completed') {
+    return {
+      ...common,
+      ...timing,
+      output: completed.data.detail,
+      status: 'completed',
+    };
+  }
+
+  return {
+    ...common,
+    ...timing,
+    output: completed.data.error,
+    status: 'failed',
   };
 }
 
@@ -180,4 +246,33 @@ function laneFor(category: VigiliaObservationCategory): VigiliaStepLane {
 
 function operationIdOf(event: AnyVigiliaEvent): string | undefined {
   return 'operationId' in event.data ? event.data.operationId : undefined;
+}
+
+function perceptConversationEntry(
+  runId: string,
+  percept: VigiliaPerceptRecord,
+): VigiliaConversationEntry {
+  const type = percept.perceptType.toLocaleLowerCase();
+  const common = {
+    content: percept.content,
+    id: `percept:${runId}:${percept.sequence}`,
+    metadata: `${percept.perceptType} · ${percept.stimulus} / ${percept.signal}`,
+    time: percept.time,
+  };
+  if (type === 'hearing') return { ...common, kind: 'asr', label: 'ASR' };
+  if (type === 'sight') {
+    return {
+      ...common,
+      content: '直播画面已采集',
+      kind: 'visual',
+      label: '视觉',
+    };
+  }
+  if (type === 'reading') return { ...common, kind: 'reading', label: '文本' };
+  return { ...common, kind: 'percept', label: '感知' };
+}
+
+function formatDuration(duration: number): string {
+  if (duration < 1_000) return `${duration} ms`;
+  return `${(duration / 1_000).toFixed(2)} s`;
 }

@@ -18,7 +18,7 @@ const forwardedProps = useForwardProps(delegatedProps);
     data-slot="tabs-trigger"
     :class="
       cn(
-        `data-[state=active]:bg-background dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-0.0625rem)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-3 focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`,
+        `cl:data-[state=active]:bg-background cl:dark:data-[state=active]:text-foreground cl:focus-visible:border-ring cl:focus-visible:ring-ring/50 cl:focus-visible:outline-ring cl:dark:data-[state=active]:border-input cl:dark:data-[state=active]:bg-input/30 cl:text-foreground cl:dark:text-muted-foreground cl:inline-flex cl:h-[calc(100%-1px)] cl:flex-1 cl:items-center cl:justify-center cl:gap-1.5 cl:rounded-md cl:border cl:border-transparent cl:px-2 cl:py-1 cl:text-[12px] cl:font-medium cl:whitespace-nowrap cl:transition-[color,box-shadow] cl:focus-visible:ring-3 cl:focus-visible:outline-1 cl:disabled:pointer-events-none cl:disabled:opacity-50 cl:data-[state=active]:shadow-sm cl:[&_svg]:pointer-events-none cl:[&_svg]:shrink-0 cl:[&_svg:not([class*='size-'])]:size-4`,
         props.class,
       )
     "

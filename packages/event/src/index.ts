@@ -137,7 +137,7 @@ export class EventEmitter<Events extends EventMap<Events>> {
     if (!eventListeners) {
       return;
     }
-    // Synchronous emission deliberately does not wait for async listeners.
+    // 同步触发不会等待异步监听器。
     Array.from(eventListeners).forEach(listener => void listener(...args));
   }
 
@@ -152,7 +152,7 @@ export class EventEmitter<Events extends EventMap<Events>> {
     if (!eventListeners) {
       return;
     }
-    // Snapshot listeners so subscriptions changed during emission affect only the next event.
+    // 固定本轮监听器快照，触发期间的订阅变化从下一次事件开始生效。
     const pending: Promise<void>[] = [];
     Array.from(eventListeners).forEach(listener => {
       pending.push(Promise.resolve(listener(...args)));

@@ -12,8 +12,8 @@ function createApp(wsChannel: WsChannel) {
     close(ws) {
       wsChannel.remove(ws);
     },
-    // Node adapter cannot compile TypeBox Unsafe at runtime. Messages remain statically typed by
-    // BridgeMessage in WsChannel and the client protocol.
+    // Node adapter 无法在运行时编译 TypeBox Unsafe；WsChannel 与客户端协议仍由
+    // BridgeMessage 提供静态类型约束。
     response: t.Any(),
   });
 }
@@ -63,7 +63,7 @@ export class CielBridge {
   }
 }
 
-/** Creates an independent Node WebSocket bridge for one Ciel runtime. */
+/** 为单个 Ciel 运行时创建独立的 Node WebSocket Bridge。 */
 export function createBridge<TOutput>(ciel: Ciel<TOutput>): CielBridge {
   return new CielBridge(ciel);
 }

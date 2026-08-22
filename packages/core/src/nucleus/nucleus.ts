@@ -114,6 +114,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       model: this.options.model,
       tools,
       output: (this.options.output ?? Output.text()) as Output.Output<TOutput>,
+      ...(this.options.prepareStep ? { prepareStep: this.options.prepareStep } : {}),
       ...(this.options.stopWhen ? { stopWhen: this.options.stopWhen } : {}),
       prepareCall: ({ options: call, ...settings }) => {
         return {

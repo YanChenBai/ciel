@@ -41,60 +41,64 @@ function formatDuration(duration?: number): string {
 </script>
 
 <template>
-  <aside class="flex h-full min-h-0 flex-col overflow-hidden bg-[#222324]">
-    <header class="flex h-12.75 shrink-0 items-center border-b border-white/10 px-4">
+  <aside class="cl:flex cl:h-full cl:min-h-0 cl:flex-col cl:overflow-hidden cl:bg-[#222324]">
+    <header
+      class="cl:flex cl:h-[51px] cl:shrink-0 cl:items-center cl:border-b cl:border-white/10 cl:px-4"
+    >
       <span
-        class="text-2xs mr-3 font-mono font-semibold tracking-wide uppercase"
-        :class="step ? laneClass(step.lane) : 'text-zinc-500'"
+        class="cl:mr-3 cl:font-mono cl:text-[11px] cl:font-semibold cl:tracking-wide cl:uppercase"
+        :class="step ? laneClass(step.lane) : 'cl:text-zinc-500'"
       >
         {{ step?.lane ?? 'step' }}
       </span>
-      <strong class="truncate font-mono text-xs font-normal text-zinc-400">
+      <strong class="cl:truncate cl:font-mono cl:text-xs cl:font-normal cl:text-zinc-400">
         {{ step?.name ?? 'No selection' }}
       </strong>
       <Button
         variant="ghost"
         size="icon-sm"
-        class="ml-auto text-zinc-600 hover:bg-white/5 hover:text-zinc-200"
+        class="cl:ml-auto cl:text-zinc-600 cl:hover:bg-white/5 cl:hover:text-zinc-200"
         aria-label="隐藏检查器"
         @click="emit('close')"
       >
-        <PanelRightClose class="size-4" />
+        <PanelRightClose class="cl:size-4" />
       </Button>
     </header>
 
-    <Tabs v-model="tab" class="min-h-0 flex-1 gap-0">
+    <Tabs v-model="tab" class="cl:min-h-0 cl:flex-1 cl:gap-0">
       <TabsList
-        class="h-10.75 w-full shrink-0 justify-start gap-0 rounded-none border-b border-white/10 bg-transparent p-0"
+        class="cl:h-[43px] cl:w-full cl:shrink-0 cl:justify-start cl:gap-0 cl:rounded-none cl:border-b cl:border-white/10 cl:bg-transparent cl:p-0"
       >
         <TabsTrigger
           v-for="value in ['summary', 'payload', 'result', 'events'] as const"
           :key="value"
           :value="value"
-          class="data-[state=active]:border-primary! h-full rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-0 text-xs text-zinc-500 capitalize shadow-none data-[state=active]:bg-white/3.5 data-[state=active]:text-zinc-100 data-[state=active]:shadow-none"
+          class="cl:data-[state=active]:border-primary! cl:h-full cl:rounded-none cl:border-x-0 cl:border-t-0 cl:border-b-2 cl:border-transparent cl:bg-transparent cl:px-0 cl:text-[12px] cl:text-zinc-500 cl:capitalize cl:shadow-none cl:data-[state=active]:bg-white/3.5 cl:data-[state=active]:text-zinc-100 cl:data-[state=active]:shadow-none"
         >
           {{ value }}
         </TabsTrigger>
       </TabsList>
 
-      <ScrollArea class="min-h-0 flex-1">
+      <ScrollArea class="cl:min-h-0 cl:flex-1">
         <div>
-          <TabsContent value="summary" class="mt-0">
-            <section v-if="step" class="border-t border-white/10 text-xs">
+          <TabsContent value="summary" class="cl:mt-0">
+            <section v-if="step" class="cl:border-t cl:border-white/10 cl:text-xs">
               <InspectorSection title="Overview" default-open>
-                <dl class="grid grid-cols-[5.75rem_minmax(0,1fr)] gap-y-2.5">
-                  <dt class="text-zinc-500">Hierarchy</dt>
-                  <dd class="flex items-center gap-1 text-zinc-300">
-                    Trace <ChevronRight class="size-3 text-zinc-600" /> {{ step.lane }}
+                <dl class="cl:grid cl:grid-cols-[92px_minmax(0,1fr)] cl:gap-y-2.5">
+                  <dt class="cl:text-zinc-500">Hierarchy</dt>
+                  <dd class="cl:flex cl:items-center cl:gap-1 cl:text-zinc-300">
+                    Trace <ChevronRight class="cl:size-3 cl:text-zinc-600" /> {{ step.lane }}
                   </dd>
-                  <dt class="text-zinc-500">Status</dt>
-                  <dd class="text-zinc-200 capitalize">{{ step.status }}</dd>
-                  <dt class="text-zinc-500">Started</dt>
-                  <dd class="font-mono text-zinc-300">{{ formatClock(step.startedAt) }}</dd>
-                  <dt class="text-zinc-500">Duration</dt>
-                  <dd class="font-mono text-zinc-300">{{ formatDuration(step.durationMs) }}</dd>
-                  <dt class="text-zinc-500">Operation</dt>
-                  <dd class="truncate font-mono text-zinc-400">{{ step.id }}</dd>
+                  <dt class="cl:text-zinc-500">Status</dt>
+                  <dd class="cl:text-zinc-200 cl:capitalize">{{ step.status }}</dd>
+                  <dt class="cl:text-zinc-500">Started</dt>
+                  <dd class="cl:font-mono cl:text-zinc-300">{{ formatClock(step.startedAt) }}</dd>
+                  <dt class="cl:text-zinc-500">Duration</dt>
+                  <dd class="cl:font-mono cl:text-zinc-300">
+                    {{ formatDuration(step.durationMs) }}
+                  </dd>
+                  <dt class="cl:text-zinc-500">Operation</dt>
+                  <dd class="cl:truncate cl:font-mono cl:text-zinc-400">{{ step.id }}</dd>
                 </dl>
               </InspectorSection>
               <InspectorSection title="Payload" :value="step.input" :deep="2" default-open />
@@ -103,20 +107,20 @@ function formatDuration(duration?: number): string {
             </section>
           </TabsContent>
 
-          <TabsContent value="payload" class="mt-0">
-            <div class="border-t border-white/10">
+          <TabsContent value="payload" class="cl:mt-0">
+            <div class="cl:border-t cl:border-white/10">
               <InspectorSection title="Captured input" :value="step?.input" default-open />
             </div>
           </TabsContent>
 
-          <TabsContent value="result" class="mt-0">
-            <div class="border-t border-white/10">
+          <TabsContent value="result" class="cl:mt-0">
+            <div class="cl:border-t cl:border-white/10">
               <InspectorSection title="Captured output" :value="step?.output" default-open />
             </div>
           </TabsContent>
 
-          <TabsContent value="events" class="mt-0">
-            <div class="border-t border-white/10">
+          <TabsContent value="events" class="cl:mt-0">
+            <div class="cl:border-t cl:border-white/10">
               <InspectorSection title="Raw Vigilia events" :value="step?.events" default-open />
             </div>
           </TabsContent>

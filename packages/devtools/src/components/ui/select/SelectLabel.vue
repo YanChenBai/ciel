@@ -11,7 +11,7 @@ const props = defineProps<SelectLabelProps & { class?: HTMLAttributes['class'] }
 <template>
   <SelectLabel
     data-slot="select-label"
-    :class="cn('text-muted-foreground px-2 py-1.5 text-xs', props.class)"
+    :class="cn('cl:text-muted-foreground cl:px-2 cl:py-1.5 cl:text-xs', props.class)"
   >
     <slot />
   </SelectLabel>

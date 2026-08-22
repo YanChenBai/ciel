@@ -29,4 +29,4 @@ import { CielDevTools, CielDevToolsApp } from '@ciels/devtools';
 import '@ciels/devtools/style.css';
 ```
 
-`CielDevTools` 接收 `events`、`snapshot` 和可选的 `connected`，不依赖传输层。`CielDevToolsApp` 接收 `endpoint`，并自行连接 `@ciels/bridge`。
+`CielDevTools` 接收 `events`、`snapshot` 和可选的 `connected`，不依赖传输层。`CielDevToolsApp` 接收 `endpoint`，并自行连接 `@ciels/vigilia-bridge`。

@@ -1,5 +1,5 @@
 {
-  "name": "@ciels/bridge",
+  "name": "@ciels/vigilia-bridge",
   "version": "0.0.0",
   "description": "Typed WebSocket server and clients for Ciel.",
   "license": "MIT",

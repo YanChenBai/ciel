@@ -23,6 +23,7 @@ export interface NucleusGenerationOptions<TOutput = string> {
   readonly messages?: readonly ContextMessage[];
   readonly tools?: ToolSet;
   readonly output?: Output.Output<TOutput>;
+  readonly prepareStep?: ToolLoopAgentSettings<never, ToolSet>['prepareStep'];
   readonly stopWhen?: ToolLoopAgentSettings<never, ToolSet>['stopWhen'];
 }
 

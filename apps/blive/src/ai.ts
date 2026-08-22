@@ -26,6 +26,7 @@ export function createBliveAI(config: BliveAIConfig = resolveBliveAIConfig()): B
     name: 'blive-ai',
     apiKey: config.apiKey,
     baseURL: config.baseURL,
+    supportsStructuredOutputs: true,
   });
   return {
     embedder: provider.embeddingModel(config.model),

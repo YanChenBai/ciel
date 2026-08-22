@@ -19,12 +19,13 @@ import {
   DEFAULT_SPEAKER_THRESHOLD,
 } from './constants.ts';
 import { createAurisModelConfig } from './models.ts';
+import { ProcessASR } from './process-asr.ts';
 import { SpeakerTracker } from './speaker.ts';
 import type { ASREventMap, ASROptions, ASRSegment, ASRToken } from './types.ts';
 
 const { CircularBuffer, OfflineRecognizer, SpeakerEmbeddingExtractor, Vad } = sherpaOnnx;
 
-export class ASR {
+export class NativeASR {
   private readonly emitter = new EventEmitter<ASREventMap>();
   private readonly buffer: CircularBufferInstance;
   private readonly bufferCapacity: number;
@@ -150,6 +151,34 @@ export class ASR {
       });
     }
     this.emit('speechend', segmentEndAt);
+  }
+}
+
+/**
+ * 在普通 Node 中直接使用原生 sherpa；Electron 的 V8 memory cage 不允许
+ * sherpa 返回堆外 ArrayBuffer，因此自动将识别工作移入独立 Node ESM 进程。
+ */
+export class ASR {
+  private readonly backend: NativeASR | ProcessASR;
+
+  constructor(options: ASROptions = {}) {
+    this.backend = process.versions.electron ? new ProcessASR(options) : new NativeASR(options);
+  }
+
+  write(segment: ASRSegment): void {
+    this.backend.write(segment);
+  }
+
+  flush(): void {
+    this.backend.flush();
+  }
+
+  on<K extends keyof ASREventMap>(event: K, callback: ASREventMap[K]): Unsubscribe {
+    return this.backend.on(event, callback);
+  }
+
+  close(): Promise<void> {
+    return this.backend instanceof ProcessASR ? this.backend.close() : Promise.resolve();
   }
 }
 

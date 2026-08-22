@@ -1,7 +1,7 @@
 import type { AnyVigiliaEvent } from '@ciels/core';
 import { describe, expect, it } from 'vite-plus/test';
 
-import { buildVigiliaThoughtRuns } from '../src/lib/trace.ts';
+import { buildVigiliaConversationEntries, buildVigiliaThoughtRuns } from '../src/lib/trace.ts';
 
 describe('buildVigiliaThoughtRuns', () => {
   it('pairs a thought and its child operations into ordered steps', () => {
@@ -78,7 +78,55 @@ describe('buildVigiliaThoughtRuns', () => {
       parentId: 'memory-1',
     });
   });
+
+  it('keeps separate histories when a new runtime journal restarts its sequence', () => {
+    const events = [
+      ...thoughtEvents('old', 'Hearing', '旧识别', 100),
+      ...thoughtEvents('new', 'sight', { path: 'frame.jpg', type: 'image' }, 200),
+    ] as AnyVigiliaEvent[];
+
+    const runs = buildVigiliaThoughtRuns(events);
+    const conversation = buildVigiliaConversationEntries(events);
+
+    expect(runs.map(run => run.id)).toEqual(['old', 'new']);
+    expect(conversation).toMatchObject([
+      { content: '旧识别', kind: 'asr', label: 'ASR' },
+      { content: 'old-output', kind: 'model', label: 'MODEL' },
+      { content: 'new-output', kind: 'model', label: 'MODEL' },
+    ]);
+  });
 });
+
+function thoughtEvents(
+  id: string,
+  perceptType: string,
+  content: Extract<AnyVigiliaEvent, { type: 'percept.appended' }>['data']['content'],
+  time: number,
+) {
+  return [
+    event(1, time, 'percept.appended', {
+      content,
+      perceptType,
+      sequence: 1,
+      signal: perceptType.toLocaleLowerCase() === 'sight' ? '直播画面' : 'Echo',
+      stimulus: perceptType.toLocaleLowerCase() === 'sight' ? '场景' : 'Microphone',
+    }),
+    event(2, time + 1, 'nucleus.think.started', {
+      fromSequence: 0,
+      operationId: id,
+      throughSequence: 1,
+      trigger: 'test',
+    }),
+    event(3, time + 2, 'nucleus.think.completed', {
+      durationMs: 1,
+      inputTokens: 1,
+      operationId: id,
+      output: `${id}-output`,
+      outputTokens: 1,
+      trigger: 'test',
+    }),
+  ];
+}
 
 function event<TType extends AnyVigiliaEvent['type']>(
   sequence: number,

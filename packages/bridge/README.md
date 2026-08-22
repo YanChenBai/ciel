@@ -1,42 +1,41 @@
-# @ciels/bridge
+# @ciels/vigilia-bridge
 
-Typed WebSocket transport for Ciel, implemented with Elysia and Eden Treaty.
+基于 Elysia 和 Eden Treaty 的 Vigilia WebSocket 传输层。
 
-The server can expose a Core `Vigilia` journal. Each WebSocket connection first receives a
-`vigilia.bootstrap` message containing the current projection and replay history, followed by
-ordered `vigilia.event` increments. The browser client reconnects after transport loss and obtains
-a fresh baseline, so consumers can deduplicate by sequence.
+服务端会先发送包含当前快照与历史事件的 `vigilia.bootstrap`，再按顺序发送 `vigilia.event`。客户端断线后会自动重连并重新取得基线，消费端可按 `sequence` 去重。
+
+## 服务端
 
 ```ts
-import { createBridge } from '@ciels/bridge';
+import { createBridge } from '@ciels/vigilia-bridge';
 
 const bridge = createBridge(ciel);
 bridge.listen(3000);
 ```
 
-## Exports
-
-- `@ciels/bridge`: Elysia WebSocket server and `App` type.
-- `@ciels/bridge/protocol`: transport message types.
-- `@ciels/bridge/client`: retained browser/client connection.
-- `@ciels/bridge/vue`: Vue integration for the retained client.
-
-## Client
+## 客户端
 
 ```ts
-import { createClient } from '@ciels/bridge/client';
+import { createClient } from '@ciels/vigilia-bridge/client';
 
 const client = createClient('http://localhost:3000');
+const off = client.onMessage(message => console.log(message));
 const release = client.retain();
-const unsubscribe = client.onMessage(message => console.log(message));
 
-unsubscribe();
+off();
 release();
 ```
 
-The first retain opens the socket and the last release closes it. Message listeners use `@ciels/event`.
+首次 `retain()` 建立连接，最后一次 `release()` 关闭连接。请先注册消息监听器，再调用 `retain()`，避免遗漏首条 bootstrap 消息。
 
-## Development
+## 导出
+
+- 主入口：服务端与 `App` 类型。
+- `/protocol`：传输消息类型。
+- `/client`：可保留的通用客户端。
+- `/vue`：Vue 集成。
+
+## 验证
 
 ```bash
 vp check

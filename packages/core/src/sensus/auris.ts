@@ -44,6 +44,7 @@ export class Auris extends SensusBase<Echo, Hearing> {
     try {
       this.flush();
     } finally {
+      await this.asr.close();
       await super.close();
     }
   }

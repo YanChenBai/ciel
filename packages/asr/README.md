@@ -1,10 +1,8 @@
 # @ciels/asr
 
-Streaming speech perception for Ciel, built on `sherpa-onnx-node`.
+基于 `sherpa-onnx-node` 的流式语音感知模块，负责 PCM 缓冲、TEN-VAD 分段、SenseVoiceSmall 离线识别、时间戳、声纹与说话人聚类，不依赖 Ciel 的信号和感知类型。
 
-The package owns PCM buffering, TEN-VAD segmentation, offline SenseVoiceSmall recognition, token timestamps, speaker embeddings, registered voiceprints, and anonymous speaker clustering. It accepts raw audio segments and returns ASR results without depending on Ciel signal or perception classes.
-
-## API
+## 使用
 
 ```ts
 import { ASR } from '@ciels/asr';
@@ -20,29 +18,19 @@ asr.write({ data: pcm16le, startAt: new Date() });
 asr.flush();
 ```
 
-Input must be 16 kHz mono signed 16-bit little-endian PCM.
+输入必须是 16 kHz、单声道、16 位有符号小端 PCM。
 
-## Models
-
-Install the ASR, VAD, and speaker models:
+## 模型
 
 ```bash
 vp run asr:install
 vp run asr:install -- --force
-```
-
-Create a voiceprint from one or more 16 kHz WAV files:
-
-```bash
 vp run asr:voiceprint -- --output alice.voiceprint ./samples/alice.wav
 ```
 
-Models and voiceprints are stored below `.ciel-data` unless `CIEL_DATA_DIR` is set.
-The installer uses the INT8 multilingual SenseVoiceSmall model with inverse text normalization and Sherpa's metadata-enhanced INT8 TEN-VAD model. TEN-VAD supports only 16 kHz audio; review its upstream license before commercial use.
+模型和声纹默认保存在 `.ciel-data`，可通过 `CIEL_DATA_DIR` 修改目录。安装器使用 INT8 多语言 SenseVoiceSmall 与 TEN-VAD；TEN-VAD 仅支持 16 kHz 音频，商用前请确认上游许可证。
 
-## Development
-
-Tests live in `tests/`.
+## 验证
 
 ```bash
 vp check

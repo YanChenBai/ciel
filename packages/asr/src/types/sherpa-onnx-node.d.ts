@@ -1,9 +1,5 @@
 declare module 'sherpa-onnx-node' {
-  /**
-   * Opaque handle types returned by native constructors. These are opaque
-   * JavaScript objects backed by native pointers. Do not introspect or
-   * mutate their internals; pass them to the API functions as-is.
-   */
+  /** 原生构造器返回的不透明句柄。不要读取或修改内部状态，请原样传给 API。 */
   export type OfflineStreamHandle = object;
   export type OnlineStreamHandle = object;
   export type OfflineRecognizerHandle = object;
@@ -23,32 +19,20 @@ declare module 'sherpa-onnx-node' {
   export type OfflineSpeakerDiarizationHandle = object;
   export type OfflineSpeechDenoiserHandle = object;
   export type OnlineSpeechDenoiserHandle = object;
-  /**
-   * A single audio event returned by AudioTagging.compute().
-   */
+  /** `AudioTagging.compute()` 返回的单个音频事件。 */
   export type AudioEvent = {
-    /**
-     * - The event name.
-     */
+    /** 事件名称。 */
     name: string;
-    /**
-     * - Probability in [0,1].
-     */
+    /** 概率，范围 0-1。 */
     prob: number;
-    /**
-     * - Index (integer) of the event.
-     */
+    /** 事件的整数索引。 */
     index: number;
   };
-  /**
-   * AudioTagging specific model config for Zipformer variant
-   */
+  /** AudioTagging 的 Zipformer 模型配置。 */
   export type AudioTaggingZipformerModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * AudioTagging model config.
-   */
+  /** AudioTagging 模型配置。 */
   export type AudioTaggingModelConfig = {
     zipformer?: AudioTaggingZipformerModelConfig | undefined;
     ced?: string | undefined;
@@ -56,37 +40,25 @@ declare module 'sherpa-onnx-node' {
     debug?: number | boolean | undefined;
     provider?: string | undefined;
   };
-  /**
-   * AudioTagging configuration passed to constructor.
-   */
+  /** 传给 AudioTagging 构造器的配置。 */
   export type AudioTaggingConfig = {
     model?: AudioTaggingModelConfig | undefined;
     labels?: string | undefined;
     topK?: number | undefined;
   };
-  /**
-   * Waveform input object used by acceptWaveform methods.
-   */
+  /** `acceptWaveform` 使用的波形输入。 */
   export type Waveform = {
-    /**
-     * - Float32Array of samples in [-1, 1].
-     */
+    /** 取值范围为 -1 到 1 的采样。 */
     samples: Float32Array;
-    /**
-     * - Sample rate as an integer (e.g., 16000).
-     */
+    /** 整数采样率，例如 16000。 */
     sampleRate: number;
   };
-  /**
-   * Feature config used by recognizers and models.
-   */
+  /** 识别器与模型使用的特征配置。 */
   export type FeatureConfig = {
     sampleRate?: number | undefined;
     featureDim?: number | undefined;
   };
-  /**
-   * Silero VAD model config
-   */
+  /** Silero VAD 模型配置。 */
   export type SileroVadModelConfig = {
     model?: string | undefined;
     threshold?: number | undefined;
@@ -95,9 +67,7 @@ declare module 'sherpa-onnx-node' {
     windowSize?: number | undefined;
     maxSpeechDuration?: number | undefined;
   };
-  /**
-   * Ten-VAD model config
-   */
+  /** TEN-VAD 模型配置。 */
   export type TenVadModelConfig = {
     model?: string | undefined;
     threshold?: number | undefined;
@@ -106,9 +76,7 @@ declare module 'sherpa-onnx-node' {
     windowSize?: number | undefined;
     maxSpeechDuration?: number | undefined;
   };
-  /**
-   * Voice activity detector configuration.
-   */
+  /** 语音活动检测配置。 */
   export type VadConfig = {
     sileroVad?: SileroVadModelConfig | undefined;
     tenVad?: TenVadModelConfig | undefined;
@@ -117,59 +85,41 @@ declare module 'sherpa-onnx-node' {
     provider?: string | undefined;
     debug?: number | boolean | undefined;
   };
-  /**
-   * Offline Transducer model config
-   */
+  /** 离线 Transducer 模型配置。 */
   export type OfflineTransducerModelConfig = {
     encoder?: string | undefined;
     decoder?: string | undefined;
     joiner?: string | undefined;
   };
-  /**
-   * Offline Paraformer model config
-   */
+  /** 离线 Paraformer 模型配置。 */
   export type OfflineParaformerModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline Zipformer CTC model config
-   */
+  /** 离线 Zipformer CTC 模型配置。 */
   export type OfflineZipformerCtcModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline Wenet CTC model config
-   */
+  /** 离线 Wenet CTC 模型配置。 */
   export type OfflineWenetCtcModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline Omnilingual ASR CTC model config
-   */
+  /** 离线 Omnilingual ASR CTC 模型配置。 */
   export type OfflineOmnilingualAsrCtcModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline Med ASR CTC model config
-   */
+  /** 离线 Med ASR CTC 模型配置。 */
   export type OfflineMedAsrCtcModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline Dolphin model config
-   */
+  /** 离线 Dolphin 模型配置。 */
   export type OfflineDolphinModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline NeMo CTC model config
-   */
+  /** 离线 NeMo CTC 模型配置。 */
   export type OfflineNeMoCtcModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline Canary model config
-   */
+  /** 离线 Canary 模型配置。 */
   export type OfflineCanaryModelConfig = {
     encoder?: string | undefined;
     decoder?: string | undefined;
@@ -177,9 +127,7 @@ declare module 'sherpa-onnx-node' {
     tgtLang?: string | undefined;
     usePnc?: number | undefined;
   };
-  /**
-   * Offline Whisper model config
-   */
+  /** 离线 Whisper 模型配置。 */
   export type OfflineWhisperModelConfig = {
     encoder?: string | undefined;
     decoder?: string | undefined;
@@ -187,39 +135,29 @@ declare module 'sherpa-onnx-node' {
     task?: string | undefined;
     tailPaddings?: number | undefined;
   };
-  /**
-   * Offline FireRed ASR model config
-   */
+  /** 离线 FireRed ASR 模型配置。 */
   export type OfflineFireRedAsrModelConfig = {
     encoder?: string | undefined;
     decoder?: string | undefined;
   };
-  /**
-   * Offline Moonshine model config
-   */
+  /** 离线 Moonshine 模型配置。 */
   export type OfflineMoonshineModelConfig = {
     preprocessor?: string | undefined;
     encoder?: string | undefined;
     uncachedDecoder?: string | undefined;
     cachedDecoder?: string | undefined;
   };
-  /**
-   * Offline TDNN model config
-   */
+  /** 离线 TDNN 模型配置。 */
   export type OfflineTdnnModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline SenseVoice model config
-   */
+  /** 离线 SenseVoice 模型配置。 */
   export type OfflineSenseVoiceModelConfig = {
     model?: string | undefined;
     language?: string | undefined;
     useInverseTextNormalization?: number | undefined;
   };
-  /**
-   * Offline Cohere Transcribe model config
-   */
+  /** 离线 Cohere Transcribe 模型配置。 */
   export type OfflineCohereTranscribeModelConfig = {
     encoder?: string | undefined;
     decoder?: string | undefined;
@@ -227,9 +165,7 @@ declare module 'sherpa-onnx-node' {
     usePunct?: number | undefined;
     useItn?: number | undefined;
   };
-  /**
-   * Offline model config.
-   */
+  /** 离线识别模型配置。 */
   export type OfflineModelConfig = {
     transducer?: OfflineTransducerModelConfig | undefined;
     paraformer?: OfflineParaformerModelConfig | undefined;
@@ -251,42 +187,30 @@ declare module 'sherpa-onnx-node' {
     debug?: number | boolean | undefined;
     provider?: string | undefined;
   };
-  /**
-   * Transducer model config
-   */
+  /** Transducer 模型配置。 */
   export type TransducerModelConfig = {
     encoder?: string | undefined;
     decoder?: string | undefined;
     joiner?: string | undefined;
   };
-  /**
-   * Paraformer model config
-   */
+  /** Paraformer 模型配置。 */
   export type ParaformerModelConfig = {
     encoder?: string | undefined;
     decoder?: string | undefined;
   };
-  /**
-   * Zipformer2 CTC model config
-   */
+  /** Zipformer2 CTC 模型配置。 */
   export type Zipformer2CtcModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * NeMo CTC model config
-   */
+  /** NeMo CTC 模型配置。 */
   export type NemoCtcModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Tone CTC model config
-   */
+  /** Tone CTC 模型配置。 */
   export type ToneCtcModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Online model config (subset of C++ `OnlineModelConfig`).
-   */
+  /** 在线模型配置，对应 C++ `OnlineModelConfig` 的子集。 */
   export type OnlineModelConfig = {
     transducer?: TransducerModelConfig | undefined;
     paraformer?: ParaformerModelConfig | undefined;
@@ -303,16 +227,12 @@ declare module 'sherpa-onnx-node' {
     tokensBuf?: string | undefined;
     tokensBufSize?: number | undefined;
   };
-  /**
-   * Homophone replacer configuration used both in online and offline recognizers.
-   */
+  /** 在线与离线识别器共用的同音词替换配置。 */
   export type HomophoneReplacerConfig = {
     lexicon?: string | undefined;
     ruleFsts?: string | undefined;
   };
-  /**
-   * Online recognizer configuration passed to createOnlineRecognizer.
-   */
+  /** 传给 `createOnlineRecognizer` 的在线识别配置。 */
   export type OnlineRecognizerConfig = {
     featConfig?: FeatureConfig | undefined;
     modelConfig?: OnlineModelConfig | undefined;
@@ -329,50 +249,30 @@ declare module 'sherpa-onnx-node' {
     ruleFars?: string | undefined;
     blankPenalty?: number | undefined;
   };
-  /**
-   * Offline recognizer config passed to createOfflineRecognizer.
-   */
+  /** 传给 `createOfflineRecognizer` 的离线识别配置。 */
   export type OfflineRecognizerConfig = {
     featConfig?: FeatureConfig | undefined;
     modelConfig?: OfflineModelConfig | undefined;
   };
-  /**
-   * Wave object returned by readWave and used by writeWave.
-   */
+  /** `readWave` 返回并供 `writeWave` 使用的波形。 */
   export type WaveObject = {
-    /**
-     * - 1-D float32 samples in [-1, 1].
-     */
+    /** 取值范围为 -1 到 1 的一维采样。 */
     samples: Float32Array;
-    /**
-     * - Sample rate as an integer (e.g., 16000).
-     */
+    /** 整数采样率，例如 16000。 */
     sampleRate: number;
   };
-  /**
-   * Speech segment returned by Vad.front().
-   */
+  /** `Vad.front()` 返回的语音片段。 */
   export type SpeechSegment = {
-    /**
-     * - Start index (int32) of this segment.
-     */
+    /** 片段起始索引。 */
     start: number;
-    /**
-     * - Float32Array of samples.
-     */
+    /** 音频采样。 */
     samples: Float32Array;
   };
-  /**
-   * Audio returned by TTS and speech denoiser.
-   */
+  /** TTS 与语音降噪器返回的音频。 */
   export type GeneratedAudio = {
-    /**
-     * - The generated/denoised audio samples.
-     */
+    /** 生成或降噪后的音频采样。 */
     samples: Float32Array;
-    /**
-     * - Sample rate in Hz.
-     */
+    /** 采样率，单位 Hz。 */
     sampleRate: number;
   };
   export type GenerationConfig = {
@@ -389,76 +289,51 @@ declare module 'sherpa-onnx-node' {
         }
       | undefined;
   };
-  /**
-   * TTS request object passed to generate/generateAsync.
-   */
+  /** 传给 `generate` / `generateAsync` 的 TTS 请求。 */
   export type TtsRequest = {
-    /**
-     * - Input text to synthesize.
-     */
+    /** 待合成文本。 */
     text: string;
-    /**
-     * - Speaker id (integer).
-     */
+    /** 说话人整数 ID。 */
     sid: number;
-    /**
-     * - Playback speed (float).
-     */
+    /** 播放速度。 */
     speed: number;
-    /**
-     * - Whether to use an external
-     * buffer.
-     */
+    /** 是否使用外部缓冲区。 */
     enableExternalBuffer?: boolean | undefined;
-    /**
-     * - Optional
-     */
+    /** 可选的生成参数。 */
     generationConfig?: GenerationConfig | undefined;
   };
-  /**
-   * Spoken Language ID whisper config
-   */
+  /** 口语语言识别的 Whisper 配置。 */
   export type SpokenLanguageIdentificationWhisperConfig = {
     encoder?: string | undefined;
     decoder?: string | undefined;
     tailPaddings?: number | undefined;
   };
-  /**
-   * SpokenLanguageIdentification config
-   */
+  /** 口语语言识别配置。 */
   export type SpokenLanguageIdentificationConfig = {
     whisper?: SpokenLanguageIdentificationWhisperConfig | undefined;
     numThreads?: number | undefined;
     debug?: number | boolean | undefined;
     provider?: string | undefined;
   };
-  /**
-   * Speaker embedding extractor config
-   */
+  /** 说话人 embedding 提取器配置。 */
   export type SpeakerEmbeddingExtractorConfig = {
     model?: string | undefined;
     numThreads?: number | undefined;
     debug?: number | boolean | undefined;
     provider?: string | undefined;
   };
-  /**
-   * Offline punctuation model config
-   */
+  /** 离线标点模型配置。 */
   export type OfflinePunctuationModelConfig = {
     ctTransformer?: string | undefined;
     numThreads?: number | undefined;
     debug?: number | boolean | undefined;
     provider?: string | undefined;
   };
-  /**
-   * Offline punctuation config
-   */
+  /** 离线标点配置。 */
   export type OfflinePunctuationConfig = {
     model?: OfflinePunctuationModelConfig | undefined;
   };
-  /**
-   * Online punctuation model config
-   */
+  /** 在线标点模型配置。 */
   export type OnlinePunctuationModelConfig = {
     cnnBilstm?: string | undefined;
     bpeVocab?: string | undefined;
@@ -466,23 +341,17 @@ declare module 'sherpa-onnx-node' {
     debug?: number | boolean | undefined;
     provider?: string | undefined;
   };
-  /**
-   * Online punctuation config
-   */
+  /** 在线标点配置。 */
   export type OnlinePunctuationConfig = {
     model?: OnlinePunctuationModelConfig | undefined;
   };
-  /**
-   * Generic audio processing request used by denoisers/tts generators.
-   */
+  /** 降噪器与 TTS 生成器共用的音频处理请求。 */
   export type AudioProcessRequest = {
     samples: Float32Array;
     sampleRate: number;
     enableExternalBuffer?: boolean | undefined;
   };
-  /**
-   * Offline TTS model configs
-   */
+  /** 离线 TTS 的 VITS 模型配置。 */
   export type OfflineTtsVitsModelConfig = {
     model?: string | undefined;
     lexicon?: string | undefined;
@@ -539,9 +408,7 @@ declare module 'sherpa-onnx-node' {
     tokenScoresJson?: string | undefined;
     voiceEmbeddingCacheCapacity?: number | undefined;
   };
-  /**
-   * Offline TTS model config
-   */
+  /** 离线 TTS 模型配置。 */
   export type OfflineTtsModelConfig = {
     vits?: OfflineTtsVitsModelConfig | undefined;
     matcha?: OfflineTtsMatchaModelConfig | undefined;
@@ -550,9 +417,7 @@ declare module 'sherpa-onnx-node' {
     zipvoice?: OfflineTtsZipvoiceModelConfig | undefined;
     pocket?: OfflineTtsPocketModelConfig | undefined;
   };
-  /**
-   * Offline TTS configuration (partial, commonly used props).
-   */
+  /** 离线 TTS 常用配置子集。 */
   export type OfflineTtsConfig = {
     model?: OfflineTtsModelConfig | undefined;
     maxNumSentences?: number | undefined;
@@ -560,21 +425,15 @@ declare module 'sherpa-onnx-node' {
     numThreads?: number | undefined;
     provider?: string | undefined;
   };
-  /**
-   * Offline Speech Denoiser model config
-   */
+  /** 离线语音降噪 GTCRN 模型配置。 */
   export type OfflineSpeechDenoiserGtcrnModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline Speech Denoiser model config
-   */
+  /** 离线语音降噪 DPDFNet 模型配置。 */
   export type OfflineSpeechDenoiserDpdfNetModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline Speech Denoiser model config
-   */
+  /** 离线语音降噪模型配置。 */
   export type OfflineSpeechDenoiserModelConfig = {
     gtcrn?: OfflineSpeechDenoiserGtcrnModelConfig | undefined;
     dpdfnet?: OfflineSpeechDenoiserDpdfNetModelConfig | undefined;
@@ -582,36 +441,26 @@ declare module 'sherpa-onnx-node' {
     debug?: number | boolean | undefined;
     provider?: string | undefined;
   };
-  /**
-   * Offline Speech Denoiser configuration (partial).
-   */
+  /** 离线语音降噪配置子集。 */
   export type OfflineSpeechDenoiserConfig = {
     model?: OfflineSpeechDenoiserModelConfig | undefined;
   };
-  /**
-   * Online Speech Denoiser configuration (partial).
-   */
+  /** 在线语音降噪配置子集。 */
   export type OnlineSpeechDenoiserConfig = {
     model?: OfflineSpeechDenoiserModelConfig | undefined;
   };
-  /**
-   * Offline speaker segmentation (pyannote) model config
-   */
+  /** 离线说话人分段的 pyannote 模型配置。 */
   export type OfflineSpeakerSegmentationPyannoteModelConfig = {
     model?: string | undefined;
   };
-  /**
-   * Offline speaker segmentation model config
-   */
+  /** 离线说话人分段模型配置。 */
   export type OfflineSpeakerSegmentationModelConfig = {
     pyannote?: OfflineSpeakerSegmentationPyannoteModelConfig | undefined;
     numThreads?: number | undefined;
     debug?: number | boolean | undefined;
     provider?: string | undefined;
   };
-  /**
-   * Offline Speaker Diarization configuration (partial).
-   */
+  /** 离线说话人分离配置子集。 */
   export type OfflineSpeakerDiarizationConfig = {
     segmentation?: OfflineSpeakerSegmentationModelConfig | undefined;
     embedding?: SpeakerEmbeddingExtractorConfig | undefined;
@@ -619,39 +468,29 @@ declare module 'sherpa-onnx-node' {
     minDurationOn?: number | undefined;
     minDurationOff?: number | undefined;
   };
-  /**
-   * Fast clustering configuration used by diarization.
-   */
+  /** 说话人分离使用的快速聚类配置。 */
   export type FastClusteringConfig = {
     numClusters?: number | undefined;
     threshold?: number | undefined;
   };
-  /**
-   * SpeakerEmbeddingManager add-multi flattened object
-   */
+  /** `SpeakerEmbeddingManager` 批量添加的扁平参数。 */
   export type SpeakerEmbeddingManagerAddListFlattenedObj = {
     name: string;
     vv: Float32Array;
     n: number;
   };
-  /**
-   * SpeakerEmbeddingManager search object
-   */
+  /** `SpeakerEmbeddingManager` 搜索参数。 */
   export type SpeakerEmbeddingManagerSearchObj = {
     v: Float32Array;
     threshold: number;
   };
-  /**
-   * SpeakerEmbeddingManager verify object
-   */
+  /** `SpeakerEmbeddingManager` 验证参数。 */
   export type SpeakerEmbeddingManagerVerifyObj = {
     name: string;
     v: Float32Array;
     threshold: number;
   };
-  /**
-   * KeywordSpotter config (partial)
-   */
+  /** 关键词检测配置子集。 */
   export type KeywordSpotterConfig = {
     featConfig?: FeatureConfig | undefined;
     modelConfig?: OfflineModelConfig | undefined;
@@ -661,10 +500,7 @@ declare module 'sherpa-onnx-node' {
     keywordsThreshold?: number | undefined;
     keywordsFile?: string | undefined;
   };
-  /**
-   * Offline recognition result returned by `getOfflineStreamResultAsJson`.
-   * See `OfflineRecognitionResult::AsJsonString()` in C++ for precise fields.
-   */
+  /** `getOfflineStreamResultAsJson` 返回的离线识别结果，字段以 C++ 实现为准。 */
   export type OfflineRecognizerResult = {
     lang: string;
     emotion: string;
@@ -676,10 +512,7 @@ declare module 'sherpa-onnx-node' {
     ys_log_probs: number[];
     words: number[];
   };
-  /**
-   * Online recognition result returned by `getOnlineStreamResultAsJson`.
-   * See `OnlineRecognizerResult::AsJsonString()` in C++.
-   */
+  /** `getOnlineStreamResultAsJson` 返回的在线识别结果，字段以 C++ 实现为准。 */
   export type OnlineRecognizerResult = {
     text: string;
     tokens: string[];
@@ -693,43 +526,27 @@ declare module 'sherpa-onnx-node' {
     is_final: boolean;
     is_eof: boolean;
   };
-  /**
-   * Keyword spotter result returned by `getKeywordResultAsJson`.
-   */
+  /** `getKeywordResultAsJson` 返回的关键词检测结果。 */
   export type KeywordResult = {
     start_time: number;
     keyword: string;
     timestamps: number[];
     tokens: string[];
   };
-  /**
-   * Speaker diarization segment returned by `offlineSpeakerDiarizationProcess`.
-   */
+  /** `offlineSpeakerDiarizationProcess` 返回的说话人片段。 */
   export type SpeakerDiarizationSegment = {
-    /**
-     * - start time in seconds
-     */
+    /** 开始时间，单位为秒。 */
     start: number;
-    /**
-     * - end time in seconds
-     */
+    /** 结束时间，单位为秒。 */
     end: number;
-    /**
-     * - speaker id (integer)
-     */
+    /** 说话人整数 ID。 */
     speaker: number;
   };
-  /**
-   * Speaker embedding entry used by SpeakerEmbeddingManager.add
-   */
+  /** `SpeakerEmbeddingManager.add` 使用的说话人 embedding。 */
   export type SpeakerEmbeddingEntry = {
-    /**
-     * - speaker name
-     */
+    /** 说话人名称。 */
     name: string;
-    /**
-     * - embedding vector
-     */
+    /** embedding 向量。 */
     v: Float32Array;
   };
   export type OfflineStreamObject = {

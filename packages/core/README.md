@@ -1,195 +1,112 @@
 # @ciels/core
 
-Signals, stimuli, percepts, sensory processors, and runtime orchestration for Ciel.
+Ciel 的信号、感知、记忆与运行时编排核心。
 
-## Runtime
-
-A stimulus declares every concrete signal class it can emit. `Ciel` creates one isolated `Sensus` for the stimulus, and `Sensus` binds every declared signal to its sensory capability.
-
-```ts
-import { Ciel, Echo, Stimulus } from '@ciels/core';
-
-class MicrophoneEcho extends Echo.WithMeta({
-  name: 'Microphone',
-  description: 'Primary microphone audio',
-}) {}
-
-const signals = [MicrophoneEcho] as const;
-const segment = { data: Buffer.alloc(320), startAt: new Date() };
-
-class MicrophoneStimulus extends Stimulus<typeof signals> {
-  static readonly meta = {
-    name: 'Local microphone',
-    description: 'The scene observed through the local microphone',
-  };
-
-  readonly signals = signals;
-
-  async start() {
-    await this.send(new MicrophoneEcho(segment));
-  }
-
-  async stop() {}
-}
-
-const ciel = new Ciel(new MicrophoneStimulus(), {
-  nucleus: { model, memory },
-});
-await ciel.start();
-```
-
-Signal matching inside `Sensus` is automatic:
-
-- `Echo` subclasses use an `Auris` processor.
-- `Photon` subclasses use an `Oculus` processor.
-- `Script` subclasses use a `Lectio` processor that aligns them as `Reading` percepts and emits them through Ciel's `data` event.
-
-## Architecture
+## 工作流
 
 ```mermaid
 flowchart TD
   Stimulus --> Signals["Photon / Echo / Script"]
   Signals --> Sensus["Oculus / Auris / Lectio"]
   Sensus --> Percepts["Sight / Hearing / Reading"]
-  Percepts --> PerceptStore["PerceptStore append"]
+  Percepts --> Store["PerceptStore 追加记录"]
 
-  PerceptStore -->|"independent checkout"| Context["Context projection"]
-  Context --> Nucleus["Nucleus main agent"]
+  Store -->|"独立 checkout"| Context["Context 投影"]
+  Context --> Nucleus["Nucleus 主 Agent"]
   Memory --> Nucleus
-  Nucleus -->|"success"| NucleusCommit["commit nucleus cursor"]
+  Nucleus -->|"成功"| NucleusCommit["提交 Nucleus 游标"]
 
-  PerceptStore -->|"independent checkout"| Archive["EpisodeArchive"]
+  Store -->|"独立 checkout"| Archive["EpisodeArchive"]
   Archive -->|"recordEpisode"| Memory["Memory / LibSQL"]
-  Archive -->|"success"| MemoryCommit["commit memory cursor"]
+  Archive -->|"成功"| MemoryCommit["提交 Memory 游标"]
 ```
 
-Both consumers receive stable checkouts. A failed call keeps its checkout for retry, while later
-percepts continue to append. `EpisodeArchive` owns scheduling, retry, projection, and the memory consumer
-cursor. `Memory.recordEpisode` owns summary generation and persistence.
+一个 `Stimulus` 声明它会发送的信号类型。`Sensus` 自动将 `Echo`、`Photon`、`Script` 分别交给 `Auris`、`Oculus`、`Lectio`，产出 `Hearing`、`Sight`、`Reading`。
 
-`Ciel.stop()` stops its stimulus, removes subscriptions, and closes its `Sensus`. Closing flushes stateful capabilities and releases their event listeners.
+`PerceptStore` 为 Nucleus 与经历归档提供独立游标。调用失败时保留当前 checkout 供重试，新记录继续追加；成功后才提交对应游标。
 
-## Exports
+## 使用
 
-- `Ciel`: lifecycle orchestration for the single Stimulus passed to its constructor.
-- `Context`: the only builder for final system instructions, messages, and multimodal model input.
-- `Memory`: Mastra Working Memory, date threads, and semantic recall backed by LibSQL and LibSQLVector.
-- `Nucleus<TOutput>`: the main thought scheduler.
-- `PerceptStore`: the storage contract shared by context construction and memory archiving.
-- `InMemoryPerceptStore`: the process-local append-only Percept store with independent consumer cursors.
-- `Sensus`: unified signal routing, sensory capability, events, and lifecycle.
-- `SensusBase<TSignal, TData>`: common signal binding and `data/error` event contract for sensory capabilities.
-- `Stimulus`: typed event source with explicit `signals` and async `send()`.
+```ts
+import { Ciel, Echo, Stimulus } from '@ciels/core';
 
-Pass one Stimulus as the first `Ciel` constructor argument and its required Nucleus configuration
-as the second argument. Ciel privately creates and owns both Nucleus and InMemoryPerceptStore; neither runtime
-instance can be injected or retrieved. The Stimulus feeds that Nucleus while each realtime entry
-retains its source Stimulus. `Context` combines internal system content, trusted Stimulus definitions,
-chronological text/image Percepts, application-provided system/messages, and Memory. All system sections
-are emitted as one system message, with Memory as its final section. Ciel forwards
-`thought` and `error` events and exposes only a projected snapshot through `getContext()`.
+class MicrophoneEcho extends Echo.WithMeta({
+  name: '麦克风',
+  description: '本机麦克风音频',
+}) {}
 
-Context groups model-facing Percepts by `originSignal` and Percept type. Each group uses the signal's
-name and description, followed by chronological `[time] content` entries. It also injects explanations
-for the Percept types present in the current input; the `Sight` explanation warns that a composed image
-may contain multiple chronological frames, so repeated people or objects must not be counted as distinct
-entities solely because they appear more than once.
+const signals = [MicrophoneEcho] as const;
 
-Stimulus and Percept explanations share one section. It describes Stimulus as the external source of
-Signals and subsequent Percepts, then adds explanations only for the Percept types present in the current
-input before listing the concrete source definitions.
+class Microphone extends Stimulus<typeof signals> {
+  static readonly meta = {
+    name: '本机麦克风',
+    description: '通过本机麦克风观察到的场景',
+  };
 
-A built-in response constraint asks the model to describe real information, observations, memory, and
-actions naturally without exposing internal terms such as Stimulus, Signal, Percept, Context, or Nucleus,
-unless the user explicitly asks about the internal mechanism.
+  readonly signals = signals;
 
-Oculus persists each sampled frame that differs enough from the last accepted frame. Every Sensus result
-is first appended to `PerceptStore`; Nucleus and memory archiving then read it through independent cursors.
-A checkout stays frozen until its consumer commits it, so failed calls retry the same input while records
-arriving during the call remain pending for the next checkout. Nucleus composes up to nine visual frames
-into each context image. Prompt image count is bounded, but original image paths remain in PerceptStore.
+  async start() {
+    await this.send(
+      new MicrophoneEcho({
+        data: Buffer.alloc(320),
+        startAt: new Date(),
+      }),
+    );
+  }
 
-Nucleus privately adds `memory_update` for replacing refined global memory and `memory_recall` for
-semantic search across historical date threads. Reaching the configured model-input token size, a quiet
-period, or shutdown summarizes unread Percepts into the current date thread. Visual records are compacted
-into bounded contact sheets for both thought and archive prompts. Nucleus exposes `soul`, `identity`,
-and `agent` strings. They default to empty strings and Context treats non-empty values as ordinary
-internal system content rather than special semantic sections.
+  async stop() {}
+}
 
-- `Echo`, `Photon`, `Script`: immutable signal bases with static metadata.
-- `Auris`, `Oculus`, `Lectio`: lower-level signal-bound sensory capabilities.
-- `Percept`: the `Hearing | Reading | Sight` result union.
-- `Hearing`, `Reading`, `Sight`: percepts retaining their single origin signal constructor.
+const ciel = new Ciel(new Microphone(), {
+  nucleus: { model, memory },
+});
 
-After VAD closes a speech segment, ASR emits its result before `speechend`. Auris and Sensus preserve that
-ordering, so Hearing is already in PerceptStore when Ciel calls `Nucleus.speechEnd()`. The first speech end can
-think immediately; later speech ends are coalesced by `minThinkInterval`, while `maxThinkInterval` remains
-the fallback when no speech ends. Other Percepts only enter context and do not trigger thought themselves.
+await ciel.start();
+```
 
-The current PerceptStore implementation is process-local. Its record and cursor contract is deliberately
-separate from Nucleus so a durable LibSQL adapter can replace the storage backend without changing the
-context or memory consumers.
+`Ciel.stop()` 会停止 Stimulus、解除订阅并关闭 Sensus；有状态的感官能力会先完成刷新。
 
-Memory uses `resourceId` as the namespace for working memory, daily thread IDs, semantic recall, and
-idempotent message IDs. Multiple rooms can therefore share one LibSQL database without colliding or
-reading each other's daily episodes.
+## 主要导出
 
-## Development
+- `Ciel`：运行时生命周期与事件转发。
+- `Stimulus`：声明信号并通过 `send()` 发送。
+- `Sensus`：统一路由信号和管理感官能力。
+- `Context`：构建最终模型输入。
+- `Nucleus`：调度思考。
+- `Memory`：基于 Mastra、LibSQL 和 LibSQLVector 的长期记忆与语义召回。
+- `PerceptStore` / `InMemoryPerceptStore`：感知记录与独立消费游标。
+- `Echo` / `Photon` / `Script`：不可变信号基类。
+- `Hearing` / `Sight` / `Reading`：保留来源信号的感知结果。
+
+Context 按 `originSignal` 与感知类型组织实时输入，并合并内部设定、应用消息和记忆。Oculus 只持久化达到变化阈值的采样帧，每张上下文图片最多合成九帧。
+
+Memory 使用 `resourceId` 隔离全局记忆、每日经历、语义召回和幂等 ID，因此多个运行时可以共用同一数据库。
+
+## Vigilia
+
+每个 `Ciel` 都有独立的进程内 `vigilia` Journal，用于记录可回放、JSON 安全的运行时事实，不参与感知或决策。
+
+```ts
+const off = ciel.vigilia.subscribe((event, snapshot) => {
+  console.log(event.sequence, event.type, snapshot.state);
+});
+
+const history = ciel.vigilia.events({ after: 0, limit: 100 });
+off();
+```
+
+敏感内容默认不记录，可通过 `capture` 分项启用上下文、记忆、推理、结果和工具输入输出。音频、TypedArray 与内联图片会转为有界元数据；`signals: false` 只关闭高频原始信号事件。
+
+OpenTelemetry 仅作为可选投影，不会安装 SDK 或 exporter：
+
+```ts
+const detach = new VigiliaOpenTelemetry().attach(ciel.vigilia);
+```
+
+## 验证
 
 ```bash
 vp check
 vp test
 vp pack
-```
-
-## Vigilia observability
-
-Every `Ciel` owns an independent, in-process `vigilia` journal. It records immutable,
-JSON-safe runtime facts for state changes, signal processing, percept commits, Nucleus thinking,
-and Episode archiving. The domain event API remains transient; Vigilia is the replayable
-observability boundary.
-
-```ts
-const ciel = new Ciel(stimulus, {
-  nucleus,
-  vigilia: {
-    signals: false,
-    capture: {
-      context: true,
-      memory: true,
-      reasoning: true,
-      result: true,
-      toolInput: true,
-      toolOutput: true,
-    },
-    capturePerceptContent: false,
-  },
-});
-
-const unsubscribe = ciel.vigilia.subscribe((event, snapshot) => {
-  console.log(event.sequence, event.type, snapshot.state);
-});
-
-const history = ciel.vigilia.events({ after: 0, limit: 100 });
-```
-
-Sensitive details are opt-in. Core defaults to lifecycle metadata only; `capture` independently
-controls the final model request context, provider-returned reasoning, result, tool input/output,
-and memory reads/summaries. Binary audio, typed arrays, and inline image/base64 content are replaced
-with bounded metadata before journal commit. `signals: false` disables only high-frequency raw
-Signal events; sensory processing, ASR segments, Percepts, and thinking continue normally.
-
-Every running operation uses a UUID. A think is the root operation; context construction, memory
-reads, model steps, and tool executions have their own UUID and retain the think UUID as
-`parentOperationId`. Provider `toolCallId` values are retained separately. This makes starts and
-settlements unambiguous across concurrent Ciel instances and process restarts.
-
-Vigilia records only reasoning explicitly returned by the model provider. It does not infer or
-manufacture hidden reasoning. Error messages and stacks are retained for diagnosis, so
-applications should still sanitize errors at their source.
-
-OpenTelemetry is an optional projection and does not install an SDK or exporter:
-
-```ts
-const detach = new VigiliaOpenTelemetry().attach(ciel.vigilia);
 ```

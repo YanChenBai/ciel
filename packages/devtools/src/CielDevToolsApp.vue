@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { AnyVigiliaEvent, VigiliaSnapshot } from '@ciels/bridge/protocol';
-import { createBridge } from '@ciels/bridge/vue';
+import type { AnyVigiliaEvent, VigiliaSnapshot } from '@ciels/vigilia-bridge/protocol';
+import { createBridge } from '@ciels/vigilia-bridge/vue';
 import { ref, shallowRef } from 'vue';
 
 import CielDevTools from './CielDevTools.vue';
@@ -52,12 +52,12 @@ onMessage(message => {
   snapshot.value = message.snapshot;
 
   if (message.type === 'vigilia.bootstrap') {
-    events.value = message.events.slice(-500);
+    events.value = message.events;
     return;
   }
 
   if (events.value.some(event => event.sequence === message.event.sequence)) return;
-  events.value = [...events.value, message.event].slice(-500);
+  events.value = [...events.value, message.event];
 });
 
 function createDemoEvents(): readonly AnyVigiliaEvent[] {

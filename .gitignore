@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .ciel-data/
+out
 
 # dotenv environment variable files
 .env

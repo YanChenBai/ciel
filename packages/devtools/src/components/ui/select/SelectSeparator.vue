@@ -15,6 +15,6 @@ const delegatedProps = reactiveOmit(props, 'class');
   <SelectSeparator
     data-slot="select-separator"
     v-bind="delegatedProps"
-    :class="cn('bg-border pointer-events-none -mx-1 my-1 h-px', props.class)"
+    :class="cn('cl:bg-border cl:pointer-events-none cl:-mx-1 cl:my-1 cl:h-px', props.class)"
   />
 </template>

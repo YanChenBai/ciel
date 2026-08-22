@@ -21,6 +21,8 @@ import type { VigiliaJsonValue, VigiliaOptions } from '#src/vigilia/index.ts';
 
 import { Identity, Soul } from './prompts.ts';
 
+export { Identity, Soul };
+
 export type CielNucleusOptions<TOutput = string> = Omit<NucleusOptions<TOutput>, 'perceptStore'>;
 export interface CielOptions<TOutput = string> {
   auris?: ASROptions;
@@ -414,7 +416,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
 
   private async teardown(): Promise<Error[]> {
     const errors: Error[] = [];
-    // Keep subscriptions alive until the stimulus has finished stopping.
+    // 等 Stimulus 完成停止后再解除订阅，保留停止期间产生的事件。
     if (this.runtime?.started) {
       try {
         await this.runtime.stimulus.stop();

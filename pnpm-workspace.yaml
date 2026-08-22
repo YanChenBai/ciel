@@ -8,8 +8,8 @@ allowBuilds:
 
 catalog:
   '@types/node': ^26.2.0
-  vite: npm:@voidzero-dev/vite-plus-core@0.2.8
-  vite-plus: 0.2.8
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.9
+  vite-plus: 0.2.9
   typescript: 7.0.2
   '@oxc-node/cli': ^0.1.0
 
@@ -32,4 +32,4 @@ overrides:
 
 peerDependencyRules:
   allowedVersions:
-    vite: 0.2.8
+    vite: 0.2.9

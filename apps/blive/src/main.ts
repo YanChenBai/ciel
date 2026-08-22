@@ -5,7 +5,7 @@ process.env.CIEL_DATA_DIR ??= fileURLToPath(new URL('../../../.ciel-data/', impo
 const [{ Ciel, Memory, definePrompt }, { createBridge }, { createBliveAI }, { BilibiliLive }] =
   await Promise.all([
     import('@ciels/core'),
-    import('@ciels/bridge'),
+    import('@ciels/vigilia-bridge'),
     import('./ai.ts'),
     import('./blive.ts'),
   ]);
