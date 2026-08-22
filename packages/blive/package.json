@@ -17,7 +17,6 @@
   "scripts": {
     "build": "vp pack",
     "dev": "vp pack --watch",
-    "start": "oxnode --env-file=.env ./src/main.ts",
     "test": "vp test",
     "check": "vp check",
     "prepublishOnly": "vp run build"
@@ -25,11 +24,9 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.30",
     "@ciels/core": "workspace:*",
-    "@ciels/vigilia-bridge": "workspace:*",
     "ai": "^7.0.66"
   },
   "devDependencies": {
-    "@oxc-node/cli": "catalog:",
     "@types/node": "catalog:",
     "bumpp": "^12.2.1",
     "typescript": "catalog:",

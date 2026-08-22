@@ -1,4 +1,3 @@
-export const DANMAKU_COOLDOWN_MS = 20_000;
 export const DANMAKU_HISTORY_LIMIT = 100;
 export const DANMAKU_PROMPT_HISTORY_LIMIT = 12;
 export const MAX_DANMAKU_LENGTH = 40;

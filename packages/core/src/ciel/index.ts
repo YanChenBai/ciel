@@ -231,6 +231,16 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   private observeNucleus(): void {
     this.nucleus.on('thought', (output, input) => this.emit('thought', output, input));
     this.nucleus.on('error', error => this.emit('error', error));
+    this.nucleus.on('visionComposed', event => {
+      const relativePath = this.vigilia.assetPath(event.path);
+      if (!relativePath) return;
+      this.vigilia.record('vision.composed', {
+        frameCount: event.frameCount,
+        path: relativePath,
+        signal: event.signal,
+        stimulus: event.stimulus,
+      });
+    });
     this.nucleus.on('thinkStarted', event => {
       this.vigilia.record('nucleus.think.started', {
         fromSequence: event.fromSequence,

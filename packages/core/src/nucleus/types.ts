@@ -1,6 +1,7 @@
 import type { LanguageModel, Output, ToolLoopAgentSettings, ToolSet } from 'ai';
 
 import type { ContextInput, ContextMessage, ContextTrigger } from '#src/context/index.ts';
+import type { VisionComposedEvent } from '#src/context/vision.ts';
 import type { EpisodeArchiveOperation } from '#src/memory/episode-archive.ts';
 import type { CielMemoryStore, EpisodeRecordResult } from '#src/memory/index.ts';
 import type { PerceptStore } from '#src/percepts/index.ts';
@@ -58,6 +59,7 @@ export interface NucleusEventMap<TOutput = string> {
   operationCompleted(event: NucleusObservedOperationCompleted): void;
   operationFailed(event: NucleusObservedOperationFailed): void;
   operationStarted(event: NucleusObservedOperationStarted): void;
+  visionComposed(event: VisionComposedEvent): void;
   error(error: Error): void;
 }
 

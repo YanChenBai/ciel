@@ -1,7 +1,11 @@
 import type { AnyVigiliaEvent } from '@ciels/core';
 import { describe, expect, it } from 'vite-plus/test';
 
-import { buildVigiliaConversationEntries, buildVigiliaThoughtRuns } from '../src/lib/trace.ts';
+import {
+  buildVigiliaConversationEntries,
+  buildVigiliaSignalSteps,
+  buildVigiliaThoughtRuns,
+} from '../src/lib/trace.ts';
 
 describe('buildVigiliaThoughtRuns', () => {
   it('pairs a thought and its child operations into ordered steps', () => {
@@ -93,6 +97,49 @@ describe('buildVigiliaThoughtRuns', () => {
       { content: '旧识别', kind: 'asr', label: 'ASR' },
       { content: 'old-output', kind: 'model', label: 'MODEL' },
       { content: 'new-output', kind: 'model', label: 'MODEL' },
+    ]);
+  });
+});
+
+describe('buildVigiliaSignalSteps', () => {
+  it('only inserts non-empty ASR and completed multi-frame mosaics', () => {
+    const events = [
+      event(1, 100, 'percept.appended', {
+        content: { text: ' 识别结果 ', type: 'text' },
+        perceptType: 'Hearing',
+        sequence: 1,
+        signal: 'Echo',
+        stimulus: '直播间',
+      }),
+      event(2, 110, 'percept.appended', {
+        content: { text: '   ', type: 'text' },
+        perceptType: 'Hearing',
+        sequence: 2,
+        signal: 'Echo',
+        stimulus: '直播间',
+      }),
+      event(3, 120, 'percept.appended', {
+        content: { path: 'frames/raw.jpg', type: 'image' },
+        perceptType: 'Sight',
+        sequence: 3,
+        signal: 'Photon',
+        stimulus: '直播间',
+      }),
+      event(4, 130, 'vision.composed', {
+        frameCount: 9,
+        path: 'frames/composed.jpg',
+        signal: 'Photon',
+        stimulus: '直播间',
+      }),
+    ] as AnyVigiliaEvent[];
+
+    expect(buildVigiliaSignalSteps(events)).toMatchObject([
+      { lane: 'asr', output: '识别结果', startedAt: 100 },
+      {
+        lane: 'vision',
+        output: { frameCount: 9, path: 'frames/composed.jpg' },
+        startedAt: 130,
+      },
     ]);
   });
 });

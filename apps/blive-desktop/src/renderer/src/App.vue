@@ -10,11 +10,12 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 
-import type { BliveDesktopState, BliveMode } from '../../shared/types.ts';
+import type { BliveDesktopState, BliveMode, DanmakuDelivery } from '../../shared/types.ts';
 
 const state = shallowRef<BliveDesktopState>();
 const roomId = ref('6374209');
 const mode = ref<BliveMode>('standard');
+const danmakuDelivery = ref<DanmakuDelivery>('simulate');
 const areaUrl = ref('');
 const pending = ref(false);
 const localError = ref('');
@@ -89,6 +90,7 @@ function start(): Promise<void> {
         ...(areaUrl.value.trim() ? { areaUrl: areaUrl.value.trim() } : {}),
         mode: mode.value,
         roomId: Number(roomId.value),
+        danmakuDelivery: danmakuDelivery.value,
       },
     }),
   );
@@ -121,6 +123,9 @@ function updateLiveBounds(): void {
         <Radio class="room-heading-icon" />
         <strong>{{ title }}</strong>
         <Badge variant="outline" class="mode-badge" :class="state.mode">{{ modeLabel }}</Badge>
+        <Badge variant="outline" class="mode-badge">
+          {{ state.danmakuDelivery === 'live' ? '真实弹幕' : '测试弹幕' }}
+        </Badge>
       </div>
       <Button
         v-if="state?.running"
@@ -179,6 +184,20 @@ function updateLiveBounds(): void {
               inputmode="numeric"
               placeholder="输入直播间 ID"
             />
+          </div>
+          <div class="field-group">
+            <Label for="danmaku-delivery">弹幕执行</Label>
+            <NativeSelect id="danmaku-delivery" v-model="danmakuDelivery" class="launch-select">
+              <NativeSelectOption value="simulate">仅测试工具调用 · 不发送</NativeSelectOption>
+              <NativeSelectOption value="live">真实发送到直播间</NativeSelectOption>
+            </NativeSelect>
+            <p class="field-hint">
+              {{
+                danmakuDelivery === 'live'
+                  ? 'Agent 调用工具后会操作直播网页发送弹幕。'
+                  : '保留完整工具调用与轨迹，但不会操作网页或写入发送历史。'
+              }}
+            </p>
           </div>
           <div class="field-group">
             <Label for="watch-mode">观看模式</Label>
@@ -240,6 +259,9 @@ function updateLiveBounds(): void {
             <template #title-extra>
               <Badge variant="outline" class="mode-badge" :class="state.mode">
                 {{ modeLabel }}
+              </Badge>
+              <Badge variant="outline" class="mode-badge">
+                {{ state.danmakuDelivery === 'live' ? '真实弹幕' : '测试弹幕' }}
               </Badge>
             </template>
           </CielDevTools>

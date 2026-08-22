@@ -24,13 +24,7 @@ $env:BLIVE_AI_BASE_URL='https://openrouter.ai/api/v1' # 可选
 
 生成与 embedding 共用 `BLIVE_AI_MODEL`，因此服务端模型必须同时支持图片输入和 embeddings。embedding 用于历史经历的语义检索。
 
-## 运行
-
-```bash
-vp run --filter @ciels/blive start
-```
-
-入口默认将 `CIEL_DATA_DIR` 指向 monorepo 根目录的 `.ciel-data`，从 app 子目录启动时也会复用同一套模型。可选配置：
+桌面客户端负责配置 `CIEL_DATA_DIR` 并启动运行时。可选配置：
 
 - `BLIVE_FFMPEG_PATH`：FFmpeg 路径。
 - `BLIVE_IMAGE_INTERVAL`：截图间隔，默认 `60_000 / 9` 毫秒。

@@ -5,7 +5,7 @@ import type { LiveRoomCandidate } from '../shared/types.ts';
 
 interface SendDanmakuInput {
   readonly action: 'defer' | 'send';
-  readonly content?: string;
+  readonly content: string;
   readonly reason: string;
 }
 
@@ -25,6 +25,7 @@ export function createBliveTools(options: {
     readonly page: number;
   }>;
   readonly sendDanmaku: (content: string) => Promise<void>;
+  readonly simulateDanmaku?: boolean;
 }): ToolSet {
   const tools: ToolSet = {
     send_danmaku: tool({
@@ -40,9 +41,9 @@ export function createBliveTools(options: {
           },
           content: {
             type: 'string',
-            minLength: 1,
             maxLength: 40,
-            description: 'action=send 时要发送的简短中文弹幕，可以包含一个允许的 emoji 标签',
+            description:
+              'action=send 时填写要发送的简短中文弹幕，可以包含一个允许的 emoji 标签；action=defer 时传空字符串',
           },
           reason: {
             type: 'string',
@@ -51,14 +52,17 @@ export function createBliveTools(options: {
             description: '选择发送或暂缓的具体现场原因',
           },
         },
-        required: ['action', 'reason'],
+        required: ['action', 'content', 'reason'],
         additionalProperties: false,
       }),
       execute: async ({ action, content, reason }) => {
         if (action === 'defer') return { reason, sent: false };
         if (!content?.trim()) throw new Error('action=send 时必须提供弹幕 content');
+        if (options.simulateDanmaku) {
+          return { content, reason, sent: false, simulated: true };
+        }
         await options.sendDanmaku(content);
-        return { content, reason, sent: true };
+        return { content, reason, sent: true, simulated: false };
       },
     }),
   };

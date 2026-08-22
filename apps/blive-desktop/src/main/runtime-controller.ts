@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { BilibiliLive, createBliveAI } from '@ciels/blive';
 import { Ciel, Memory } from '@ciels/core';
 import type { AnyVigiliaEvent, VigiliaSnapshot } from '@ciels/core';
-import { Output } from 'ai';
 import type { BrowserWindow } from 'electron';
 import { z } from 'zod';
 
@@ -23,7 +22,6 @@ import { BilibiliAccountManager } from './account.ts';
 import { AreaCatalog } from './area-catalog.ts';
 import { fetchLiveRoomInfo } from './bilibili-api.ts';
 import {
-  DANMAKU_COOLDOWN_MS,
   DANMAKU_PROMPT_HISTORY_LIMIT,
   MAX_DANMAKU_LENGTH,
   ROOM_REVIEW_AFTER_MS,
@@ -36,6 +34,7 @@ import {
   createRoomContextMessage,
   STANDARD_MODE_PROMPT,
 } from './prompts.ts';
+import { createToolCompatibleObjectOutput } from './tool-compatible-output.ts';
 import { createBliveTools } from './tools.ts';
 
 interface RuntimeControllerEvents {
@@ -64,8 +63,8 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   private events: AnyVigiliaEvent[] = [];
   private lastCandidates = new Set<number>();
   private lastError?: string;
-  private lastSentAt = 0;
   private mode: BliveMode = 'standard';
+  private danmakuDelivery: BliveStartOptions['danmakuDelivery'] = 'simulate';
   private memory?: Memory;
   private room?: LiveRoomInfo;
   private roomStartedAt = 0;
@@ -94,6 +93,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
     return {
       ...(this.account ? { account: this.account } : {}),
       connected: true,
+      danmakuDelivery: this.danmakuDelivery,
       ...(this.lastError ? { error: this.lastError } : {}),
       events: this.events,
       history: this.history.list(undefined, 20),
@@ -107,6 +107,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   async start(options: BliveStartOptions): Promise<void> {
     await this.stop();
     this.mode = options.mode;
+    this.danmakuDelivery = options.danmakuDelivery;
     this.areaUrl = options.areaUrl?.trim() || undefined;
     this.lastError = undefined;
     try {
@@ -134,14 +135,10 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
     if (!normalized || countCharacters(normalized) > MAX_DANMAKU_LENGTH) {
       throw new Error(`弹幕长度必须为 1～${MAX_DANMAKU_LENGTH} 个字符`);
     }
-    if (Date.now() - this.lastSentAt < DANMAKU_COOLDOWN_MS) {
-      throw new Error('弹幕发送过于频繁，请稍后再试');
-    }
     if (this.history.hasRecentDuplicate(room.roomId, normalized)) {
       throw new Error('这条弹幕最近已经发送过');
     }
     await this.livePage.sendDanmaku(normalized);
-    this.lastSentAt = Date.now();
     await this.recordSentDanmaku(normalized);
   }
 
@@ -173,9 +170,11 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
       autonomous: this.mode === 'autonomous',
       listLiveRooms: (page, limit) => this.listLiveRooms(page, limit),
       sendDanmaku: content => this.sendDanmaku(content),
+      simulateDanmaku: this.danmakuDelivery === 'simulate',
     });
     const ciel = new Ciel<BliveThought>(live, {
       vigilia: {
+        assetRoot: process.env.CIEL_DATA_DIR,
         capturePerceptContent: true,
         capture: {
           context: true,
@@ -206,16 +205,10 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
           }
           return {
             activeTools: ['send_danmaku'],
-            output: Output.text(),
             toolChoice: { toolName: 'send_danmaku', type: 'tool' },
           };
         },
-        output: Output.object({
-          schema: thoughtSchema,
-          name: 'blive_room_decision',
-          description:
-            'Return the current room decision with action, confidence, evidence, reason, score, and an optional targetRoomId.',
-        }),
+        output: createToolCompatibleObjectOutput(thoughtSchema),
         system: [
           COMMON_BLIVE_PROMPT,
           this.mode === 'autonomous' ? AUTONOMOUS_MODE_PROMPT : STANDARD_MODE_PROMPT,

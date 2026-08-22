@@ -20,6 +20,8 @@ const emit = defineEmits<{
 }>();
 
 const laneDefinitions: readonly { id: VigiliaStepLane; label: string }[] = [
+  { id: 'asr', label: 'ASR' },
+  { id: 'vision', label: 'Image' },
   { id: 'sensory', label: 'Input' },
   { id: 'context', label: 'Context' },
   { id: 'memory', label: 'Memory' },
@@ -45,16 +47,19 @@ const groups = computed<DataGroup[]>(() =>
   })),
 );
 const items = computed<DataItem[]>(() =>
-  props.steps.map(step => ({
-    className: `trace-item trace-item-${step.lane} trace-item-${step.status}`,
-    content: '',
-    end: new Date(step.completedAt ?? props.end),
-    group: step.lane,
-    id: step.id,
-    start: new Date(step.startedAt),
-    title: `${step.name} · ${formatDuration(step.durationMs)}`,
-    type: 'range',
-  })),
+  props.steps.map(step => {
+    const point = step.lane === 'asr' || step.lane === 'vision';
+    return {
+      className: `trace-item trace-item-${step.lane} trace-item-${step.status}`,
+      content: '',
+      ...(point ? {} : { end: new Date(step.completedAt ?? props.end) }),
+      group: step.lane,
+      id: step.id,
+      start: new Date(step.startedAt),
+      title: point ? step.name : `${step.name} · ${formatDuration(step.durationMs)}`,
+      type: point ? 'point' : 'range',
+    };
+  }),
 );
 
 onMounted(() => {
@@ -247,6 +252,22 @@ function formatOffset(offsetMs: number): string {
 
 .vigilia-timeline .vis-item.trace-item-sensory {
   background: var(--trace-sensory);
+}
+
+.vigilia-timeline .vis-item.trace-item-asr {
+  background: #38bdf8;
+}
+
+.vigilia-timeline .vis-item.trace-item-vision {
+  background: #f472b6;
+}
+
+.vigilia-timeline .vis-item.trace-item-asr.vis-point,
+.vigilia-timeline .vis-item.trace-item-vision.vis-point {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 999px;
 }
 
 .vigilia-timeline .vis-item.trace-item-context {

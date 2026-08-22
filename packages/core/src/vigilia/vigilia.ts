@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { VigiliaJournal } from './journal.ts';
 import type { VigiliaJournalOptions } from './journal.ts';
 import { serializeError } from './serialize.ts';
@@ -11,6 +13,8 @@ import type {
 } from './types.ts';
 
 export interface VigiliaOptions extends VigiliaJournalOptions {
+  /** 可观测媒体文件根目录；Journal 只保存相对此目录的路径。 */
+  readonly assetRoot?: string;
   /** 控制哪些可能敏感或体积较大的值可以进入 Journal。 */
   readonly capture?: {
     readonly context?: boolean;
@@ -40,6 +44,7 @@ export interface VigiliaCapturePolicy {
  * Vigilia 只记录运行时事实，不能反向成为感知或认知决策的依赖。
  */
 export class Vigilia {
+  readonly assetRoot?: string;
   readonly capturePerceptContent: boolean;
   readonly capture: VigiliaCapturePolicy;
   readonly signals: boolean;
@@ -47,6 +52,7 @@ export class Vigilia {
   private readonly journal: VigiliaJournal;
 
   constructor(options: VigiliaOptions = {}) {
+    this.assetRoot = options.assetRoot ? path.resolve(options.assetRoot) : undefined;
     // 内容捕获默认关闭，避免提示词、记忆和工具数据在无意间泄露。
     this.capturePerceptContent = options.capturePerceptContent ?? false;
     this.capture = Object.freeze({
@@ -60,6 +66,13 @@ export class Vigilia {
     this.signals = options.signals ?? true;
     this.projectThought = options.projectThought;
     this.journal = new VigiliaJournal(options);
+  }
+
+  assetPath(filePath: string): string | undefined {
+    if (!this.assetRoot) return undefined;
+    const relative = path.relative(this.assetRoot, path.resolve(filePath));
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
+    return relative.replaceAll('\\', '/');
   }
 
   record<TType extends VigiliaEventType>(type: TType, data: VigiliaEventDataMap[TType]) {

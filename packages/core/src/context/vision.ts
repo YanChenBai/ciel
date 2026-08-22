@@ -16,11 +16,22 @@ export interface VisionProjection {
   readonly record?: PerceptRecord;
 }
 
+export interface VisionComposedEvent {
+  readonly frameCount: number;
+  readonly path: string;
+  readonly signal: string;
+  readonly stimulus: string;
+}
+
 /** 将同一视觉来源的 Sight 记录分组、采样并合成为有界视觉证据。 */
 export class VisionProjector {
   private readonly composer = new OculusComposer();
+  private readonly emittedPaths = new Set<string>();
 
-  constructor(private readonly defaultLimit: number) {}
+  constructor(
+    private readonly defaultLimit: number,
+    private readonly onComposed?: (event: VisionComposedEvent) => void,
+  ) {}
 
   get limit(): number {
     return this.defaultLimit;
@@ -51,6 +62,15 @@ export class VisionProjector {
         return record.percept;
       }),
     );
+    if (batch.data.length > 1 && !this.emittedPaths.has(sight.path)) {
+      this.emittedPaths.add(sight.path);
+      this.onComposed?.({
+        frameCount: batch.data.length,
+        path: sight.path,
+        signal: batch.signal.name,
+        stimulus: first.stimulusDefinition.name,
+      });
+    }
     return {
       ...first,
       time: { startAt: sight.startAt, endAt: sight.endAt },

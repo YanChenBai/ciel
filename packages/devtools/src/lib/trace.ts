@@ -1,6 +1,14 @@
 import type { AnyVigiliaEvent, VigiliaObservationCategory } from '@ciels/core';
 
-export type VigiliaStepLane = 'context' | 'memory' | 'model' | 'nucleus' | 'sensory' | 'tool';
+export type VigiliaStepLane =
+  | 'asr'
+  | 'context'
+  | 'memory'
+  | 'model'
+  | 'nucleus'
+  | 'sensory'
+  | 'tool'
+  | 'vision';
 export type VigiliaStepStatus = 'completed' | 'failed' | 'running';
 
 export interface VigiliaStep {
@@ -77,6 +85,48 @@ export function buildVigiliaThoughtRuns(
   events: readonly AnyVigiliaEvent[],
 ): readonly VigiliaThoughtRun[] {
   return splitJournals(events).flatMap(journal => buildJournalThoughtRuns(journal));
+}
+
+/** 将已经提交的转写和多帧合成事实转换为时间图上的即时信号。 */
+export function buildVigiliaSignalSteps(
+  events: readonly AnyVigiliaEvent[],
+): readonly VigiliaStep[] {
+  const steps: VigiliaStep[] = [];
+  for (const [journalIndex, journal] of splitJournals(events).entries()) {
+    for (const event of journal) {
+      if (event.type === 'percept.appended' && event.data.perceptType.toLowerCase() === 'hearing') {
+        const text = perceptText(event.data.content);
+        if (text) {
+          steps.push({
+            completedAt: event.time,
+            durationMs: 0,
+            events: [event],
+            id: `asr:${journalIndex}:${event.sequence}`,
+            lane: 'asr' as const,
+            name: 'ASR transcription',
+            output: text,
+            startedAt: event.time,
+            status: 'completed' as const,
+          });
+        }
+        continue;
+      }
+      if (event.type === 'vision.composed') {
+        steps.push({
+          completedAt: event.time,
+          durationMs: 0,
+          events: [event],
+          id: `vision:${journalIndex}:${event.sequence}`,
+          lane: 'vision' as const,
+          name: `${event.data.frameCount}-frame mosaic`,
+          output: event.data,
+          startedAt: event.time,
+          status: 'completed' as const,
+        });
+      }
+    }
+  }
+  return steps;
 }
 
 function buildJournalThoughtRuns(events: readonly AnyVigiliaEvent[]): readonly VigiliaThoughtRun[] {
@@ -275,4 +325,11 @@ function perceptConversationEntry(
 function formatDuration(duration: number): string {
   if (duration < 1_000) return `${duration} ms`;
   return `${(duration / 1_000).toFixed(2)} s`;
+}
+
+function perceptText(content: unknown): string {
+  if (typeof content === 'string') return content.trim();
+  if (!content || typeof content !== 'object' || !('text' in content)) return '';
+  const text = (content as { readonly text?: unknown }).text;
+  return typeof text === 'string' ? text.trim() : '';
 }

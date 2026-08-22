@@ -14,7 +14,6 @@ export class DanmakuHistory {
     const normalized = normalize(content);
     return this.entries
       .filter(item => item.roomId === roomId)
-      .slice(-20)
       .some(item => normalize(item.content) === normalized);
   }
 

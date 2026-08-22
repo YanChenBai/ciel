@@ -74,7 +74,9 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.soul = options.soul ?? '';
     this.agent = options.agent ?? '';
     this.options = normalizeNucleusOptions(options);
-    const vision = new VisionProjector(this.options.context.maxImages);
+    const vision = new VisionProjector(this.options.context.maxImages, event => {
+      this.emit('visionComposed', event);
+    });
     this.context = new Context(this.signals, this.stimuli, vision);
     this.perceptStore = options.perceptStore ?? new InMemoryPerceptStore();
     this.nucleusConsumer = this.perceptStore.createConsumer('nucleus');

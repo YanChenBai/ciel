@@ -81,6 +81,12 @@ export interface VigiliaEventDataMap {
     readonly signal: string;
     readonly stimulus: string;
   };
+  readonly 'vision.composed': {
+    readonly frameCount: number;
+    readonly path: string;
+    readonly signal: string;
+    readonly stimulus: string;
+  };
   readonly 'signal.processing.completed': {
     readonly durationMs: number;
     readonly operationId: string;

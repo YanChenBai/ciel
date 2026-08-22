@@ -6,11 +6,6 @@ function installLivePageBridge(): void {
       dispose(): void;
       sendDanmaku(content: string): Promise<{ ok: boolean; error?: string }>;
     };
-    livePlayer?: {
-      sendDanmaku?: (input: {
-        msg: string;
-      }) => Promise<{ code?: number; message?: string; msg?: string } | void>;
-    };
   };
 
   root.__cielBliveBridge?.dispose();
@@ -81,50 +76,55 @@ function installLivePageBridge(): void {
       const normalized = content.trim();
       if (!normalized) return { ok: false, error: '弹幕不能为空' };
 
-      const input = document.querySelector<HTMLElement>(
-        'textarea.chat-input, textarea[placeholder*="弹幕"], input[placeholder*="弹幕"], [contenteditable="true"][class*="chat-input"]',
+      const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+        '#control-panel-ctnr-box textarea, #control-panel-ctnr-box input[type="text"]',
       );
-      const button = [...document.querySelectorAll<HTMLElement>('button, [role="button"]')].find(
-        element => /发送/u.test(element.textContent ?? ''),
+      const contentEditable = document.querySelector<HTMLElement>(
+        '#control-panel-ctnr-box [contenteditable="true"]',
       );
+      if (!input && !contentEditable) {
+        return { ok: false, error: '没有找到直播页弹幕输入框，请确认账号已登录' };
+      }
 
-      if (input && button) {
+      const inputEvent = new InputEvent('input', {
+        bubbles: true,
+        cancelable: true,
+        data: normalized,
+        inputType: 'insertText',
+      });
+      if (input) {
         input.focus();
-        if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) {
-          const prototype =
-            input instanceof HTMLTextAreaElement
-              ? HTMLTextAreaElement.prototype
-              : HTMLInputElement.prototype;
-          const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
-          // oxlint-disable-next-line typescript/unbound-method -- native setter requires the input as its receiver
-          if (descriptor?.set) Reflect.apply(descriptor.set, input, [normalized]);
-        } else {
-          input.textContent = normalized;
-        }
-        input.dispatchEvent(new InputEvent('input', { bubbles: true, data: normalized }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        button.click();
-        emit({ type: 'danmaku-sent', content: normalized });
-        return { ok: true };
+        const prototype =
+          input instanceof HTMLTextAreaElement
+            ? HTMLTextAreaElement.prototype
+            : HTMLInputElement.prototype;
+        // oxlint-disable-next-line typescript/unbound-method -- native setter is invoked with the input receiver below
+        const valueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+        if (!valueSetter) return { ok: false, error: '无法写入直播页弹幕输入框' };
+        Reflect.apply(valueSetter, input, [normalized]);
+        input.dispatchEvent(inputEvent);
+      } else if (contentEditable) {
+        contentEditable.focus();
+        contentEditable.textContent = normalized;
+        contentEditable.dispatchEvent(inputEvent);
       }
 
-      const sendDanmaku = root.livePlayer?.sendDanmaku;
-      if (typeof sendDanmaku !== 'function') {
-        return { ok: false, error: '没有找到弹幕输入框或 livePlayer.sendDanmaku' };
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+
+      const button = document.querySelector<HTMLButtonElement>(
+        '#control-panel-ctnr-box .send-btn-wrapper button.send-btn, ' +
+          '#control-panel-ctnr-box .send-btn-wrapper button, ' +
+          '#control-panel-ctnr-box button.send-btn, ' +
+          '#control-panel-ctnr-box .bl-button--primary',
+      );
+      if (!button) return { ok: false, error: '没有找到直播页弹幕发送按钮' };
+      if (button.disabled) {
+        return { ok: false, error: '直播页弹幕发送按钮不可用，请确认账号状态和弹幕内容' };
       }
-      try {
-        const response = await sendDanmaku.call(root.livePlayer, { msg: normalized });
-        if (response?.code !== undefined && response.code !== 0) {
-          return {
-            ok: false,
-            error: response.message || response.msg || `Bilibili rejected code ${response.code}`,
-          };
-        }
-        emit({ type: 'danmaku-sent', content: normalized });
-        return { ok: true };
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
-      }
+
+      button.click();
+      emit({ type: 'danmaku-sent', content: normalized });
+      return { ok: true };
     },
   };
 

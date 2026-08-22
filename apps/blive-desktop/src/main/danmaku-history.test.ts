@@ -21,4 +21,15 @@ describe('DanmakuHistory', () => {
     expect(history.hasRecentDuplicate(1, '可以的[ok]')).toBe(true);
     expect(history.hasRecentDuplicate(2, '可以的[ok]')).toBe(false);
   });
+
+  it('rejects duplicates anywhere in the retained history without time throttling', () => {
+    const history = new DanmakuHistory();
+    history.append({ content: '第一条', roomId: 1, sentAt: 1 });
+    for (let index = 0; index < 30; index += 1) {
+      history.append({ content: `后续-${index}`, roomId: 1, sentAt: index + 2 });
+    }
+
+    expect(history.hasRecentDuplicate(1, '第一条')).toBe(true);
+    expect(history.hasRecentDuplicate(1, '新的现场回应')).toBe(false);
+  });
 });

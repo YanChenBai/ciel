@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   buildVigiliaConversationEntries,
+  buildVigiliaSignalSteps,
   buildVigiliaThoughtRuns,
   type VigiliaStep,
   type VigiliaStepLane,
@@ -67,9 +68,10 @@ const {
 });
 const selectedRun = computed(() => runs.value[0]);
 const visibleSteps = computed(() =>
-  chronologicalRuns.value
-    .flatMap(run => run.steps.filter(shouldShowStep))
-    .sort((left, right) => left.startedAt - right.startedAt),
+  [
+    ...chronologicalRuns.value.flatMap(run => run.steps.filter(shouldShowStep)),
+    ...buildVigiliaSignalSteps(props.events),
+  ].sort((left, right) => left.startedAt - right.startedAt),
 );
 const selectedStep = computed(
   () => visibleSteps.value.find(step => step.id === selectedStepId.value) ?? visibleSteps.value[0],
@@ -86,14 +88,14 @@ const filteredSteps = computed(() => {
   );
 });
 const traceEnd = computed(() => {
-  const run = chronologicalRuns.value.at(-1);
-  if (!run) return 1;
+  const step = visibleSteps.value.at(-1);
+  if (!step) return 1;
   return Math.max(
-    run.startedAt + 1,
-    run.completedAt ?? props.events.at(-1)?.time ?? run.startedAt + 1,
+    step.startedAt + 1,
+    step.completedAt ?? props.events.at(-1)?.time ?? step.startedAt + 1,
   );
 });
-const traceStart = computed(() => chronologicalRuns.value[0]?.startedAt ?? traceEnd.value - 1);
+const traceStart = computed(() => visibleSteps.value[0]?.startedAt ?? traceEnd.value - 1);
 const title = computed(() => {
   if (props.title?.trim()) return props.title.trim();
   const percept = selectedRun.value?.inputPercepts.at(-1);
@@ -124,6 +126,7 @@ function conversationBadgeClass(kind: string): string {
 
 function shouldShowStep(step: VigiliaStep): boolean {
   if (step.lane === 'nucleus') return false;
+  if (step.lane === 'sensory' && step.name === 'asr') return false;
   if (step.lane === 'memory' && step.output === '') return false;
   return true;
 }
@@ -154,11 +157,13 @@ function laneSteps(lane: VigiliaStepLane): readonly VigiliaStep[] {
 function laneClass(lane: VigiliaStepLane): string {
   return {
     context: 'lane-context',
+    asr: 'lane-sensory',
     memory: 'lane-memory',
     model: 'lane-model',
     nucleus: 'lane-nucleus',
     sensory: 'lane-sensory',
     tool: 'lane-tool',
+    vision: 'lane-context',
   }[lane];
 }
 
@@ -355,7 +360,7 @@ function exportTrace(): void {
       <ResizablePanelGroup direction="vertical" class="cl:min-h-0 cl:flex-1">
         <ResizablePanel :default-size="34" :min-size="18" :max-size="60">
           <TraceTimeline
-            v-if="selectedRun"
+            v-if="visibleSteps.length"
             :end="traceEnd"
             :selected-id="selectedStep?.id"
             :start="traceStart"

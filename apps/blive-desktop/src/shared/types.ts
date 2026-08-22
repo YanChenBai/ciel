@@ -1,6 +1,7 @@
 import type { AnyVigiliaEvent, VigiliaSnapshot } from '@ciels/core';
 
 export type BliveMode = 'autonomous' | 'standard';
+export type DanmakuDelivery = 'live' | 'simulate';
 
 export interface BilibiliAccount {
   readonly face: string;
@@ -12,6 +13,7 @@ export interface BliveStartOptions {
   readonly areaUrl?: string;
   readonly mode: BliveMode;
   readonly roomId: number;
+  readonly danmakuDelivery: DanmakuDelivery;
 }
 
 export interface LiveRoomInfo {
@@ -56,6 +58,7 @@ export type LivePageEvent =
 export interface BliveDesktopState {
   readonly account?: BilibiliAccount;
   readonly connected: boolean;
+  readonly danmakuDelivery: DanmakuDelivery;
   readonly error?: string;
   readonly events: readonly AnyVigiliaEvent[];
   readonly history: readonly SentDanmaku[];
