@@ -2,7 +2,10 @@ import { toError } from '@ciels/event';
 
 import type { VigiliaError, VigiliaJsonValue } from './types.ts';
 
-/** Copy unknown input into an immutable, JSON-safe value. */
+/**
+ * 将事件载荷严格复制为不可变 JSON。
+ * 与 captureVigiliaValue 不同，这里会拒绝非法值，而不是将其概括为占位文本。
+ */
 export function snapshotJson(value: unknown): VigiliaJsonValue {
   return copyJson(value, new WeakSet<object>(), '$');
 }

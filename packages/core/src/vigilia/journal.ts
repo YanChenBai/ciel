@@ -15,6 +15,7 @@ export interface VigiliaJournalOptions {
   readonly onSubscriberError?: (error: unknown) => void;
 }
 
+/** Vigilia 有序事件及其当前投影在内存中的唯一事实来源。 */
 export class VigiliaJournal {
   private readonly clock: () => number;
   private readonly history: AnyVigiliaEvent[] = [];
@@ -32,6 +33,7 @@ export class VigiliaJournal {
     type: TType,
     data: VigiliaEventDataMap[TType],
   ): VigiliaEvent<TType> {
+    // 订阅者可以读取已提交快照，但不能在一次提交过程中再次追加事件。
     if (this.recording) throw new Error('Vigilia does not allow reentrant records');
 
     this.recording = true;
@@ -48,6 +50,7 @@ export class VigiliaJournal {
         version: 1 as const,
       });
       const projection = reduceVigilia(this.projection, event as AnyVigiliaEvent);
+      // history 与 projection 必须一同提交，然后才能暴露给订阅者。
       this.history.push(event as AnyVigiliaEvent);
       this.projection = projection;
       for (const subscriber of this.subscribers) {
@@ -57,7 +60,7 @@ export class VigiliaJournal {
           try {
             this.onSubscriberError?.(error);
           } catch {
-            // Observability must never break the observed runtime.
+            // 即使可观测性自身的错误上报失败，也不能破坏被观测的运行时。
           }
         }
       }
@@ -68,6 +71,7 @@ export class VigiliaJournal {
   }
 
   events(query: VigiliaEventQuery = {}): readonly AnyVigiliaEvent[] {
+    // `after` 是不包含自身的 sequence 游标，重连时可以据此确定性地补齐事件。
     const after = Math.max(0, query.after ?? 0);
     const limit = Math.max(0, query.limit ?? 100);
     return Object.freeze(this.history.filter(event => event.sequence > after).slice(0, limit));

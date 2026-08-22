@@ -21,6 +21,7 @@ export const initialVigiliaSnapshot: VigiliaSnapshot = Object.freeze({
   }),
 });
 
+/** 将一条已提交事实确定性地归并到面向调试界面的运行时快照。 */
 export function reduceVigilia(snapshot: VigiliaSnapshot, event: AnyVigiliaEvent): VigiliaSnapshot {
   let state = snapshot.state;
   let activeOperations = snapshot.activeOperations;
@@ -136,6 +137,7 @@ function addOperation(
   parentOperationId?: string,
   name?: string,
 ): readonly VigiliaActiveOperation[] {
+  // 在 Journal 提交前校验开始/结束配对，避免损坏的调用轨迹进入历史。
   if (operations.some(operation => operation.operationId === operationId)) {
     throw new Error(`Vigilia operation ${operationId} has already started`);
   }

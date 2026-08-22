@@ -4,7 +4,10 @@ const MAX_DEPTH = 10;
 const MAX_ITEMS = 100;
 const MAX_STRING = 20_000;
 
-/** Project runtime values into bounded JSON for an observability journal. */
+/**
+ * 尽力将任意运行时值投影为有界 JSON。
+ * 二进制、循环引用、过深对象和超大集合会转换成明确的占位文本。
+ */
 export function captureVigiliaValue(value: unknown): VigiliaJsonValue {
   return capture(value, new WeakSet<object>(), 0, 'value');
 }

@@ -11,7 +11,7 @@ export interface VigiliaOpenTelemetryOptions {
   readonly tracer?: Tracer;
 }
 
-/** Projects Vigilia facts into OpenTelemetry without installing an SDK or exporter. */
+/** 将 Vigilia 事实投影到 OpenTelemetry，不主动安装 SDK 或 exporter。 */
 export class VigiliaOpenTelemetry {
   private readonly duration: Histogram;
   private readonly errors: Counter;
@@ -35,6 +35,7 @@ export class VigiliaOpenTelemetry {
   }
 
   attach(vigilia: Vigilia): () => void {
+    // OTel 只是下游投影；解除绑定不会改变 Vigilia 历史。
     return vigilia.subscribe(event => this.consume(event));
   }
 
@@ -159,6 +160,7 @@ export class VigiliaOpenTelemetry {
       existing.setStatus({ code: SpanStatusCode.ERROR, message: 'duplicate operation id' });
       existing.end(time);
     }
+    // 只有同一进程内已被当前适配器观察到的操作，才可能拥有父 Span。
     const parent = parentOperationId ? this.spans.get(parentOperationId) : undefined;
     const parentContext = parent ? trace.setSpan(context.active(), parent) : undefined;
     this.spans.set(

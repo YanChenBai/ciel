@@ -11,6 +11,7 @@ import type {
 } from './types.ts';
 
 export interface VigiliaOptions extends VigiliaJournalOptions {
+  /** 控制哪些可能敏感或体积较大的值可以进入 Journal。 */
   readonly capture?: {
     readonly context?: boolean;
     readonly memory?: boolean;
@@ -33,6 +34,11 @@ export interface VigiliaCapturePolicy {
   readonly toolOutput: boolean;
 }
 
+/**
+ * 单个 Ciel 运行时的可观测性门面。
+ *
+ * Vigilia 只记录运行时事实，不能反向成为感知或认知决策的依赖。
+ */
 export class Vigilia {
   readonly capturePerceptContent: boolean;
   readonly capture: VigiliaCapturePolicy;
@@ -41,6 +47,7 @@ export class Vigilia {
   private readonly journal: VigiliaJournal;
 
   constructor(options: VigiliaOptions = {}) {
+    // 内容捕获默认关闭，避免提示词、记忆和工具数据在无意间泄露。
     this.capturePerceptContent = options.capturePerceptContent ?? false;
     this.capture = Object.freeze({
       context: options.capture?.context ?? false,

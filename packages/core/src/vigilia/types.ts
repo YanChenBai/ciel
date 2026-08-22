@@ -23,6 +23,7 @@ export interface VigiliaError {
   readonly stack?: string;
 }
 
+/** 稳定的事件契约；每一项都是已经提交的运行时事实，而不是命令。 */
 export interface VigiliaEventDataMap {
   readonly 'ciel.state.changed': {
     readonly from: VigiliaRuntimeState;
@@ -173,6 +174,7 @@ export interface VigiliaSnapshot {
 }
 
 export interface VigiliaEventQuery {
+  /** 不包含自身的事件 sequence 游标。 */
   readonly after?: number;
   readonly limit?: number;
 }
