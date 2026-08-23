@@ -119,7 +119,7 @@ function createListLiveRoomsTool(listLiveRooms: (page: number, limit: number) =>
         page: {
           type: 'integer',
           minimum: 1,
-          description: '逻辑页码。page=1 重置，后续按 2、3 继续无限滚动',
+          description: '逻辑页码。page=1 重置，后续按 2、3、4 依次继续查看',
         },
       },
       additionalProperties: false,

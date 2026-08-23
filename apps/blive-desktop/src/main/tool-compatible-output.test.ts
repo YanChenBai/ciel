@@ -60,4 +60,31 @@ describe('createToolCompatibleObjectOutput', () => {
       action: 'stay',
     });
   });
+
+  it('escapes literal control characters inside JSON strings', async () => {
+    const output = createToolCompatibleObjectOutput(
+      z.object({ action: z.literal('stay'), reason: z.string() }),
+    );
+
+    await expect(
+      output.parseCompleteOutput(
+        { text: '{"action":"stay","reason":"第一行\n第二行\t\u0000"}' },
+        context,
+      ),
+    ).resolves.toEqual({ action: 'stay', reason: '第一行\n第二行\t\u0000' });
+  });
+
+  it('does not coerce values that fail the schema', async () => {
+    const output = createToolCompatibleObjectOutput(
+      z.object({ action: z.literal('stay'), score: z.number() }),
+    );
+
+    await expect(
+      output.parseCompleteOutput({ text: '{"action":"stay","score":"80"}' }, context),
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({ name: 'AI_TypeValidationError' }),
+      name: 'AI_NoObjectGeneratedError',
+      text: '{"action":"stay","score":"80"}',
+    });
+  });
 });

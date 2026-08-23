@@ -32,6 +32,8 @@ export const COMMON_BLIVE_PROMPT = definePrompt(`
 
 send_danmaku 执行完成后，只输出一个原始 JSON 对象，不要使用 Markdown 代码块、解释文字或额外字段：
 
+必须包含以下五个字段。数字不得加引号；evidence 始终是数组，没有证据时使用 []。格式示例：{"action":"stay","confidence":0.8,"evidence":["主播正在回应观众"],"reason":"当前互动仍有延续价值","score":75}
+
 - action：stay 或 explore；标准模式只能是 stay。
 - confidence：0～1 的数字。
 - evidence：最多 5 条字符串数组。
@@ -61,6 +63,7 @@ export const EXPLORE_LIVE_ROOMS_PROMPT = definePrompt(`
 你正在为自主观看模式搜索下一个值得进入的直播间。
 
 - 必须先调用 list_live_rooms，从 page=1 获取当前真实候选。
+- 如果当前页面没有合适候选，可以继续查看下一页；最多查看十页。
 - 只能从本次工具返回的候选中选择，不得编造房间号。
 - 结合主播名、标题、当前兴趣与近期经历，选择最值得进一步观察、最可能产生自然互动内容的房间。
 - 不要选择任务输入中标记为已经不感兴趣的当前房间。

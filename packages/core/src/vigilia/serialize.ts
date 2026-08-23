@@ -2,6 +2,9 @@ import { toError } from '@ciels/event';
 
 import type { VigiliaError, VigiliaJsonValue } from './types.ts';
 
+const MAX_ERROR_CAUSE_DEPTH = 5;
+const MAX_ERROR_TEXT_LENGTH = 20_000;
+
 /**
  * 将事件载荷严格复制为不可变 JSON。
  * 与 captureVigiliaValue 不同，这里会拒绝非法值，而不是将其概括为占位文本。
@@ -11,12 +14,41 @@ export function snapshotJson(value: unknown): VigiliaJsonValue {
 }
 
 export function serializeError(input: unknown): VigiliaError {
-  const error = toError(input);
+  return serializeErrorAt(toError(input), new WeakSet<Error>(), 0);
+}
+
+function serializeErrorAt(
+  error: Error,
+  ancestors: WeakSet<Error>,
+  depth: number,
+): VigiliaError {
+  const cause = readErrorCause(error);
+  const text = readOwnString(error, 'text');
+  ancestors.add(error);
+  const canCaptureCause = cause && depth < MAX_ERROR_CAUSE_DEPTH && !ancestors.has(cause);
+
   return Object.freeze({
+    ...(canCaptureCause ? { cause: serializeErrorAt(cause, ancestors, depth + 1) } : {}),
     message: error.message,
     name: error.name,
     ...(error.stack ? { stack: error.stack } : {}),
+    ...(text !== undefined ? { text: truncateErrorText(text) } : {}),
   });
+}
+
+function readErrorCause(error: Error): Error | undefined {
+  const cause = Object.getOwnPropertyDescriptor(error, 'cause')?.value;
+  return cause instanceof Error ? cause : undefined;
+}
+
+function readOwnString(error: Error, key: string): string | undefined {
+  const value = Object.getOwnPropertyDescriptor(error, key)?.value;
+  return typeof value === 'string' ? value : undefined;
+}
+
+function truncateErrorText(text: string): string {
+  if (text.length <= MAX_ERROR_TEXT_LENGTH) return text;
+  return `${text.slice(0, MAX_ERROR_TEXT_LENGTH)}\n…[${text.length - MAX_ERROR_TEXT_LENGTH} chars omitted]`;
 }
 
 function copyJson(value: unknown, ancestors: WeakSet<object>, path: string): VigiliaJsonValue {

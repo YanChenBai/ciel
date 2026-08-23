@@ -18,9 +18,11 @@ export type VigiliaOperationKind =
 import type { VigiliaObservationCategory } from './observability/types.ts';
 
 export interface VigiliaError {
+  readonly cause?: VigiliaError;
   readonly message: string;
   readonly name: string;
   readonly stack?: string;
+  readonly text?: string;
 }
 
 /** 稳定的事件契约；每一项都是已经提交的运行时事实，而不是命令。 */

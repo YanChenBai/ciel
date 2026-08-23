@@ -58,6 +58,7 @@ const VIGILIA_BRIDGE_HOST = '127.0.0.1';
 const VIGILIA_BRIDGE_PORT = 3210;
 const VIGILIA_ASSET_BASE_URL = `http://${VIGILIA_BRIDGE_HOST}:${VIGILIA_BRIDGE_PORT}/assets/`;
 const EXPLORE_RETRY_AFTER_MS = 10_000;
+const MAX_EXPLORE_PAGES = 10;
 
 export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   private readonly catalog = new AreaCatalog();
@@ -357,13 +358,20 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
         output: Output.text(),
         prepareStep: ({ steps }) => {
           const calls = steps.flatMap(step => step.toolCalls);
-          if (!calls.some(call => call.toolName === 'list_live_rooms')) {
+          const listCalls = calls.filter(call => call.toolName === 'list_live_rooms');
+          if (listCalls.length === 0) {
             return {
               activeTools: ['list_live_rooms'],
               toolChoice: { toolName: 'list_live_rooms', type: 'tool' },
             };
           }
           if (!calls.some(call => call.toolName === 'open_live_room')) {
+            if (listCalls.length < MAX_EXPLORE_PAGES) {
+              return {
+                activeTools: ['list_live_rooms', 'open_live_room'],
+                toolChoice: 'required',
+              };
+            }
             return {
               activeTools: ['open_live_room'],
               toolChoice: { toolName: 'open_live_room', type: 'tool' },

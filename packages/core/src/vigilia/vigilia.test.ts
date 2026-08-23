@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 
 import {
+  serializeError,
   snapshotJson,
   toVigiliaName,
   Vigilia,
@@ -144,6 +145,38 @@ describe('snapshotJson', () => {
     const sparse: unknown[] = [];
     sparse.length = 1;
     expect(() => snapshotJson(sparse)).toThrow('array holes');
+  });
+});
+
+describe('serializeError', () => {
+  it('captures bounded model output and nested validation causes', () => {
+    const validationError = new Error('score must be a number');
+    validationError.name = 'AI_TypeValidationError';
+    const modelError = new Error('response did not match schema', { cause: validationError });
+    modelError.name = 'AI_NoObjectGeneratedError';
+    Object.defineProperty(modelError, 'text', { value: '{"score":"80"}' });
+
+    expect(serializeError(modelError)).toMatchObject({
+      cause: {
+        message: 'score must be a number',
+        name: 'AI_TypeValidationError',
+      },
+      message: 'response did not match schema',
+      name: 'AI_NoObjectGeneratedError',
+      text: '{"score":"80"}',
+    });
+  });
+
+  it('truncates long model output and stops circular causes', () => {
+    const modelError = new Error('invalid output');
+    Object.defineProperties(modelError, {
+      cause: { value: modelError },
+      text: { value: 'x'.repeat(20_001) },
+    });
+
+    const serialized = serializeError(modelError);
+    expect(serialized).not.toHaveProperty('cause');
+    expect(serialized.text).toContain('[1 chars omitted]');
   });
 });
 
