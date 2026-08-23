@@ -1,16 +1,14 @@
+import type { Percept } from '#percepts';
 import { Sensus } from '#sensus';
-import type { Percept } from '#src/percepts/index.ts';
-import type { Signal } from '#src/signals/index.ts';
-import type { Stimulus } from '#src/stimulus/index.ts';
+import type { Stimulus } from '#stimulus';
+import type { VigiliaSource } from '#vigilia';
 
 import type { CielOptions } from './types.ts';
 
 interface CielRuntimeEvents {
   readonly data: (percept: Percept) => void;
   readonly error: (error: Error) => void;
-  readonly processSignal: (signal: Signal, process: () => Promise<void>) => Promise<void>;
   readonly speechEnd: (at: Date) => void;
-  readonly speechStart: (at: Date) => void;
 }
 
 interface CielRuntimeOptions {
@@ -21,6 +19,7 @@ interface CielRuntimeOptions {
 
 /** 管理单个 Stimulus 对应的 Sensus 和临时事件订阅。 */
 export class CielRuntime {
+  readonly observations: VigiliaSource;
   readonly stimulus: Stimulus;
   private readonly sensus: Sensus;
   private readonly unsubscribers: (() => void)[];
@@ -34,17 +33,15 @@ export class CielRuntime {
       oculus: options.sensus.oculus,
       signals: options.stimulus.signals,
     });
+    this.observations = this.sensus.observations;
     this.unsubscribers = [
       this.sensus.on('data', options.events.data),
-      this.sensus.on('speechstart', options.events.speechStart),
       this.sensus.on('speechend', at => {
-        // Nucleus 调度与 ASR 观测必须看到同一个 speechend，并保持原有调用顺序。
+        // Nucleus 只消费语音结束语义；ASR operation 已由 Sensus 自己结算。
         options.events.speechEnd(at);
       }),
       this.sensus.on('error', options.events.error),
-      this.stimulus.on('data', signal =>
-        options.events.processSignal(signal, () => this.sensus.process(signal)),
-      ),
+      this.stimulus.on('data', signal => this.sensus.process(signal)),
     ];
   }
 

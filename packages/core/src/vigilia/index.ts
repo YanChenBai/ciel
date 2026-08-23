@@ -2,6 +2,7 @@ export * from './journal.ts';
 export * from './name.ts';
 export * from './capture.ts';
 export * from './otel.ts';
+export * from './observability/index.ts';
 export * from './projection.ts';
 export * from './serialize.ts';
 export * from './types.ts';

@@ -8,10 +8,10 @@ import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
-import { Memory } from '#src/memory/index.ts';
-import { Reading, Sight } from '#src/percepts/index.ts';
-import { Photon, Script } from '#src/signals/index.ts';
-import { Stimulus } from '#src/stimulus/index.ts';
+import { Memory } from '#memory';
+import { Reading, Sight } from '#percepts';
+import { Photon, Script } from '#signals';
+import { Stimulus } from '#stimulus';
 
 import { Nucleus } from './nucleus.ts';
 

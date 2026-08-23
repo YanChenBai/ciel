@@ -7,11 +7,11 @@ import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { Memory } from '#src/memory/index.ts';
-import { Reading, Sight } from '#src/percepts/index.ts';
-import { Echo, Photon, Script } from '#src/signals/index.ts';
-import { Stimulus } from '#src/stimulus/index.ts';
-import type { VigiliaOptions } from '#src/vigilia/index.ts';
+import { Memory } from '#memory';
+import { Reading, Sight } from '#percepts';
+import { Echo, Photon, Script } from '#signals';
+import { Stimulus } from '#stimulus';
+import type { VigiliaOptions } from '#vigilia';
 
 const processorState = vi.hoisted(() => ({
   closes: 0,
@@ -24,6 +24,8 @@ const processorState = vi.hoisted(() => ({
 
 vi.mock('#sensus', async () => {
   const { EventHost } = await import('@ciels/event');
+  const { SensusOperations } = await import('#sensus/operations.ts');
+  const { VigiliaChannel } = await import('#vigilia');
   return {
     OculusComposer: class {
       compose(): never {
@@ -36,6 +38,9 @@ vi.mock('#sensus', async () => {
       speechend(at: Date): void;
       speechstart(at: Date): void;
     }> {
+      readonly observations = new VigiliaChannel();
+      private readonly operations = new SensusOperations(this.observations);
+
       constructor(options: { signals: readonly unknown[] }) {
         super();
         processorState.sensusSignals.push(options.signals);
@@ -43,16 +48,21 @@ vi.mock('#sensus', async () => {
 
       async process(signal: unknown): Promise<void> {
         const value = signal as { type: string };
-        if (value.type === 'echo') {
-          processorState.echoes.push(signal);
-          // 真实 Auris 会先输出 Hearing，再转发 ASR 的 VAD 结束时间。
-          this.emit('speechstart', (signal as Echo).startAt);
-          if (processorState.completeEcho) this.emit('speechend', (signal as Echo).endAt);
-        } else if (value.type === 'photon') {
-          const photon = signal as Photon;
-          await Promise.resolve();
-          processorState.photons.push(signal);
-          if (processorState.sightPath) {
+        await this.operations.process(signal as Echo | Photon | Script, async () => {
+          if (value.type === 'echo') {
+            processorState.echoes.push(signal);
+            // 真实 Auris 会先输出 Hearing，再转发 ASR 的 VAD 结束时间。
+            this.operations.startAsr((signal as Echo).startAt);
+            this.emit('speechstart', (signal as Echo).startAt);
+            if (processorState.completeEcho) {
+              this.operations.completeAsr((signal as Echo).endAt);
+              this.emit('speechend', (signal as Echo).endAt);
+            }
+          } else if (value.type === 'photon') {
+            const photon = signal as Photon;
+            await Promise.resolve();
+            processorState.photons.push(signal);
+            if (!processorState.sightPath) return;
             this.emit(
               'data',
               new Sight({
@@ -62,21 +72,22 @@ vi.mock('#sensus', async () => {
                 startAt: new Date(0),
               }),
             );
+          } else if (value.type === 'script') {
+            const script = signal as Script;
+            this.emit(
+              'data',
+              new Reading({
+                content: script.content,
+                timestamp: script.timestamp,
+                originSignal: script.constructor as typeof Script,
+              }),
+            );
           }
-        } else if (value.type === 'script') {
-          const script = signal as Script;
-          this.emit(
-            'data',
-            new Reading({
-              content: script.content,
-              timestamp: script.timestamp,
-              originSignal: script.constructor as typeof Script,
-            }),
-          );
-        }
+        });
       }
 
       close(): void {
+        this.operations.cancelAsr();
         processorState.closes += 1;
       }
     },

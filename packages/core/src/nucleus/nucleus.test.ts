@@ -10,11 +10,11 @@ import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { z } from 'zod';
 
-import type { ContextInput } from '#src/context/index.ts';
-import { Memory } from '#src/memory/index.ts';
-import { Reading, Sight } from '#src/percepts/index.ts';
-import { Photon, Script } from '#src/signals/index.ts';
-import { Stimulus } from '#src/stimulus/index.ts';
+import type { ContextInput } from '#context';
+import { Memory } from '#memory';
+import { Reading, Sight } from '#percepts';
+import { Photon, Script } from '#signals';
+import { Stimulus } from '#stimulus';
 
 import { Nucleus } from './nucleus.ts';
 

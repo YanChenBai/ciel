@@ -6,10 +6,10 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
-import { Hearing, Reading, Sight } from '#src/percepts/index.ts';
-import { InMemoryPerceptStore } from '#src/percepts/index.ts';
-import { Echo, Photon, Script } from '#src/signals/index.ts';
-import { Stimulus } from '#src/stimulus/index.ts';
+import { Hearing, Reading, Sight } from '#percepts';
+import { InMemoryPerceptStore } from '#percepts';
+import { Echo, Photon, Script } from '#signals';
+import { Stimulus } from '#stimulus';
 
 import { Context } from './context.ts';
 import { VisionProjector } from './vision.ts';

@@ -1,9 +1,10 @@
 import { EventHost } from '@ciels/event';
 
-import type { ContextDefinition, ContextTime } from '#src/context/index.ts';
-import type { Percept } from '#src/percepts/index.ts';
-import type { SignalConstructor } from '#src/signals/index.ts';
-import type { Stimulus, StimulusConstructor } from '#src/stimulus/index.ts';
+import type { ContextDefinition, ContextTime } from '#context';
+import type { Percept } from '#percepts';
+import type { SignalConstructor } from '#signals';
+import type { Stimulus, StimulusConstructor } from '#stimulus';
+import { VigiliaChannel } from '#vigilia';
 
 import type {
   PerceptCheckout,
@@ -41,6 +42,7 @@ function getPerceptContent(percept: Percept): StoredPerceptContent {
 
 /** 所有 Sensus 结果的追加式记录层，每个消费者拥有独立提交游标。 */
 export class InMemoryPerceptStore extends EventHost<PerceptStoreEventMap> implements PerceptStore {
+  readonly observations = new VigiliaChannel();
   private readonly sources = new Map<Stimulus, PerceptSource>();
   private readonly records: PerceptRecord[] = [];
   private readonly cursors = new Map<string, number>();
@@ -104,6 +106,15 @@ export class InMemoryPerceptStore extends EventHost<PerceptStoreEventMap> implem
     };
     this.records.push(record);
     this.lastAppendedAt = Date.now();
+    this.observations.emit('percept.appended', {
+      content: record.content,
+      endAt: record.time.endAt.getTime(),
+      perceptType: record.percept.type,
+      sequence: record.sequence,
+      signal: record.signal.name,
+      startAt: record.time.startAt.getTime(),
+      stimulus: record.stimulusDefinition.name,
+    });
     this.emit('append', record);
     return record;
   }

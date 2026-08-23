@@ -7,6 +7,8 @@ import path from 'node:path';
 import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
+import type { VigiliaObservation } from '#vigilia';
+
 import { Memory } from './memory.ts';
 import { createMemoryResourceId } from './resource-id.ts';
 
@@ -92,6 +94,20 @@ async function removeTemporaryDirectory(directory: string): Promise<void> {
 }
 
 describe('Memory', () => {
+  it('在实际存取位置产生 Memory operation', async () => {
+    const memory = await createMemory();
+    const observations: VigiliaObservation[] = [];
+    memory.observations.subscribe(observation => observations.push(observation));
+
+    await memory.updateLongTerm('需要记住的内容');
+    await memory.readLongTerm();
+
+    const names = observations.flatMap(observation => {
+      if (observation.type !== 'operation.started') return [];
+      return [observation.data.name];
+    });
+    expect(names).toEqual(['update-long-term', 'read-long-term']);
+  });
   it('整体更新全局工作记忆', async () => {
     const memory = await createMemory();
     await memory.updateLongTerm('用户喜欢简洁回答。');

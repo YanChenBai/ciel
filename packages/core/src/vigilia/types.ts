@@ -15,7 +15,7 @@ export type VigiliaOperationKind =
   | 'sensory'
   | 'think'
   | 'tool';
-export type VigiliaObservationCategory = 'context' | 'memory' | 'model' | 'sensory' | 'tool';
+import type { VigiliaObservationCategory } from './observability/types.ts';
 
 export interface VigiliaError {
   readonly message: string;

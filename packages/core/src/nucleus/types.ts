@@ -1,10 +1,8 @@
 import type { LanguageModel, Output, ToolLoopAgentSettings, ToolSet } from 'ai';
 
-import type { ContextInput, ContextMessage, ContextTrigger } from '#src/context/index.ts';
-import type { VisionComposedEvent } from '#src/context/vision.ts';
-import type { EpisodeArchiveOperation } from '#src/memory/episode-archive.ts';
-import type { CielMemoryStore, EpisodeRecordResult } from '#src/memory/index.ts';
-import type { PerceptStore } from '#src/percepts/index.ts';
+import type { ContextInput, ContextMessage, ContextTrigger } from '#context';
+import type { CielMemoryStore } from '#memory';
+import type { PerceptStore } from '#percepts';
 
 export interface NucleusContextOptions {
   readonly perceptWindow?: number;
@@ -59,43 +57,8 @@ export interface NucleusOptions<TOutput = string> extends NucleusGenerationOptio
 }
 
 export interface NucleusEventMap<TOutput = string> {
-  archiveCompleted(
-    operation: EpisodeArchiveOperation,
-    durationMs: number,
-    result?: EpisodeRecordResult,
-  ): void;
-  archiveFailed(error: Error, operation: EpisodeArchiveOperation, durationMs: number): void;
-  archiveStarted(operation: EpisodeArchiveOperation): void;
   thought(output: TOutput, input: ContextInput): void;
-  thinkCompleted(event: NucleusThinkCompleted<unknown>): void;
-  thinkFailed(event: NucleusThinkFailed): void;
-  thinkStarted(event: NucleusThinkStarted): void;
-  operationCompleted(event: NucleusObservedOperationCompleted): void;
-  operationFailed(event: NucleusObservedOperationFailed): void;
-  operationStarted(event: NucleusObservedOperationStarted): void;
-  visionComposed(event: VisionComposedEvent): void;
   error(error: Error): void;
-}
-
-export type NucleusOperationCategory = 'context' | 'memory' | 'model' | 'tool';
-
-export interface NucleusObservedOperationStarted {
-  readonly category: NucleusOperationCategory;
-  readonly detail?: unknown;
-  readonly name: string;
-  readonly operationId: string;
-  readonly parentOperationId: string;
-  readonly startedAt: number;
-}
-
-export interface NucleusObservedOperationCompleted extends NucleusObservedOperationStarted {
-  readonly durationMs: number;
-  readonly result?: unknown;
-}
-
-export interface NucleusObservedOperationFailed extends NucleusObservedOperationStarted {
-  readonly durationMs: number;
-  readonly error: Error;
 }
 
 export interface NucleusThinkStarted {

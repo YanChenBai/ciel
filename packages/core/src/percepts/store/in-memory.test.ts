@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test';
 
-import { Hearing, Reading, Sight } from '#src/percepts/index.ts';
-import { Echo, Photon, Script } from '#src/signals/index.ts';
-import { Stimulus } from '#src/stimulus/index.ts';
+import { Hearing, Reading, Sight } from '#percepts';
+import { Echo, Photon, Script } from '#signals';
+import { Stimulus } from '#stimulus';
 
 import { InMemoryPerceptStore } from './in-memory.ts';
 

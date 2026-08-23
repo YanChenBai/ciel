@@ -18,11 +18,28 @@
     "skipLibCheck": true,
     "paths": {
       "#src/*": ["./src/*"],
+      "#ciel": ["./src/ciel/index.ts"],
+      "#ciel/*": ["./src/ciel/*"],
       "#constants": ["./src/constants/index.ts"],
-      "#signals": ["./src/signals/index.ts"],
+      "#constants/*": ["./src/constants/*"],
+      "#context": ["./src/context/index.ts"],
+      "#context/*": ["./src/context/*"],
+      "#memory": ["./src/memory/index.ts"],
+      "#memory/*": ["./src/memory/*"],
+      "#nucleus": ["./src/nucleus/index.ts"],
+      "#nucleus/*": ["./src/nucleus/*"],
       "#percepts": ["./src/percepts/index.ts"],
+      "#percepts/*": ["./src/percepts/*"],
       "#sensus": ["./src/sensus/index.ts"],
-      "#utils": ["./src/utils/index.ts"]
+      "#sensus/*": ["./src/sensus/*"],
+      "#signals": ["./src/signals/index.ts"],
+      "#signals/*": ["./src/signals/*"],
+      "#stimulus": ["./src/stimulus/index.ts"],
+      "#stimulus/*": ["./src/stimulus/*"],
+      "#utils": ["./src/utils/index.ts"],
+      "#utils/*": ["./src/utils/*"],
+      "#vigilia": ["./src/vigilia/index.ts"],
+      "#vigilia/*": ["./src/vigilia/*"]
     }
   }
 }

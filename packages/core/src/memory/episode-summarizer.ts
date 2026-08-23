@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { generateText } from 'ai';
 import type { FilePart, LanguageModel, TextPart } from 'ai';
 
-import type { PerceptRecord } from '#src/percepts/index.ts';
+import type { PerceptRecord } from '#percepts';
 
 import type { EpisodeRecordResult } from './types.ts';
 

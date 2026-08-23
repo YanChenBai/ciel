@@ -1,7 +1,7 @@
+import type { PerceptRecord } from '#percepts';
 import { OculusComposer } from '#sensus';
-import type { PerceptRecord } from '#src/percepts/index.ts';
-import type { Photon, SignalConstructor } from '#src/signals/index.ts';
-import type { Stimulus } from '#src/stimulus/index.ts';
+import type { Photon, SignalConstructor } from '#signals';
+import type { Stimulus } from '#stimulus';
 
 const FRAMES_PER_IMAGE = 9;
 

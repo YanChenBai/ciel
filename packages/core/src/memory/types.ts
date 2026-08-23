@@ -1,6 +1,7 @@
 import type { EmbeddingModel, LanguageModel } from 'ai';
 
-import type { PerceptRecord } from '#src/percepts/index.ts';
+import type { PerceptRecord } from '#percepts';
+import type { VigiliaOperationContext, VigiliaSource } from '#vigilia';
 
 export type MemoryEmbeddingModel = Exclude<EmbeddingModel, string>;
 export type MemoryResourceSegment = number | string;
@@ -38,14 +39,16 @@ export interface EpisodeRecordResult {
 
 /** Nucleus 与记忆工具共享的最小记忆契约。 */
 export interface CielMemoryStore {
+  readonly observations: VigiliaSource;
   recordEpisode(
     data: readonly PerceptRecord[],
     idempotencyKey?: string,
+    context?: VigiliaOperationContext,
   ): Promise<EpisodeRecordResult | void>;
-  readLongTerm(): Promise<string>;
-  readRecent(): Promise<string>;
-  updateLongTerm(content: string): Promise<void>;
-  recall(query: string, limit?: number): Promise<MemoryRecall[]>;
+  readLongTerm(context?: VigiliaOperationContext): Promise<string>;
+  readRecent(context?: VigiliaOperationContext): Promise<string>;
+  updateLongTerm(content: string, context?: VigiliaOperationContext): Promise<void>;
+  recall(query: string, limit?: number, context?: VigiliaOperationContext): Promise<MemoryRecall[]>;
 }
 
 export interface RecallMemoryInput {

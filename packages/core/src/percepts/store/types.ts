@@ -1,8 +1,9 @@
 import type { Unsubscribe } from '@ciels/event';
 
-import type { ContextDefinition, ContextTime } from '#src/context/index.ts';
-import type { Percept } from '#src/percepts/index.ts';
-import type { Stimulus } from '#src/stimulus/index.ts';
+import type { ContextDefinition, ContextTime } from '#context';
+import type { Percept } from '#percepts';
+import type { Stimulus } from '#stimulus';
+import type { VigiliaSource } from '#vigilia';
 
 export interface StoredPerceptTextContent {
   readonly type: 'text';
@@ -46,6 +47,7 @@ export interface PerceptSnapshot {
 export interface PerceptStore {
   readonly active: boolean;
   readonly lastAppendAt: number | undefined;
+  readonly observations: VigiliaSource;
   createConsumer(prefix: string): string;
   register(stimulus: Stimulus): void;
   append(stimulus: Stimulus, percept: Percept): PerceptRecord;

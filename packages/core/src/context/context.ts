@@ -4,12 +4,15 @@ import { readFile } from 'node:fs/promises';
 
 import type { FilePart, ModelMessage, TextPart } from 'ai';
 
-import type { PerceptRecord } from '#src/percepts/index.ts';
-import type { SignalConstructor } from '#src/signals/index.ts';
-import type { Stimulus, StimulusConstructor } from '#src/stimulus/index.ts';
+import type { PerceptRecord } from '#percepts';
+import type { SignalConstructor } from '#signals';
+import type { Stimulus, StimulusConstructor } from '#stimulus';
 import { definePrompt } from '#utils';
+import { VigiliaChannel } from '#vigilia';
+import type { VigiliaOperationContext } from '#vigilia';
 
 import { estimateImageTokens } from './image.ts';
+import { ContextOperations } from './operations.ts';
 import type {
   ContextBuildInput,
   ContextDefinition,
@@ -95,6 +98,9 @@ async function resolveImagePart(path: string): Promise<FilePart> {
 
 /** 将内部固定内容、实时输入与应用自定义内容统一构建为模型上下文。 */
 export class Context {
+  readonly observations = new VigiliaChannel();
+  private readonly operations = new ContextOperations(this.observations);
+
   constructor(
     private readonly signals: readonly SignalConstructor[],
     private readonly stimuli: readonly Stimulus[],
@@ -122,11 +128,17 @@ export class Context {
     return uniqueDefinitions([...stimuli, ...signals]);
   }
 
-  async build(source: ContextBuildInput): Promise<ModelContext> {
-    return {
-      system: this.buildSystem(source),
-      messages: await this.buildMessages(source.input, source.recentMemory, source.messages),
-    };
+  build(source: ContextBuildInput, context?: VigiliaOperationContext): Promise<ModelContext> {
+    return this.operations.observe(
+      'build-model-request',
+      async () => {
+        return {
+          system: this.buildSystem(source),
+          messages: await this.buildMessages(source.input, source.recentMemory, source.messages),
+        };
+      },
+      context,
+    );
   }
 
   selectSnapshotData(records: readonly PerceptRecord[]): readonly PerceptRecord[] {
@@ -143,11 +155,19 @@ export class Context {
   async resolveInputData(
     records: readonly PerceptRecord[],
     recentTexts: readonly PerceptRecord[],
+    context?: VigiliaOperationContext,
   ): Promise<readonly PerceptRecord[]> {
-    const images = (await this.vision.project(records)).flatMap(projection =>
-      projection.record ? [projection.record] : [],
+    return this.operations.observe(
+      'resolve-percepts',
+      async () => {
+        const images = (await this.vision.project(records)).flatMap(projection => {
+          if (!projection.record) return [];
+          return [projection.record];
+        });
+        return this.sort([...recentTexts, ...images]);
+      },
+      context,
     );
-    return this.sort([...recentTexts, ...images]);
   }
 
   async estimateInputTokens(records: readonly PerceptRecord[]): Promise<number> {

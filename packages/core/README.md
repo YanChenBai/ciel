@@ -75,6 +75,7 @@ await ciel.start();
 - `Nucleus`：调度思考。
 - `Memory`：基于 Mastra、LibSQL 和 LibSQLVector 的长期记忆与语义召回。
 - `PerceptStore` / `InMemoryPerceptStore`：感知记录与独立消费游标。
+- `VigiliaChannel` / `VigiliaGroup` / `VigiliaOperations`：模块观测源、组合与通用 operation 生命周期。
 - `Echo` / `Photon` / `Script`：不可变信号基类。
 - `Hearing` / `Sight` / `Reading`：保留来源信号的感知结果。
 
@@ -84,7 +85,9 @@ Memory 要求显式提供 `resourceId`，并用它隔离全局记忆、每日经
 
 ## Vigilia
 
-每个 `Ciel` 都有独立的进程内 `vigilia` Journal，用于记录可回放、JSON 安全的运行时事实，不参与感知或决策。
+每个模块都在实际执行位置通过 `VigiliaChannel` 产生自己的运行时事实，并用 `VigiliaGroup` 组合子模块。`Ciel` 只把根观测树连接到独立的进程内 `vigilia`，不再从外部推测 Sensus、Context、Nucleus、Memory 或 PerceptStore 的内部 operation。
+
+原始 `VigiliaObservation` 可以携带尚未裁剪的运行时值；`Vigilia.observe()` 统一执行 capture、错误序列化和资源路径转换，之后才将 JSON 安全的 `VigiliaEvent` 提交给 Journal。整个旁路不参与感知或决策。
 
 ```ts
 const off = ciel.vigilia.subscribe((event, snapshot) => {
@@ -93,6 +96,16 @@ const off = ciel.vigilia.subscribe((event, snapshot) => {
 
 const history = ciel.vigilia.events({ after: 0, limit: 100 });
 off();
+```
+
+独立组合模块时可以显式连接观测源：
+
+```ts
+const observations = new VigiliaGroup();
+observations.add(memory.observations);
+observations.add(nucleus.observations);
+
+const disconnect = vigilia.connect(observations);
 ```
 
 敏感内容默认不记录，可通过 `capture` 分项启用上下文、记忆、推理、结果和工具输入输出。音频、TypedArray 与内联图片会转为有界元数据；`signals: false` 只关闭高频原始信号事件。

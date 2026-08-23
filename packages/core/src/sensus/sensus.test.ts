@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vite-plus/test';
 
 import type { Reading } from '#percepts';
 import { Echo, Photon, Script } from '#signals';
+import type { VigiliaObservation } from '#vigilia';
 
 const capabilityState = vi.hoisted(() => ({
   aurisSignals: [] as unknown[],
@@ -61,17 +62,17 @@ vi.mock('./oculus/index.ts', async () => {
 const { Sensus } = await import('./sensus.ts');
 
 class TestEcho extends Echo.WithMeta({
-  name: 'Test audio',
+  name: '直播声音',
   description: 'Audio emitted by a test stimulus',
 }) {}
 
 class TestPhoton extends Photon.WithMeta({
-  name: 'Test video',
+  name: '直播画面',
   description: 'Video emitted by a test stimulus',
 }) {}
 
 class TestScript extends Script.WithMeta({
-  name: 'Test text',
+  name: '直播文字',
   description: 'Text emitted by a test stimulus',
 }) {}
 
@@ -81,6 +82,7 @@ describe('Sensus', () => {
   it('unifies all declared sensory capabilities', async () => {
     const sensus = new Sensus({ signals });
     const readings: Reading[] = [];
+    const observations: VigiliaObservation[] = [];
     const speechEnds: Date[] = [];
     sensus.on('data', percept => {
       if (percept.type === 'reading') {
@@ -88,6 +90,7 @@ describe('Sensus', () => {
       }
     });
     sensus.on('speechend', at => speechEnds.push(at));
+    sensus.observations.subscribe(observation => observations.push(observation));
 
     const echo = new TestEcho({
       data: Buffer.alloc(2),
@@ -118,6 +121,11 @@ describe('Sensus', () => {
       originSignal: TestScript,
     });
     expect(speechEnds).toEqual([new Date(1)]);
+    const operationNames = observations.flatMap(observation => {
+      if (observation.type !== 'operation.started') return [];
+      return [observation.data.name];
+    });
+    expect(operationNames).toEqual(['audio-ingest', 'vision', 'text-ingest']);
     await sensus.close();
     expect(capabilityState.flushes).toBe(1);
   });

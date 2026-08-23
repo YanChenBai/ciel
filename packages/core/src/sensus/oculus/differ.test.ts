@@ -3,7 +3,7 @@
 import sharp from 'sharp';
 import { describe, expect, it } from 'vite-plus/test';
 
-import { Photon } from '#src/signals/index.ts';
+import { Photon } from '#signals';
 
 import { OculusDiffer } from './differ.ts';
 

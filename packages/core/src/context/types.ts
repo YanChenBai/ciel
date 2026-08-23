@@ -1,6 +1,6 @@
 import type { ModelMessage } from 'ai';
 
-import type { PerceptRecord } from '#src/percepts/index.ts';
+import type { PerceptRecord } from '#percepts';
 
 type MaybePromise<T> = T | Promise<T>;
 

@@ -2,11 +2,10 @@ import path from 'node:path';
 
 import { VigiliaJournal } from './journal.ts';
 import type { VigiliaJournalOptions } from './journal.ts';
-import { serializeError } from './serialize.ts';
+import type { VigiliaObservation, VigiliaSink, VigiliaSource } from './observability/index.ts';
+import { VigiliaObservationRecorder } from './observation-recorder.ts';
 import type {
-  VigiliaEventDataMap,
   VigiliaEventQuery,
-  VigiliaEventType,
   VigiliaJsonValue,
   VigiliaSnapshot,
   VigiliaSubscriber,
@@ -43,13 +42,14 @@ export interface VigiliaCapturePolicy {
  *
  * Vigilia 只记录运行时事实，不能反向成为感知或认知决策的依赖。
  */
-export class Vigilia {
+export class Vigilia implements VigiliaSink {
   readonly assetRoot?: string;
   readonly capturePerceptContent: boolean;
   readonly capture: VigiliaCapturePolicy;
   readonly signals: boolean;
   readonly projectThought?: (output: unknown) => VigiliaJsonValue | undefined;
   private readonly journal: VigiliaJournal;
+  private readonly observationRecorder: VigiliaObservationRecorder;
 
   constructor(options: VigiliaOptions = {}) {
     this.assetRoot = options.assetRoot ? path.resolve(options.assetRoot) : undefined;
@@ -66,6 +66,16 @@ export class Vigilia {
     this.signals = options.signals ?? true;
     this.projectThought = options.projectThought;
     this.journal = new VigiliaJournal(options);
+    this.observationRecorder = new VigiliaObservationRecorder({
+      assetPath: filePath => this.assetPath(filePath),
+      capture: this.capture,
+      capturePerceptContent: this.capturePerceptContent,
+      projectThought: this.projectThought,
+      record: (type, data) => {
+        this.journal.record(type, data);
+      },
+      signals: this.signals,
+    });
   }
 
   assetPath(filePath: string): string | undefined {
@@ -75,12 +85,12 @@ export class Vigilia {
     return relative.replaceAll('\\', '/');
   }
 
-  record<TType extends VigiliaEventType>(type: TType, data: VigiliaEventDataMap[TType]) {
-    return this.journal.record(type, data);
+  observe(observation: VigiliaObservation): void {
+    this.observationRecorder.observe(observation);
   }
 
-  error(source: string, phase: string, input: unknown): void {
-    this.record('error.observed', { error: serializeError(input), phase, source });
+  connect(source: VigiliaSource): () => void {
+    return source.subscribe(observation => this.observe(observation));
   }
 
   events(query?: VigiliaEventQuery) {

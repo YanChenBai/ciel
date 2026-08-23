@@ -8,7 +8,9 @@ import { pathToFileURL } from 'node:url';
 import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { Memory as MastraMemory } from '@mastra/memory';
 
-import type { PerceptRecord } from '#src/percepts/index.ts';
+import type { PerceptRecord } from '#percepts';
+import { VigiliaChannel } from '#vigilia';
+import type { VigiliaOperationContext } from '#vigilia';
 
 import {
   DEFAULT_MEMORY_PATH,
@@ -17,6 +19,7 @@ import {
   MEMORY_KIND_METADATA,
 } from './constants.ts';
 import { EpisodeSummarizer } from './episode-summarizer.ts';
+import { MemoryOperations } from './operations.ts';
 import { createScopedMemoryId, normalizeMemoryResourceId } from './resource-id.ts';
 import type {
   EpisodeRecordResult,
@@ -103,6 +106,7 @@ function readMessageText(message: {
  * 用 Mastra Memory 管理全局工作记忆、每日经历与语义召回。
  */
 export class Memory implements CielMemoryStore {
+  readonly observations = new VigiliaChannel();
   private readonly storage: LibSQLStore;
   private readonly vector: LibSQLVector;
   private readonly store: MastraMemory;
@@ -112,6 +116,7 @@ export class Memory implements CielMemoryStore {
   private readonly resourceId: string;
   private readonly globalThreadId: string;
   private readonly ready: Promise<void>;
+  private readonly operations = new MemoryOperations(this.observations);
   private mutation: Promise<void> = Promise.resolve();
 
   constructor(options: MemoryOptions) {
@@ -157,83 +162,108 @@ export class Memory implements CielMemoryStore {
   async recordEpisode(
     data: readonly PerceptRecord[],
     idempotencyKey?: string,
+    context?: VigiliaOperationContext,
   ): Promise<EpisodeRecordResult | void> {
-    const episode = await this.summarizer.summarize(data);
-    if (!episode) return;
-    await this.appendEpisode(episode.summary, episode.createdAt, idempotencyKey);
-    return episode;
+    return this.operations.observe(
+      'record-episode',
+      async () => {
+        const episode = await this.summarizer.summarize(data);
+        if (!episode) return;
+        await this.persistEpisode(episode.summary, episode.createdAt, idempotencyKey);
+        return episode;
+      },
+      context,
+      { recordCount: data.length },
+    );
   }
 
   /** 读取跨日期共享的全局记忆。 */
-  async readLongTerm(): Promise<string> {
-    await Promise.all([this.ready, this.mutation]);
-    const content = await this.store.getWorkingMemory({
-      threadId: this.globalThreadId,
-      resourceId: this.resourceId,
-      memoryConfig: {
-        workingMemory: WORKING_MEMORY_CONFIG,
+  readLongTerm(context?: VigiliaOperationContext): Promise<string> {
+    return this.operations.observe(
+      'read-long-term',
+      async () => {
+        await Promise.all([this.ready, this.mutation]);
+        const content = await this.store.getWorkingMemory({
+          threadId: this.globalThreadId,
+          resourceId: this.resourceId,
+          memoryConfig: {
+            workingMemory: WORKING_MEMORY_CONFIG,
+          },
+        });
+        return content ?? '';
       },
-    });
-    return content ?? '';
+      context,
+    );
   }
 
   /** 读取最近若干个日期 thread 中的经历。 */
-  async readRecent(): Promise<string> {
-    await Promise.all([this.ready, this.mutation]);
-    const result = await this.store.listThreads({
-      page: 0,
-      perPage: this.recentDays,
-      orderBy: {
-        field: 'createdAt',
-        direction: 'DESC',
+  readRecent(context?: VigiliaOperationContext): Promise<string> {
+    return this.operations.observe(
+      'read-recent',
+      async () => {
+        await Promise.all([this.ready, this.mutation]);
+        const result = await this.store.listThreads({
+          page: 0,
+          perPage: this.recentDays,
+          orderBy: {
+            field: 'createdAt',
+            direction: 'DESC',
+          },
+          filter: {
+            resourceId: this.resourceId,
+            metadata: {
+              [MEMORY_KIND_METADATA]: 'episode',
+            },
+          },
+        });
+        const threads = result.threads.toSorted(
+          (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+        );
+        const days: string[] = [];
+        for (const thread of threads) {
+          const recalled = await this.store.recall({
+            threadId: thread.id,
+            resourceId: this.resourceId,
+            page: 0,
+            perPage: false,
+            orderBy: {
+              field: 'createdAt',
+              direction: 'ASC',
+            },
+            threadConfig: {
+              lastMessages: false,
+              semanticRecall: false,
+            },
+          });
+          const entries = recalled.messages.map(message => {
+            return `## ${formatTime(message.createdAt)}\n\n${readMessageText(message)}`;
+          });
+          days.push(`# ${thread.title}\n\n${entries.join('\n\n')}`);
+        }
+        return days.join('\n\n');
       },
-      filter: {
-        resourceId: this.resourceId,
-        metadata: {
-          [MEMORY_KIND_METADATA]: 'episode',
-        },
-      },
-    });
-    const threads = result.threads.toSorted(
-      (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
+      context,
     );
-    const days: string[] = [];
-    for (const thread of threads) {
-      const recalled = await this.store.recall({
-        threadId: thread.id,
-        resourceId: this.resourceId,
-        page: 0,
-        perPage: false,
-        orderBy: {
-          field: 'createdAt',
-          direction: 'ASC',
-        },
-        threadConfig: {
-          lastMessages: false,
-          semanticRecall: false,
-        },
-      });
-      const entries = recalled.messages.map(message => {
-        return `## ${formatTime(message.createdAt)}\n\n${readMessageText(message)}`;
-      });
-      days.push(`# ${thread.title}\n\n${entries.join('\n\n')}`);
-    }
-    return days.join('\n\n');
   }
 
   /** 整体更新跨日期共享的全局记忆。 */
-  updateLongTerm(content: string): Promise<void> {
-    return this.mutate(async () => {
-      await this.ready;
-      await this.store.updateWorkingMemory({
-        threadId: this.globalThreadId,
-        resourceId: this.resourceId,
-        workingMemory: content.trim(),
-        memoryConfig: {
-          workingMemory: WORKING_MEMORY_CONFIG,
-        },
-      });
-    });
+  updateLongTerm(content: string, context?: VigiliaOperationContext): Promise<void> {
+    return this.operations.observe(
+      'update-long-term',
+      () =>
+        this.mutate(async () => {
+          await this.ready;
+          await this.store.updateWorkingMemory({
+            threadId: this.globalThreadId,
+            resourceId: this.resourceId,
+            workingMemory: content.trim(),
+            memoryConfig: {
+              workingMemory: WORKING_MEMORY_CONFIG,
+            },
+          });
+        }),
+      context,
+    );
   }
 
   /** 将一次经历总结写入对应的日期 thread 并建立向量。 */
@@ -241,7 +271,16 @@ export class Memory implements CielMemoryStore {
     content: string,
     createdAt: Date = new Date(),
     idempotencyKey?: string,
+    context?: VigiliaOperationContext,
   ): Promise<void> {
+    return this.operations.observe(
+      'append-episode',
+      () => this.persistEpisode(content, createdAt, idempotencyKey),
+      context,
+    );
+  }
+
+  private persistEpisode(content: string, createdAt: Date, idempotencyKey?: string): Promise<void> {
     return this.mutate(async () => {
       await this.ready;
       const date = formatDate(createdAt);
@@ -275,36 +314,45 @@ export class Memory implements CielMemoryStore {
   }
 
   /** 按语义搜索跨日期的历史经历。 */
-  async recall(query: string, limit: number = this.recallLimit): Promise<MemoryRecall[]> {
-    this.validatePositiveInteger('limit', limit);
-    const search = query.trim();
-    if (!search) {
-      return [];
-    }
-    await Promise.all([this.ready, this.mutation]);
-    const result = await this.store.recall({
-      threadId: this.globalThreadId,
-      resourceId: this.resourceId,
-      vectorSearchString: search,
-      page: 0,
-      perPage: limit,
-      threadConfig: {
-        lastMessages: false,
-        semanticRecall: {
-          topK: limit,
-          messageRange: 0,
-          scope: 'resource',
-          filter: {
-            [MEMORY_KIND_METADATA]: 'episode',
+  recall(
+    query: string,
+    limit: number = this.recallLimit,
+    context?: VigiliaOperationContext,
+  ): Promise<MemoryRecall[]> {
+    return this.operations.observe(
+      'recall',
+      async () => {
+        this.validatePositiveInteger('limit', limit);
+        const search = query.trim();
+        if (!search) return [];
+        await Promise.all([this.ready, this.mutation]);
+        const result = await this.store.recall({
+          threadId: this.globalThreadId,
+          resourceId: this.resourceId,
+          vectorSearchString: search,
+          page: 0,
+          perPage: limit,
+          threadConfig: {
+            lastMessages: false,
+            semanticRecall: {
+              topK: limit,
+              messageRange: 0,
+              scope: 'resource',
+              filter: {
+                [MEMORY_KIND_METADATA]: 'episode',
+              },
+            },
           },
-        },
+        });
+        return result.messages.map(message => ({
+          id: message.id,
+          content: readMessageText(message),
+          createdAt: message.createdAt,
+        }));
       },
-    });
-    return result.messages.map(message => ({
-      id: message.id,
-      content: readMessageText(message),
-      createdAt: message.createdAt,
-    }));
+      context,
+      { limit, query },
+    );
   }
 
   /** 关闭 LibSQL 存储与向量连接。 */

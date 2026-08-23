@@ -2,25 +2,22 @@ import { randomUUID } from 'node:crypto';
 
 import { EventHost, toError } from '@ciels/event';
 
-import { Context } from '#src/context/index.ts';
-import type {
-  ContextInput,
-  ContextMessage,
-  ContextSnapshot,
-  ContextTrigger,
-} from '#src/context/index.ts';
-import { VisionProjector } from '#src/context/vision.ts';
-import { EpisodeArchive } from '#src/memory/episode-archive.ts';
-import { InMemoryPerceptStore } from '#src/percepts/index.ts';
-import type { Percept } from '#src/percepts/index.ts';
-import type { PerceptCheckout, PerceptSnapshot, PerceptStore } from '#src/percepts/index.ts';
-import type { SignalConstructor } from '#src/signals/index.ts';
-import type { Stimulus } from '#src/stimulus/index.ts';
-import { toVigiliaName } from '#src/vigilia/name.ts';
+import { Context } from '#context';
+import type { ContextInput, ContextMessage, ContextSnapshot, ContextTrigger } from '#context';
+import { VisionProjector } from '#context/vision.ts';
+import { EpisodeArchive } from '#memory/episode-archive.ts';
+import { InMemoryPerceptStore } from '#percepts';
+import type { Percept } from '#percepts';
+import type { PerceptCheckout, PerceptSnapshot, PerceptStore } from '#percepts';
+import type { SignalConstructor } from '#signals';
+import type { Stimulus } from '#stimulus';
+import { toVigiliaName } from '#vigilia';
+import type { VigiliaOperationContext } from '#vigilia';
+import { VigiliaChannel, VigiliaGroup } from '#vigilia';
 
 import { createNucleusAgent } from './agent.ts';
 import type { NucleusAgent } from './agent.ts';
-import { NucleusOperationObserver } from './operation-observer.ts';
+import { NucleusOperations } from './operations.ts';
 import { normalizeNucleusOptions } from './options.ts';
 import type { NormalizedNucleusOptions } from './options.ts';
 import type {
@@ -38,7 +35,7 @@ interface ThinkExecution<TOutput> {
   readonly onFailed?: () => void;
   readonly onSucceeded?: (output: TOutput, input: ContextInput) => void;
   readonly operation: NucleusThinkStarted;
-  readonly resolveContext: () => Promise<ContextSnapshot>;
+  readonly resolveContext: (context: VigiliaOperationContext) => Promise<ContextSnapshot>;
   readonly system?: readonly string[];
 }
 
@@ -46,6 +43,7 @@ interface ThinkExecution<TOutput> {
  * Ciel 的认知调度器，负责构建上下文并触发模型思考。
  */
 export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput>> {
+  readonly observations = new VigiliaGroup();
   readonly identity: string;
   readonly soul: string;
   readonly agent: string;
@@ -56,7 +54,8 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private readonly perceptStore: PerceptStore;
   private readonly modelAgent: NucleusAgent<TOutput>;
   private readonly episodeArchive: EpisodeArchive;
-  private readonly operations: NucleusOperationObserver;
+  private readonly observationChannel = new VigiliaChannel();
+  private readonly operations: NucleusOperations;
   private readonly nucleusConsumer: string;
   private state: NucleusState = 'idle';
   private startedAt = 0;
@@ -72,17 +71,16 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.soul = options.soul ?? '';
     this.agent = options.agent ?? '';
     this.options = normalizeNucleusOptions(options);
+    this.observations.add(this.observationChannel);
+    this.observations.add(options.memory.observations);
     const vision = new VisionProjector(this.options.context.maxImages, event => {
-      this.emit('visionComposed', event);
+      this.observationChannel.emit('vision.composed', event);
     });
     this.context = new Context(this.signals, this.stimuli, vision);
+    this.observations.add(this.context.observations);
     this.perceptStore = options.perceptStore ?? new InMemoryPerceptStore();
     this.nucleusConsumer = this.perceptStore.createConsumer('nucleus');
-    this.operations = new NucleusOperationObserver({
-      completed: event => this.emit('operationCompleted', event),
-      failed: event => this.emit('operationFailed', event),
-      started: event => this.emit('operationStarted', event),
-    });
+    this.operations = new NucleusOperations(this.observationChannel);
     this.episodeArchive = new EpisodeArchive({
       idleTimeout: this.options.memorySummary.idleTimeout,
       isBlocked: () => this.inFlight !== undefined,
@@ -92,16 +90,14 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       retainDuration: this.options.context.perceptWindow,
       vision,
     });
-    this.episodeArchive.on('error', (error, operation, durationMs) => {
-      this.emit('archiveFailed', error, operation, durationMs);
+    this.observations.add(this.episodeArchive.observations);
+    this.episodeArchive.on('error', error => {
       this.emit('error', error);
     });
-    this.episodeArchive.on('settled', (operation, durationMs, succeeded, result) => {
-      if (succeeded) this.emit('archiveCompleted', operation, durationMs, result);
+    this.episodeArchive.on('settled', () => {
       this.schedule();
     });
-    this.episodeArchive.on('start', operation => {
-      this.emit('archiveStarted', operation);
+    this.episodeArchive.on('start', () => {
       this.clearTimer();
     });
     this.modelAgent = createNucleusAgent(this.options, this.options.memory);
@@ -239,7 +235,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       agent: this.modelAgent,
       messages: this.options.messages,
       operation,
-      resolveContext: () => this.resolveCheckout(checkout),
+      resolveContext: context => this.resolveCheckout(checkout, context),
       system: this.options.system,
       onFailed: () => {
         if (trigger === 'speech-end') this.speechEndPending = true;
@@ -285,7 +281,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       agent,
       messages: [normalizeThinkPrompt(options.prompt)],
       operation,
-      resolveContext: () => this.resolveSnapshot(snapshot),
+      resolveContext: context => this.resolveSnapshot(snapshot, context),
       system: options.system,
     });
   }
@@ -297,37 +293,26 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     execution: ThinkExecution<TThinkOutput>,
   ): Promise<TThinkOutput> {
     const { operation } = execution;
-    this.emit('thinkStarted', operation);
+    this.observationChannel.emit('nucleus.think.started', operation);
 
     try {
       const [longTermMemory, recentMemory] = await Promise.all([
-        this.operations.observe(operation.operationId, 'memory', 'read-long-term', () =>
-          this.options.memory.readLongTerm(),
-        ),
-        this.operations.observe(operation.operationId, 'memory', 'read-recent', () =>
-          this.options.memory.readRecent(),
-        ),
+        this.options.memory.readLongTerm({ parentOperationId: operation.operationId }),
+        this.options.memory.readRecent({ parentOperationId: operation.operationId }),
       ]);
-      const context = await this.operations.observe(
-        operation.operationId,
-        'context',
-        'resolve-percepts',
-        execution.resolveContext,
-      );
+      const operationContext = { parentOperationId: operation.operationId };
+      const context = await execution.resolveContext(operationContext);
       const input: ContextInput = { ...context, trigger: operation.trigger };
-      const modelContext = await this.operations.observe(
-        operation.operationId,
-        'context',
-        'build-model-request',
-        () =>
-          this.context.build({
-            input,
-            internalSystem: [this.soul, this.identity, this.agent],
-            longTermMemory,
-            recentMemory,
-            system: execution.system,
-            messages: execution.messages,
-          }),
+      const modelContext = await this.context.build(
+        {
+          input,
+          internalSystem: [this.soul, this.identity, this.agent],
+          longTermMemory,
+          recentMemory,
+          system: execution.system,
+          messages: execution.messages,
+        },
+        operationContext,
       );
       const estimatedImageTokens = await this.context.estimateInputTokens(context.data);
       const result = await this.operations.generate(
@@ -340,7 +325,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       const output = result.output as TThinkOutput;
       if (execution.onSucceeded) execution.onSucceeded(output, input);
 
-      this.emit('thinkCompleted', {
+      this.observationChannel.emit('nucleus.think.completed', {
         ...operation,
         durationMs: Date.now() - operation.startedAt,
         inputTokens: result.usage.inputTokens,
@@ -352,7 +337,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     } catch (error) {
       if (execution.onFailed) execution.onFailed();
       const normalized = toError(error);
-      this.emit('thinkFailed', {
+      this.observationChannel.emit('nucleus.think.failed', {
         ...operation,
         durationMs: Date.now() - operation.startedAt,
         error: normalized,
@@ -411,26 +396,33 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.timer = undefined;
   }
 
-  private async resolveCheckout(checkout: PerceptCheckout): Promise<ContextSnapshot> {
+  private async resolveCheckout(
+    checkout: PerceptCheckout,
+    context: VigiliaOperationContext,
+  ): Promise<ContextSnapshot> {
     const recent = this.perceptStore
       .snapshot(checkout.createdAt, this.options.context.perceptWindow)
       .records.filter(
         record => record.sequence <= checkout.throughSequence && record.content.type === 'text',
       );
-    return this.resolvePercepts(checkout.createdAt, checkout.records, recent);
+    return this.resolvePercepts(checkout.createdAt, checkout.records, recent, context);
   }
 
-  private async resolveSnapshot(snapshot: PerceptSnapshot): Promise<ContextSnapshot> {
+  private async resolveSnapshot(
+    snapshot: PerceptSnapshot,
+    context: VigiliaOperationContext,
+  ): Promise<ContextSnapshot> {
     const recentTexts = snapshot.records.filter(record => record.content.type === 'text');
-    return this.resolvePercepts(snapshot.createdAt, snapshot.records, recentTexts);
+    return this.resolvePercepts(snapshot.createdAt, snapshot.records, recentTexts, context);
   }
 
   private async resolvePercepts(
     createdAt: Date,
     records: PerceptSnapshot['records'],
     recentTexts: PerceptSnapshot['records'],
+    context: VigiliaOperationContext,
   ): Promise<ContextSnapshot> {
-    const data = await this.context.resolveInputData(records, recentTexts);
+    const data = await this.context.resolveInputData(records, recentTexts, context);
     return {
       createdAt,
       data,

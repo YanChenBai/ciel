@@ -1,13 +1,13 @@
 import { EventHost, toError } from '@ciels/event';
 
-import type { ContextSnapshot } from '#src/context/index.ts';
-import { Nucleus } from '#src/nucleus/index.ts';
-import type { NucleusThinkOptions } from '#src/nucleus/index.ts';
-import { InMemoryPerceptStore } from '#src/percepts/index.ts';
-import type { Stimulus } from '#src/stimulus/index.ts';
-import { Vigilia } from '#src/vigilia/index.ts';
+import type { ContextSnapshot } from '#context';
+import { Nucleus } from '#nucleus';
+import type { NucleusThinkOptions } from '#nucleus';
+import { InMemoryPerceptStore } from '#percepts';
+import type { Stimulus } from '#stimulus';
+import { Vigilia } from '#vigilia';
+import { VigiliaChannel, VigiliaGroup } from '#vigilia';
 
-import { CielObservability } from './observability.ts';
 import { Identity, Soul } from './prompts.ts';
 import { CielRuntime } from './runtime.ts';
 import type { CielEventMap, CielOptions, CielState } from './types.ts';
@@ -17,13 +17,15 @@ export * from './types.ts';
 
 /** Ciel 顶层运行时，只负责编排 Stimulus、Nucleus 与生命周期。 */
 export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
+  readonly observations = new VigiliaGroup();
   readonly vigilia: Vigilia;
-  private readonly observability: CielObservability;
+  private readonly observationChannel = new VigiliaChannel();
   private readonly options: CielOptions<TOutput>;
   private readonly stimulus: Stimulus;
   private readonly nucleus: Nucleus<TOutput>;
   private readonly perceptStore: InMemoryPerceptStore;
   private runtime?: CielRuntime;
+  private disconnectRuntimeObservations?: () => void;
   private nucleusStarted = false;
   private state: CielState = 'idle';
 
@@ -42,9 +44,10 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
       ...options.nucleus,
       perceptStore: this.perceptStore,
     });
-    this.observability = new CielObservability(this.vigilia);
-    this.observability.observePerceptStore(this.perceptStore);
-    this.observability.observeNucleus(this.nucleus);
+    this.observations.add(this.observationChannel);
+    this.observations.add(this.perceptStore.observations);
+    this.observations.add(this.nucleus.observations);
+    this.vigilia.connect(this.observations);
     this.nucleus.on('thought', (output, input) => this.emit('thought', output, input));
     this.nucleus.on('error', error => this.emit('error', error));
     this.nucleus.register(stimulus);
@@ -65,6 +68,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
 
     try {
       this.runtime = this.createRuntime();
+      this.disconnectRuntimeObservations = this.observations.add(this.runtime.observations);
       this.nucleus.start();
       this.nucleusStarted = true;
       await this.runtime.startSource();
@@ -94,15 +98,11 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
           this.emit('data', percept);
         },
         error: error => {
-          this.observability.recordSensusError(error);
           this.emit('error', error);
         },
-        processSignal: (signal, process) => this.observability.processSignal(signal, process),
-        speechEnd: at => {
+        speechEnd: () => {
           this.nucleus.speechEnd();
-          this.observability.completeAsr(at);
         },
-        speechStart: at => this.observability.startAsr(at),
       },
     });
   }
@@ -110,7 +110,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
   private setState(state: CielState): void {
     const from = this.state;
     this.state = state;
-    this.observability.stateChanged(from, state);
+    this.observationChannel.emit('ciel.state.changed', { from, to: state });
   }
 
   private async teardown(): Promise<Error[]> {
@@ -135,8 +135,6 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
       this.nucleusStarted = false;
     }
 
-    // Stimulus 已经无法再产生 speechend，此时才能把残留 ASR 安全地结算为失败。
-    this.observability.cancelAsr();
     if (runtime) {
       try {
         await runtime.close();
@@ -144,10 +142,16 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
         errors.push(toError(error));
       }
     }
+    this.disconnectRuntimeObservations?.();
+    this.disconnectRuntimeObservations = undefined;
     this.runtime = undefined;
 
     for (const error of errors) {
-      this.vigilia.error('ciel', 'teardown', error);
+      this.observationChannel.emit('error.observed', {
+        error,
+        phase: 'teardown',
+        source: 'ciel',
+      });
       this.emit('error', error);
     }
     return errors;

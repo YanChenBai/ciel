@@ -1,9 +1,9 @@
 import { Output, ToolLoopAgent } from 'ai';
 import type { ToolSet } from 'ai';
 
-import type { ContextInput, ModelContext } from '#src/context/index.ts';
-import { createMemoryTools } from '#src/memory/tool.ts';
-import type { CielMemoryStore } from '#src/memory/types.ts';
+import type { ContextInput, ModelContext } from '#context';
+import { createMemoryTools } from '#memory/tool.ts';
+import type { CielMemoryStore } from '#memory/types.ts';
 
 import type { NucleusGenerationOptions } from './types.ts';
 

@@ -7,8 +7,8 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
-import type { Sight } from '#src/percepts/index.ts';
-import { Photon } from '#src/signals/index.ts';
+import type { Sight } from '#percepts';
+import { Photon } from '#signals';
 
 import { Oculus } from './oculus.ts';
 

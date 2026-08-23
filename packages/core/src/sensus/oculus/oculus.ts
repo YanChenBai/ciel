@@ -6,9 +6,9 @@ import path from 'node:path';
 
 import sharp from 'sharp';
 
+import { DEFAULT_OCULUS_OUTPUT_DIR } from '#constants';
 import { Sight } from '#percepts';
 import type { Photon } from '#signals';
-import { DEFAULT_OCULUS_OUTPUT_DIR } from '#src/constants/index.ts';
 
 import { SensusBase } from '../base.ts';
 import { OculusDiffer } from './differ.ts';

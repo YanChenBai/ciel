@@ -89,19 +89,25 @@ describe('VigiliaJournal', () => {
 
   it('projects totals, durations, tokens, and active operations deterministically', () => {
     const vigilia = new Vigilia();
-    vigilia.record('nucleus.think.started', {
-      fromSequence: 1,
-      operationId: 'think:1',
-      throughSequence: 2,
-      trigger: 'speech-end',
+    vigilia.observe({
+      type: 'nucleus.think.started',
+      data: {
+        fromSequence: 1,
+        operationId: 'think:1',
+        throughSequence: 2,
+        trigger: 'speech-end',
+      },
     });
     expect(vigilia.snapshot().activeOperations).toHaveLength(1);
-    vigilia.record('nucleus.think.completed', {
-      durationMs: 25,
-      inputTokens: 10,
-      operationId: 'think:1',
-      outputTokens: 3,
-      trigger: 'speech-end',
+    vigilia.observe({
+      type: 'nucleus.think.completed',
+      data: {
+        durationMs: 25,
+        inputTokens: 10,
+        operationId: 'think:1',
+        outputTokens: 3,
+        trigger: 'speech-end',
+      },
     });
 
     expect(vigilia.snapshot()).toMatchObject({
@@ -111,10 +117,13 @@ describe('VigiliaJournal', () => {
       totals: { inputTokens: 10, outputTokens: 3, thoughts: 1 },
     });
     expect(() =>
-      vigilia.record('nucleus.think.completed', {
-        durationMs: 25,
-        operationId: 'think:1',
-        trigger: 'speech-end',
+      vigilia.observe({
+        type: 'nucleus.think.completed',
+        data: {
+          durationMs: 25,
+          operationId: 'think:1',
+          trigger: 'speech-end',
+        },
       }),
     ).toThrow('is not active');
     expect(vigilia.snapshot().throughSequence).toBe(2);
@@ -144,11 +153,17 @@ describe('VigiliaOpenTelemetry', () => {
     const detach = new VigiliaOpenTelemetry().attach(vigilia);
 
     expect(() => {
-      vigilia.record('signal.processing.started', { operationId: 'signal:1', signal: 'test' });
-      vigilia.record('signal.processing.completed', {
-        durationMs: 1,
-        operationId: 'signal:1',
-        signal: 'test',
+      vigilia.observe({
+        type: 'signal.processing.started',
+        data: { operationId: 'signal:1', signal: 'test' },
+      });
+      vigilia.observe({
+        type: 'signal.processing.completed',
+        data: {
+          durationMs: 1,
+          operationId: 'signal:1',
+          signal: 'test',
+        },
       });
     }).not.toThrow();
     detach();

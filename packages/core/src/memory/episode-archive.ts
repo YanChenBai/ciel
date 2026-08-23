@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { EventHost, toError } from '@ciels/event';
 import type { Unsubscribe } from '@ciels/event';
 
-import type { VisionProjector } from '#src/context/vision.ts';
-import type { PerceptRecord, PerceptStore } from '#src/percepts/index.ts';
+import type { VisionProjector } from '#context/vision.ts';
+import type { PerceptRecord, PerceptStore } from '#percepts';
+import { VigiliaChannel } from '#vigilia';
 
 import type { CielMemoryStore, EpisodeRecordResult } from './types.ts';
 
@@ -41,6 +42,7 @@ export interface EpisodeArchiveOperation {
 
 /** 独立调度未归档感知记录，并交由 Memory 生成和持久化 Episode。 */
 export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
+  readonly observations = new VigiliaChannel();
   private readonly consumerId: string;
   private inFlight?: Promise<EpisodeRecordResult | void>;
   private retryAt?: number;
@@ -85,13 +87,17 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     this.clearTimer();
     const checkout = this.options.perceptStore.checkout(this.consumerId);
     const operation = this.createOperation(checkout);
+    this.recordStarted(operation);
     this.emit('start', operation);
-    const pending = this.archive(checkout);
+    const pending = this.archive(checkout, operation.operationId);
     this.inFlight = pending;
     void pending.then(
       result => this.finish(pending, operation, true, result),
       error => {
-        this.emit('error', toError(error), operation, Date.now() - operation.startedAt);
+        const normalized = toError(error);
+        const durationMs = Date.now() - operation.startedAt;
+        this.recordFailed(operation, normalized, durationMs);
+        this.emit('error', normalized, operation, durationMs);
         this.finish(pending, operation, false);
       },
     );
@@ -122,6 +128,7 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
 
   private async archive(
     checkout = this.options.perceptStore.checkout(this.consumerId),
+    parentOperationId?: string,
   ): Promise<EpisodeRecordResult | void> {
     if (checkout.records.length === 0) {
       this.options.perceptStore.commit(checkout);
@@ -131,6 +138,7 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     const result = await this.options.memory.recordEpisode(
       data,
       `percept-store:${checkout.consumerId}:${checkout.fromSequence}-${checkout.throughSequence}`,
+      { parentOperationId },
     );
     this.options.perceptStore.commit(checkout);
     this.retryAt = undefined;
@@ -141,19 +149,17 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
   private async archiveObserved(): Promise<void> {
     const checkout = this.options.perceptStore.checkout(this.consumerId);
     const operation = this.createOperation(checkout);
+    this.recordStarted(operation);
     this.emit('start', operation);
     try {
-      const result = await this.archive(checkout);
-      this.emit(
-        'settled',
-        operation,
-        Date.now() - operation.startedAt,
-        true,
-        result === undefined ? undefined : result,
-      );
+      const result = await this.archive(checkout, operation.operationId);
+      const durationMs = Date.now() - operation.startedAt;
+      this.emit('settled', operation, durationMs, true, result === undefined ? undefined : result);
+      this.recordCompleted(operation, durationMs, result);
     } catch (error) {
       const normalized = toError(error);
       const durationMs = Date.now() - operation.startedAt;
+      this.recordFailed(operation, normalized, durationMs);
       this.emit('error', normalized, operation, durationMs);
       this.emit('settled', operation, durationMs, false);
       throw normalized;
@@ -208,13 +214,9 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     this.inFlight = undefined;
     if (!succeeded) this.retryAt = Date.now() + RETRY_DELAY;
     this.schedule();
-    this.emit(
-      'settled',
-      operation,
-      Date.now() - operation.startedAt,
-      succeeded,
-      result ?? undefined,
-    );
+    const durationMs = Date.now() - operation.startedAt;
+    this.emit('settled', operation, durationMs, succeeded, result ?? undefined);
+    if (succeeded) this.recordCompleted(operation, durationMs, result);
   }
 
   private clearTimer(): void {
@@ -222,4 +224,44 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     clearTimeout(this.timer);
     this.timer = undefined;
   }
+
+  private recordStarted(operation: EpisodeArchiveOperation): void {
+    this.observations.emit('memory.archive.started', {
+      fromSequence: operation.fromSequence,
+      operationId: operation.operationId,
+      recordCount: operation.recordCount,
+      throughSequence: operation.throughSequence,
+    });
+  }
+
+  private recordCompleted(
+    operation: EpisodeArchiveOperation,
+    durationMs: number,
+    result?: EpisodeRecordResult | void,
+  ): void {
+    this.observations.emit('memory.archive.completed', {
+      durationMs,
+      fromSequence: operation.fromSequence,
+      operationId: operation.operationId,
+      recordCount: operation.recordCount,
+      throughSequence: operation.throughSequence,
+      ...optionalProperty('summary', result),
+    });
+  }
+
+  private recordFailed(operation: EpisodeArchiveOperation, error: Error, durationMs: number): void {
+    this.observations.emit('memory.archive.failed', {
+      durationMs,
+      error,
+      operationId: operation.operationId,
+    });
+  }
+}
+
+function optionalProperty<Key extends string, Value>(
+  key: Key,
+  value: Value | undefined,
+): Partial<Record<Key, Value>> {
+  if (value === undefined) return {};
+  return { [key]: value } as Record<Key, Value>;
 }

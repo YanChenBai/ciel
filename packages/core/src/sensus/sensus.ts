@@ -3,11 +3,13 @@ import { EventHost, toError } from '@ciels/event';
 import type { Percept } from '#percepts';
 import { Echo, Photon, Script } from '#signals';
 import type { Signal, SignalConstructor } from '#signals';
+import { VigiliaChannel } from '#vigilia';
 
 import { Auris } from './auris.ts';
 import type { SensusBase } from './base.ts';
 import { Lectio } from './lectio.ts';
 import { Oculus } from './oculus/index.ts';
+import { SensusOperations } from './operations.ts';
 import type { SensusOptions, SensusOutputEventMap } from './types.ts';
 
 type SignalHandler = (signal: Signal) => void | Promise<void>;
@@ -17,8 +19,10 @@ type SensusCleanup = () => void | Promise<void>;
  * 为一组具体信号统一装配感官能力、输出事件与生命周期
  */
 export class Sensus extends EventHost<SensusOutputEventMap> {
+  readonly observations = new VigiliaChannel();
   private readonly handlers = new Map<SignalConstructor, SignalHandler>();
   private readonly cleanups: SensusCleanup[] = [];
+  private readonly operations = new SensusOperations(this.observations);
 
   constructor(private readonly options: SensusOptions) {
     super();
@@ -46,16 +50,21 @@ export class Sensus extends EventHost<SensusOutputEventMap> {
   async process(signal: Signal): Promise<void> {
     const Signal = signal.constructor as SignalConstructor;
     const handler = this.handlers.get(Signal);
-    if (!handler) {
-      const error = new Error(`${Signal.name} is not declared in Sensus signals`);
-      this.emit('error', error);
-      return;
-    }
 
     try {
-      await handler(signal);
+      await this.operations.process(signal, async () => {
+        if (!handler) throw new Error(`${Signal.name} is not declared in Sensus signals`);
+        await handler(signal);
+      });
     } catch (error) {
-      this.emit('error', toError(error));
+      const normalized = toError(error);
+      this.operations.failAsr(normalized);
+      this.observations.emit('error.observed', {
+        error: normalized,
+        phase: 'process',
+        source: 'sensus',
+      });
+      this.emit('error', normalized);
     }
   }
 
@@ -69,6 +78,8 @@ export class Sensus extends EventHost<SensusOutputEventMap> {
         errors.push(toError(error));
       }
     }
+
+    this.operations.cancelAsr();
 
     this.cleanups.length = 0;
     this.handlers.clear();
@@ -103,7 +114,23 @@ export class Sensus extends EventHost<SensusOutputEventMap> {
     capability: SensusBase<TSignal, TPercept>,
   ): void {
     capability.on('data', percept => this.emit('data', percept));
-    this.inheritEvents(capability, 'error', 'speechstart', 'speechend');
+    capability.on('error', error => {
+      this.operations.failAsr(error);
+      this.observations.emit('error.observed', {
+        error,
+        phase: 'capability',
+        source: 'sensus',
+      });
+      this.emit('error', error);
+    });
+    capability.on('speechstart', at => {
+      this.operations.startAsr(at);
+      this.emit('speechstart', at);
+    });
+    capability.on('speechend', at => {
+      this.operations.completeAsr(at);
+      this.emit('speechend', at);
+    });
 
     this.handlers.set(signal, value => capability.process(value as TSignal));
     this.cleanups.push(() => capability.close());

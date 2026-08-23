@@ -1,10 +1,10 @@
 import type { ASROptions } from '@ciels/asr';
 
+import type { ContextInput } from '#context';
+import type { NucleusOptions } from '#nucleus';
+import type { Percept } from '#percepts';
 import type { SensusLectioOptions, SensusOculusOptions } from '#sensus';
-import type { ContextInput } from '#src/context/index.ts';
-import type { NucleusOptions } from '#src/nucleus/index.ts';
-import type { Percept } from '#src/percepts/index.ts';
-import type { Vigilia, VigiliaOptions } from '#src/vigilia/index.ts';
+import type { Vigilia, VigiliaOptions } from '#vigilia';
 
 export type CielNucleusOptions<TOutput = string> = Omit<NucleusOptions<TOutput>, 'perceptStore'>;
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { ZodError } from 'zod';
 
-import type { Memory } from '#src/memory/index.ts';
+import type { Memory } from '#memory';
 
 import {
   DEFAULT_CONTEXT_MAX_IMAGES,
