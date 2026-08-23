@@ -10,13 +10,14 @@ import { Memory as MastraMemory } from '@mastra/memory';
 
 import type { PerceptRecord } from '#percepts';
 import { VigiliaChannel } from '#vigilia';
-import type { VigiliaOperationContext } from '#vigilia';
 
 import {
   DEFAULT_MEMORY_PATH,
   DEFAULT_MEMORY_RECALL_LIMIT,
   DEFAULT_RECENT_MEMORY_DAYS,
   MEMORY_KIND_METADATA,
+  MEMORY_SCOPE_ID_METADATA,
+  MEMORY_SCOPE_LABEL_METADATA,
 } from './constants.ts';
 import { EpisodeSummarizer } from './episode-summarizer.ts';
 import { MemoryOperations } from './operations.ts';
@@ -26,7 +27,10 @@ import type {
   CielMemoryStore,
   MemoryEmbeddingModel,
   MemoryOptions,
+  MemoryOperationOptions,
   MemoryRecall,
+  MemoryRecallOptions,
+  MemoryScope,
 } from './types.ts';
 
 type MastraMemoryOptions = NonNullable<ConstructorParameters<typeof MastraMemory>[0]>;
@@ -36,6 +40,14 @@ const WORKING_MEMORY_CONFIG = {
   enabled: true,
   scope: 'resource',
 } as const;
+
+const SCOPED_WORKING_MEMORY_CONFIG = {
+  enabled: true,
+  scope: 'thread',
+} as const;
+
+const MEMORY_SCOPE_PREFIX = '[CielMemoryScope] ';
+const GLOBAL_EPISODE_SCOPE = { id: 'global', label: '全局经历' } as const;
 
 function adaptEmbedder(embedder: MemoryEmbeddingModel): MastraEmbedder {
   if (embedder.specificationVersion !== 'v4') {
@@ -102,6 +114,55 @@ function readMessageText(message: {
   return texts.join('\n').trim();
 }
 
+function readMessageScope(message: {
+  readonly content: {
+    readonly metadata?: unknown;
+    readonly parts: readonly unknown[];
+  };
+}): MemoryScope | undefined {
+  const metadata = message.content.metadata;
+  if (metadata && typeof metadata === 'object') {
+    const id = Reflect.get(metadata, MEMORY_SCOPE_ID_METADATA);
+    const label = Reflect.get(metadata, MEMORY_SCOPE_LABEL_METADATA);
+    if (typeof id === 'string' && typeof label === 'string') return { id, label };
+  }
+  return parseScopedContent(readMessageText(message)).scope;
+}
+
+function formatScopedContent(content: string, scope?: MemoryScope): string {
+  if (!scope) return content;
+  return `[记忆来源：${scope.label}；scope=${scope.id}]\n${content}`;
+}
+
+function encodeScopedContent(content: string, scope?: MemoryScope): string {
+  if (!scope) return content.trim();
+  return `${MEMORY_SCOPE_PREFIX}${JSON.stringify(scope)}\n${content.trim()}`;
+}
+
+function parseScopedContent(content: string): { content: string; scope?: MemoryScope } {
+  if (!content.startsWith(MEMORY_SCOPE_PREFIX)) return { content };
+  const lineEnd = content.indexOf('\n');
+  if (lineEnd < 0) return { content };
+  try {
+    const parsed = JSON.parse(content.slice(MEMORY_SCOPE_PREFIX.length, lineEnd)) as unknown;
+    if (!parsed || typeof parsed !== 'object') return { content };
+    const id = Reflect.get(parsed, 'id');
+    const label = Reflect.get(parsed, 'label');
+    if (typeof id !== 'string' || typeof label !== 'string') return { content };
+    return { content: content.slice(lineEnd + 1).trim(), scope: { id, label } };
+  } catch {
+    return { content };
+  }
+}
+
+function normalizeMemoryScope(scope: MemoryScope): MemoryScope {
+  const id = scope.id.trim();
+  const label = scope.label.trim();
+  if (!id) throw new TypeError('memory.scope.id must not be empty');
+  if (!label) throw new TypeError('memory.scope.label must not be empty');
+  return { id, label };
+}
+
 /**
  * 用 Mastra Memory 管理全局工作记忆、每日经历与语义召回。
  */
@@ -162,42 +223,64 @@ export class Memory implements CielMemoryStore {
   async recordEpisode(
     data: readonly PerceptRecord[],
     idempotencyKey?: string,
-    context?: VigiliaOperationContext,
+    options?: MemoryOperationOptions,
   ): Promise<EpisodeRecordResult | void> {
     return this.operations.observe(
       'record-episode',
       async () => {
         const episode = await this.summarizer.summarize(data);
         if (!episode) return;
-        await this.persistEpisode(episode.summary, episode.createdAt, idempotencyKey);
+        await this.persistEpisode(
+          episode.summary,
+          episode.createdAt,
+          idempotencyKey,
+          options?.scope,
+        );
         return episode;
       },
-      context,
+      options?.context,
       { recordCount: data.length },
     );
   }
 
   /** 读取跨日期共享的全局记忆。 */
-  readLongTerm(context?: VigiliaOperationContext): Promise<string> {
+  readLongTerm(options?: MemoryOperationOptions): Promise<string> {
     return this.operations.observe(
       'read-long-term',
       async () => {
         await Promise.all([this.ready, this.mutation]);
-        const content = await this.store.getWorkingMemory({
+        const globalContent = await this.store.getWorkingMemory({
           threadId: this.globalThreadId,
           resourceId: this.resourceId,
           memoryConfig: {
             workingMemory: WORKING_MEMORY_CONFIG,
           },
         });
-        return content ?? '';
+        if (!options?.scope) return globalContent ?? '';
+
+        const scope = normalizeMemoryScope(options.scope);
+        const threadId = this.createScopeThreadId(scope);
+        const thread = await this.store.getThreadById({ threadId, resourceId: this.resourceId });
+        const scopedContent = thread
+          ? await this.store.getWorkingMemory({
+              threadId,
+              resourceId: this.resourceId,
+              memoryConfig: { workingMemory: SCOPED_WORKING_MEMORY_CONFIG },
+            })
+          : undefined;
+        return [
+          globalContent?.trim() ? `## 全局记忆\n\n${globalContent.trim()}` : '',
+          scopedContent?.trim() ? `## ${scope.label}\n\n${scopedContent.trim()}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n');
       },
-      context,
+      options?.context,
     );
   }
 
   /** 读取最近若干个日期 thread 中的经历。 */
-  readRecent(context?: VigiliaOperationContext): Promise<string> {
+  readRecent(options?: MemoryOperationOptions): Promise<string> {
     return this.operations.observe(
       'read-recent',
       async () => {
@@ -213,6 +296,7 @@ export class Memory implements CielMemoryStore {
             resourceId: this.resourceId,
             metadata: {
               [MEMORY_KIND_METADATA]: 'episode',
+              ...(options?.scope ? { [MEMORY_SCOPE_ID_METADATA]: options.scope.id } : {}),
             },
           },
         });
@@ -235,34 +319,41 @@ export class Memory implements CielMemoryStore {
               semanticRecall: false,
             },
           });
-          const entries = recalled.messages.map(message => {
-            return `## ${formatTime(message.createdAt)}\n\n${readMessageText(message)}`;
+          const entries = recalled.messages.flatMap(message => {
+            const parsed = parseScopedContent(readMessageText(message));
+            const scope = readMessageScope(message) ?? parsed.scope;
+            if (options?.scope && scope?.id !== options.scope.id && scope !== undefined) return [];
+            const content = formatScopedContent(parsed.content, scope);
+            return [`## ${formatTime(message.createdAt)}\n\n${content}`];
           });
-          days.push(`# ${thread.title}\n\n${entries.join('\n\n')}`);
+          if (entries.length > 0) days.push(`# ${thread.title}\n\n${entries.join('\n\n')}`);
         }
         return days.join('\n\n');
       },
-      context,
+      options?.context,
     );
   }
 
   /** 整体更新跨日期共享的全局记忆。 */
-  updateLongTerm(content: string, context?: VigiliaOperationContext): Promise<void> {
+  updateLongTerm(content: string, options?: MemoryOperationOptions): Promise<void> {
     return this.operations.observe(
       'update-long-term',
       () =>
         this.mutate(async () => {
           await this.ready;
+          const scope = options?.scope ? normalizeMemoryScope(options.scope) : undefined;
+          const threadId = scope ? this.createScopeThreadId(scope) : this.globalThreadId;
+          if (scope) await this.ensureThread(threadId, scope.label, new Date(), 'scope', scope);
           await this.store.updateWorkingMemory({
-            threadId: this.globalThreadId,
+            threadId,
             resourceId: this.resourceId,
             workingMemory: content.trim(),
             memoryConfig: {
-              workingMemory: WORKING_MEMORY_CONFIG,
+              workingMemory: scope ? SCOPED_WORKING_MEMORY_CONFIG : WORKING_MEMORY_CONFIG,
             },
           });
         }),
-      context,
+      options?.context,
     );
   }
 
@@ -271,25 +362,34 @@ export class Memory implements CielMemoryStore {
     content: string,
     createdAt: Date = new Date(),
     idempotencyKey?: string,
-    context?: VigiliaOperationContext,
+    options?: MemoryOperationOptions,
   ): Promise<void> {
     return this.operations.observe(
       'append-episode',
-      () => this.persistEpisode(content, createdAt, idempotencyKey),
-      context,
+      () => this.persistEpisode(content, createdAt, idempotencyKey, options?.scope),
+      options?.context,
     );
   }
 
-  private persistEpisode(content: string, createdAt: Date, idempotencyKey?: string): Promise<void> {
+  private persistEpisode(
+    content: string,
+    createdAt: Date,
+    idempotencyKey?: string,
+    rawScope?: MemoryScope,
+  ): Promise<void> {
     return this.mutate(async () => {
       await this.ready;
+      const scope = rawScope ? normalizeMemoryScope(rawScope) : GLOBAL_EPISODE_SCOPE;
       const date = formatDate(createdAt);
-      const threadId = createScopedMemoryId(this.resourceId, `episode:${date}`);
-      await this.ensureThread(threadId, date, createdAt, 'episode');
+      const threadId = createScopedMemoryId(this.resourceId, `episode:${scope.id}:${date}`);
+      await this.ensureThread(threadId, date, createdAt, 'episode', scope);
       await this.store.saveMessages({
         messages: [
           {
-            id: createScopedMemoryId(this.resourceId, idempotencyKey ?? randomUUID()),
+            id: createScopedMemoryId(
+              this.resourceId,
+              idempotencyKey ? `${scope.id}:${idempotencyKey}` : randomUUID(),
+            ),
             role: 'user',
             createdAt,
             threadId,
@@ -300,11 +400,17 @@ export class Memory implements CielMemoryStore {
               parts: [
                 {
                   type: 'text',
-                  text: content.trim(),
+                  text: encodeScopedContent(content, scope),
                 },
               ],
               metadata: {
                 [MEMORY_KIND_METADATA]: 'episode',
+                ...(scope
+                  ? {
+                      [MEMORY_SCOPE_ID_METADATA]: scope.id,
+                      [MEMORY_SCOPE_LABEL_METADATA]: scope.label,
+                    }
+                  : {}),
               },
             },
           },
@@ -314,11 +420,8 @@ export class Memory implements CielMemoryStore {
   }
 
   /** 按语义搜索跨日期的历史经历。 */
-  recall(
-    query: string,
-    limit: number = this.recallLimit,
-    context?: VigiliaOperationContext,
-  ): Promise<MemoryRecall[]> {
+  recall(query: string, options?: MemoryRecallOptions): Promise<MemoryRecall[]> {
+    const limit = options?.limit ?? this.recallLimit;
     return this.operations.observe(
       'recall',
       async () => {
@@ -326,31 +429,23 @@ export class Memory implements CielMemoryStore {
         const search = query.trim();
         if (!search) return [];
         await Promise.all([this.ready, this.mutation]);
-        const result = await this.store.recall({
-          threadId: this.globalThreadId,
-          resourceId: this.resourceId,
-          vectorSearchString: search,
-          page: 0,
-          perPage: limit,
-          threadConfig: {
-            lastMessages: false,
-            semanticRecall: {
-              topK: limit,
-              messageRange: 0,
-              scope: 'resource',
-              filter: {
-                [MEMORY_KIND_METADATA]: 'episode',
-              },
-            },
-          },
-        });
-        return result.messages.map(message => ({
-          id: message.id,
-          content: readMessageText(message),
-          createdAt: message.createdAt,
-        }));
+        const range = options?.range ?? (options?.scope ? 'current' : 'all');
+        if (range === 'current' && !options?.scope) return [];
+        const scopes =
+          range === 'current' ? [options?.scope] : range === 'global' ? [GLOBAL_EPISODE_SCOPE] : [];
+        const results: MemoryRecall[][] = [];
+        if (range === 'all') {
+          results.push(await this.recallFromScope(search, limit, undefined, false));
+        } else {
+          for (const scope of scopes) {
+            results.push(await this.recallFromScope(search, limit, scope));
+          }
+        }
+        const unique = new Map<string, MemoryRecall>();
+        for (const message of results.flat()) unique.set(message.id, message);
+        return [...unique.values()].slice(0, limit);
       },
-      context,
+      options?.context,
       { limit, query },
     );
   }
@@ -374,7 +469,8 @@ export class Memory implements CielMemoryStore {
     threadId: string,
     title: string,
     createdAt: Date,
-    kind: 'episode' | 'global',
+    kind: 'episode' | 'global' | 'scope',
+    scope?: MemoryScope,
   ): Promise<void> {
     const existing = await this.store.getThreadById({
       threadId,
@@ -392,9 +488,63 @@ export class Memory implements CielMemoryStore {
         updatedAt: createdAt,
         metadata: {
           [MEMORY_KIND_METADATA]: kind,
+          ...(scope
+            ? {
+                [MEMORY_SCOPE_ID_METADATA]: scope.id,
+                [MEMORY_SCOPE_LABEL_METADATA]: scope.label,
+              }
+            : {}),
         },
       },
     });
+  }
+
+  private createScopeThreadId(scope: MemoryScope): string {
+    return createScopedMemoryId(this.resourceId, `scope:${scope.id}`);
+  }
+
+  private async recallFromScope(
+    query: string,
+    limit: number,
+    scope?: MemoryScope,
+    filterByScope = true,
+  ): Promise<MemoryRecall[]> {
+    const candidateLimit = filterByScope ? Math.max(limit, this.recallLimit) : limit;
+    const result = await this.store.recall({
+      threadId: this.globalThreadId,
+      resourceId: this.resourceId,
+      vectorSearchString: query,
+      page: 0,
+      perPage: candidateLimit,
+      threadConfig: {
+        lastMessages: false,
+        semanticRecall: {
+          topK: candidateLimit,
+          messageRange: 0,
+          scope: 'resource',
+          filter: {
+            [MEMORY_KIND_METADATA]: 'episode',
+            ...(scope ? { [MEMORY_SCOPE_ID_METADATA]: scope.id } : {}),
+          },
+        },
+      },
+    });
+    return result.messages
+      .filter(message => {
+        if (!filterByScope) return true;
+        const messageScope = readMessageScope(message);
+        return scope ? messageScope?.id === scope.id : messageScope === undefined;
+      })
+      .map(message => {
+        const parsed = parseScopedContent(readMessageText(message));
+        const messageScope = readMessageScope(message) ?? parsed.scope;
+        return {
+          id: message.id,
+          content: parsed.content,
+          createdAt: message.createdAt,
+          ...(messageScope ? { scope: messageScope } : {}),
+        };
+      });
   }
 
   private mutate(operation: () => Promise<void>): Promise<void> {

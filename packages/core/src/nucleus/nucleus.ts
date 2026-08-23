@@ -86,9 +86,11 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       idleTimeout: this.options.memorySummary.idleTimeout,
       isBlocked: () => this.inFlight !== undefined,
       maxImages: this.options.context.maxImages,
+      maxInterval: this.options.memorySummary.maxInterval,
       memory: this.options.memory,
       perceptStore: this.perceptStore,
       retainDuration: this.options.context.perceptWindow,
+      scope: () => this.options.memoryScope?.(),
       vision,
     });
     this.observations.add(this.episodeArchive.observations);
@@ -101,7 +103,11 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.episodeArchive.on('start', () => {
       this.clearTimer();
     });
-    this.modelAgent = createNucleusAgent(this.options, this.options.memory);
+    this.modelAgent = createNucleusAgent(
+      this.options,
+      this.options.memory,
+      this.options.memoryScope,
+    );
   }
 
   register(stimulus: Stimulus): void {
@@ -297,6 +303,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
         ...(options.tools ? { tools: options.tools } : {}),
       },
       this.options.memory,
+      this.options.memoryScope,
     );
 
     return this.executeThinking({
@@ -318,9 +325,13 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.observationChannel.emit('nucleus.think.started', operation);
 
     try {
+      const memoryOptions = {
+        context: { parentOperationId: operation.operationId },
+        scope: this.options.memoryScope?.(),
+      };
       const [longTermMemory, recentMemory] = await Promise.all([
-        this.options.memory.readLongTerm({ parentOperationId: operation.operationId }),
-        this.options.memory.readRecent({ parentOperationId: operation.operationId }),
+        this.options.memory.readLongTerm(memoryOptions),
+        this.options.memory.readRecent(memoryOptions),
       ]);
       const operationContext = { parentOperationId: operation.operationId };
       const context = await execution.resolveContext(operationContext);

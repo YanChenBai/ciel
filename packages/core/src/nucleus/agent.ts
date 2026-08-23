@@ -3,7 +3,7 @@ import type { ToolSet } from 'ai';
 
 import type { ContextInput, ModelContext } from '#context';
 import { createMemoryTools } from '#memory/tool.ts';
-import type { CielMemoryStore } from '#memory/types.ts';
+import type { CielMemoryStore, MemoryScope } from '#memory/types.ts';
 
 import type { NucleusGenerationOptions } from './types.ts';
 
@@ -26,9 +26,10 @@ export type NucleusAgent<TOutput> = ToolLoopAgent<
 export function createNucleusAgent<TOutput>(
   options: NucleusGenerationOptions<TOutput>,
   memory: CielMemoryStore,
+  getMemoryScope?: () => MemoryScope | undefined,
 ): NucleusAgent<TOutput> {
   const tools = options.tools ?? {};
-  const memoryTools = createMemoryTools(memory);
+  const memoryTools = createMemoryTools(memory, getMemoryScope);
 
   return new ToolLoopAgent<
     NucleusCallOptions,

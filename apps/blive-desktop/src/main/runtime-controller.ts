@@ -31,8 +31,9 @@ import {
   ROOM_REVIEW_AFTER_MS,
 } from './constants.ts';
 import { DanmakuHistory } from './danmaku-history.ts';
+import { prepareInteractionStep } from './interaction-step.ts';
 import type { LivePage } from './live-page.ts';
-import { createBliveMemoryResourceId } from './memory-scope.ts';
+import { createBliveMemoryResourceId, createBliveRoomMemoryScope } from './memory-scope.ts';
 import {
   AUTONOMOUS_MODE_PROMPT,
   COMMON_BLIVE_PROMPT,
@@ -226,27 +227,14 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
         signals: false,
       },
       nucleus: {
-        context: { maxImages: 9, perceptWindow: 60_000 },
+        context: { maxImages: 9, perceptWindow: 5 * 60_000 },
         maxThinkInterval: 60_000,
         memory,
+        memoryScope: () => (this.room ? createBliveRoomMemoryScope(this.room) : undefined),
         messages: [() => ({ role: 'user', content: this.createDynamicContext() })],
         minThinkInterval: 10_000,
         model,
-        prepareStep: ({ steps }) => {
-          const interactionResolved = steps.some(step =>
-            step.toolCalls.some(call => call.toolName === 'send_danmaku'),
-          );
-          if (interactionResolved) {
-            return {
-              activeTools: [],
-              toolChoice: 'none',
-            };
-          }
-          return {
-            activeTools: ['send_danmaku'],
-            toolChoice: { toolName: 'send_danmaku', type: 'tool' },
-          };
-        },
+        prepareStep: ({ steps }) => prepareInteractionStep(steps),
         output: createToolCompatibleObjectOutput(thoughtSchema),
         system: [
           COMMON_BLIVE_PROMPT,
@@ -401,7 +389,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
           if (!calls.some(call => call.toolName === 'open_live_room')) {
             if (listCalls.length < MAX_EXPLORE_PAGES) {
               return {
-                activeTools: ['list_live_rooms', 'open_live_room'],
+                activeTools: ['list_live_rooms', 'memory_recall', 'open_live_room'],
                 toolChoice: 'required',
               };
             }

@@ -7,6 +7,7 @@ import {
   DEFAULT_CONTEXT_MAX_IMAGES,
   DEFAULT_MAX_THINK_INTERVAL,
   DEFAULT_MEMORY_SUMMARY_IDLE_TIMEOUT,
+  DEFAULT_MEMORY_SUMMARY_MAX_INTERVAL,
   DEFAULT_MEMORY_SUMMARY_MAX_TOKENS,
   DEFAULT_MIN_THINK_INTERVAL,
   DEFAULT_PERCEPT_WINDOW,
@@ -28,6 +29,7 @@ describe('normalizeNucleusOptions', () => {
     expect(options.context.perceptWindow).toBe(DEFAULT_PERCEPT_WINDOW);
     expect(options.memorySummary).toEqual({
       idleTimeout: DEFAULT_MEMORY_SUMMARY_IDLE_TIMEOUT,
+      maxInterval: DEFAULT_MEMORY_SUMMARY_MAX_INTERVAL,
       maxTokens: DEFAULT_MEMORY_SUMMARY_MAX_TOKENS,
     });
   });

@@ -6,6 +6,23 @@ import type { VigiliaOperationContext, VigiliaSource } from '#vigilia';
 export type MemoryEmbeddingModel = Exclude<EmbeddingModel, string>;
 export type MemoryResourceSegment = number | string;
 
+/** 同一主体内用于区分场景的稳定记忆作用域。 */
+export interface MemoryScope {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface MemoryOperationOptions {
+  readonly context?: VigiliaOperationContext;
+  readonly scope?: MemoryScope;
+}
+
+export interface MemoryRecallOptions extends MemoryOperationOptions {
+  readonly limit?: number;
+  /** current 只搜索当前作用域；all 可跨作用域搜索。 */
+  readonly range?: 'all' | 'current' | 'global';
+}
+
 export interface MemoryOptions {
   /** LibSQL 主数据库路径；向量库会以同目录的 `*.vector.db` 保存。 */
   readonly path?: string;
@@ -30,6 +47,7 @@ export interface MemoryRecall {
   readonly content: string;
   readonly createdAt: Date;
   readonly id: string;
+  readonly scope?: MemoryScope;
 }
 
 export interface EpisodeRecordResult {
@@ -43,12 +61,12 @@ export interface CielMemoryStore {
   recordEpisode(
     data: readonly PerceptRecord[],
     idempotencyKey?: string,
-    context?: VigiliaOperationContext,
+    options?: MemoryOperationOptions,
   ): Promise<EpisodeRecordResult | void>;
-  readLongTerm(context?: VigiliaOperationContext): Promise<string>;
-  readRecent(context?: VigiliaOperationContext): Promise<string>;
-  updateLongTerm(content: string, context?: VigiliaOperationContext): Promise<void>;
-  recall(query: string, limit?: number, context?: VigiliaOperationContext): Promise<MemoryRecall[]>;
+  readLongTerm(options?: MemoryOperationOptions): Promise<string>;
+  readRecent(options?: MemoryOperationOptions): Promise<string>;
+  updateLongTerm(content: string, options?: MemoryOperationOptions): Promise<void>;
+  recall(query: string, options?: MemoryRecallOptions): Promise<MemoryRecall[]>;
 }
 
 export interface RecallMemoryInput {
@@ -57,9 +75,15 @@ export interface RecallMemoryInput {
 
   /** 最多返回的经历数量。 */
   readonly limit?: number;
+
+  /** 默认只搜索当前场景；all 会跨场景搜索。 */
+  readonly scope?: 'all' | 'current' | 'global';
 }
 
 export interface UpdateMemoryInput {
-  /** 精炼后的完整全局记忆。 */
+  /** 精炼后的目标作用域完整记忆。 */
   readonly content: string;
+
+  /** 写入全局记忆或当前场景记忆。 */
+  readonly scope: 'current' | 'global';
 }

@@ -15,5 +15,8 @@ export const DEFAULT_CONTEXT_MAX_IMAGES = 6;
 /** 一分钟没有新 Percept 后总结当前经历。 */
 export const DEFAULT_MEMORY_SUMMARY_IDLE_TIMEOUT = MINUTE;
 
+/** 持续活跃场景最迟每五分钟总结一次当前经历。 */
+export const DEFAULT_MEMORY_SUMMARY_MAX_INTERVAL = MINUTE * 5;
+
 /** 单轮模型输入达到 500K token 后总结当前经历。 */
 export const DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 500_000;

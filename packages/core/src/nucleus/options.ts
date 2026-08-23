@@ -5,6 +5,7 @@ import {
   DEFAULT_CONTEXT_MAX_IMAGES,
   DEFAULT_MAX_THINK_INTERVAL,
   DEFAULT_MEMORY_SUMMARY_IDLE_TIMEOUT,
+  DEFAULT_MEMORY_SUMMARY_MAX_INTERVAL,
   DEFAULT_MEMORY_SUMMARY_MAX_TOKENS,
   DEFAULT_MIN_THINK_INTERVAL,
   DEFAULT_PERCEPT_WINDOW,
@@ -24,6 +25,7 @@ export type NormalizedNucleusOptions<TOutput> = Omit<
   maxThinkInterval: number;
   memorySummary: {
     idleTimeout: number;
+    maxInterval: number;
     maxTokens: number;
   };
   minThinkInterval: number;
@@ -38,6 +40,11 @@ const nucleusOptionsSchema = z
       .positive()
       .finite()
       .default(DEFAULT_MEMORY_SUMMARY_IDLE_TIMEOUT),
+    memorySummaryMaxInterval: z
+      .number()
+      .positive()
+      .finite()
+      .default(DEFAULT_MEMORY_SUMMARY_MAX_INTERVAL),
     memorySummaryMaxTokens: z.int().positive().default(DEFAULT_MEMORY_SUMMARY_MAX_TOKENS),
     minThinkInterval: z.number().positive().finite().default(DEFAULT_MIN_THINK_INTERVAL),
     perceptWindow: z.number().positive().finite().default(DEFAULT_PERCEPT_WINDOW),
@@ -61,6 +68,7 @@ export function normalizeNucleusOptions<TOutput>(
     contextMaxImages: options.context?.maxImages,
     maxThinkInterval: options.maxThinkInterval,
     memorySummaryIdleTimeout: options.memorySummary?.idleTimeout,
+    memorySummaryMaxInterval: options.memorySummary?.maxInterval,
     memorySummaryMaxTokens: options.memorySummary?.maxTokens,
     minThinkInterval: options.minThinkInterval,
     perceptWindow: options.context?.perceptWindow,
@@ -76,6 +84,7 @@ export function normalizeNucleusOptions<TOutput>(
     },
     memorySummary: {
       idleTimeout: normalized.memorySummaryIdleTimeout,
+      maxInterval: normalized.memorySummaryMaxInterval,
       maxTokens: normalized.memorySummaryMaxTokens,
     },
   };

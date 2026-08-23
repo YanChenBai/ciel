@@ -8,9 +8,10 @@ import type {
   CielMemoryStore,
   EpisodeRecordResult,
   MemoryEmbeddingModel,
+  MemoryOperationOptions,
   MemoryRecall,
+  MemoryRecallOptions,
   PerceptRecord,
-  VigiliaOperationContext,
 } from '@ciels/core';
 import type { LanguageModel } from 'ai';
 
@@ -52,29 +53,25 @@ export class RoomMemory implements CielMemoryStore {
   recordEpisode(
     data: readonly PerceptRecord[],
     idempotencyKey?: string,
-    context?: VigiliaOperationContext,
+    options?: MemoryOperationOptions,
   ): Promise<EpisodeRecordResult | void> {
-    return this.requireCurrent().recordEpisode(data, idempotencyKey, context);
+    return this.requireCurrent().recordEpisode(data, idempotencyKey, options);
   }
 
-  readLongTerm(context?: VigiliaOperationContext): Promise<string> {
-    return this.current?.readLongTerm(context) ?? Promise.resolve('');
+  readLongTerm(options?: MemoryOperationOptions): Promise<string> {
+    return this.current?.readLongTerm(options) ?? Promise.resolve('');
   }
 
-  readRecent(context?: VigiliaOperationContext): Promise<string> {
-    return this.current?.readRecent(context) ?? Promise.resolve('');
+  readRecent(options?: MemoryOperationOptions): Promise<string> {
+    return this.current?.readRecent(options) ?? Promise.resolve('');
   }
 
-  updateLongTerm(content: string, context?: VigiliaOperationContext): Promise<void> {
-    return this.requireCurrent().updateLongTerm(content, context);
+  updateLongTerm(content: string, options?: MemoryOperationOptions): Promise<void> {
+    return this.requireCurrent().updateLongTerm(content, options);
   }
 
-  recall(
-    query: string,
-    limit?: number,
-    context?: VigiliaOperationContext,
-  ): Promise<MemoryRecall[]> {
-    return this.current?.recall(query, limit, context) ?? Promise.resolve([]);
+  recall(query: string, options?: MemoryRecallOptions): Promise<MemoryRecall[]> {
+    return this.current?.recall(query, options) ?? Promise.resolve([]);
   }
 
   async close(): Promise<void> {

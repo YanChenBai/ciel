@@ -2,6 +2,7 @@ import type { LanguageModel, Output, ToolLoopAgentSettings, ToolSet } from 'ai';
 
 import type { ContextInput, ContextMessage, ContextTrigger } from '#context';
 import type { CielMemoryStore } from '#memory';
+import type { MemoryScope } from '#memory';
 import type { PerceptStore } from '#percepts';
 
 export interface NucleusContextOptions {
@@ -13,6 +14,7 @@ export interface NucleusContextOptions {
 
 export interface NucleusMemorySummaryOptions {
   readonly idleTimeout?: number;
+  readonly maxInterval?: number;
   readonly maxTokens?: number;
 }
 
@@ -49,6 +51,8 @@ export interface NucleusOptions<TOutput = string> extends NucleusGenerationOptio
   readonly agent?: string;
   readonly context?: NucleusContextOptions;
   readonly memory: CielMemoryStore;
+  /** 返回当前场景的稳定记忆作用域；未提供时沿用全局记忆行为。 */
+  readonly memoryScope?: () => MemoryScope | undefined;
   readonly memorySummary?: NucleusMemorySummaryOptions;
   readonly minThinkInterval?: number;
   readonly maxThinkInterval?: number;

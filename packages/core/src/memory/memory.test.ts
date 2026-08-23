@@ -135,10 +135,66 @@ describe('Memory', () => {
     await memory.appendEpisode('夏尔收养了一只黑猫。', new Date(2026, 6, 1, 10));
     await memory.appendEpisode('夏尔完成了书房整理。', new Date(2026, 7, 12, 10));
 
-    const recalled = await memory.recall('那只猫是什么时候来的？', 1);
+    const recalled = await memory.recall('那只猫是什么时候来的？', { limit: 1 });
 
     expect(recalled).toHaveLength(1);
     expect(recalled[0]?.content).toContain('黑猫');
+  });
+
+  it('隔离场景长期记忆，同时注入全局记忆', async () => {
+    const memory = await createMemory();
+    const firstRoom = { id: 'room:100', label: '直播间 100（甲主播）' };
+    const secondRoom = { id: 'room:200', label: '直播间 200（乙主播）' };
+
+    await memory.updateLongTerm('用户偏好简洁互动。');
+    await memory.updateLongTerm('甲主播喜欢聊猫。', { scope: firstRoom });
+    await memory.updateLongTerm('乙主播喜欢聊狗。', { scope: secondRoom });
+
+    const first = await memory.readLongTerm({ scope: firstRoom });
+    expect(first).toContain('用户偏好简洁互动。');
+    expect(first).toContain('甲主播喜欢聊猫。');
+    expect(first).not.toContain('乙主播喜欢聊狗。');
+  });
+
+  it('按场景读取最近经历，并允许带来源地跨场景召回', async () => {
+    const memory = await createMemory(2, true);
+    const firstRoom = { id: 'room:100', label: '直播间 100（甲主播）' };
+    const secondRoom = { id: 'room:200', label: '直播间 200（乙主播）' };
+    const time = new Date(2026, 7, 14, 10);
+    await memory.appendEpisode('甲主播回应了关于黑猫的弹幕。', time, undefined, {
+      scope: firstRoom,
+    });
+    await memory.appendEpisode('乙主播回应了关于白狗的弹幕。', time, undefined, {
+      scope: secondRoom,
+    });
+    await memory.appendEpisode('形成了先观察再互动的全局经验。', time);
+
+    const recent = await memory.readRecent({ scope: firstRoom });
+    expect(recent).toContain('记忆来源：直播间 100（甲主播）');
+    expect(recent).toContain('黑猫');
+    expect(recent).not.toContain('白狗');
+
+    const current = await memory.recall('主播和猫的互动', {
+      limit: 5,
+      range: 'current',
+      scope: firstRoom,
+    });
+    expect(current).toHaveLength(1);
+    expect(current[0]?.scope).toEqual(firstRoom);
+    expect(current[0]?.content).toContain('黑猫');
+
+    const all = await memory.recall('主播和狗的互动', { limit: 5, range: 'all' });
+    expect(all).toContainEqual(
+      expect.objectContaining({
+        content: expect.stringContaining('白狗'),
+        scope: secondRoom,
+      }),
+    );
+
+    const global = await memory.recall('先观察再互动', { limit: 5, range: 'global' });
+    expect(global).toHaveLength(1);
+    expect(global[0]?.scope).toEqual({ id: 'global', label: '全局经历' });
+    expect(global[0]?.content).toContain('全局经验');
   });
 
   it('使用 resourceId 隔离同一数据库中的长期记忆、每日经历和语义召回', async () => {
@@ -167,8 +223,8 @@ describe('Memory', () => {
     expect(await first.readRecent()).toContain('一号直播间的每日经历。');
     expect(await first.readRecent()).not.toContain('二号直播间的每日经历。');
     expect(await second.readRecent()).toContain('二号直播间的每日经历。');
-    expect((await first.recall('那只猫怎么样了？', 1))[0]?.content).toContain('黑猫');
-    const secondRecall = await second.recall('那只猫怎么样了？', 1);
+    expect((await first.recall('那只猫怎么样了？', { limit: 1 }))[0]?.content).toContain('黑猫');
+    const secondRecall = await second.recall('那只猫怎么样了？', { limit: 1 });
     expect(secondRecall).toHaveLength(1);
     expect(secondRecall[0]?.content).toContain('二号直播间');
     expect(secondRecall[0]?.content).not.toContain('黑猫');

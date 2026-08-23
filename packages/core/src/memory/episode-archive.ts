@@ -7,7 +7,7 @@ import type { VisionProjector } from '#context/vision.ts';
 import type { PerceptRecord, PerceptStore } from '#percepts';
 import { VigiliaChannel } from '#vigilia';
 
-import type { CielMemoryStore, EpisodeRecordResult } from './types.ts';
+import type { CielMemoryStore, EpisodeRecordResult, MemoryScope } from './types.ts';
 
 const RETRY_DELAY = 1_000;
 
@@ -15,9 +15,11 @@ export interface EpisodeArchiveOptions {
   readonly idleTimeout: number;
   readonly isBlocked: () => boolean;
   readonly maxImages: number;
+  readonly maxInterval: number;
   readonly memory: CielMemoryStore;
   readonly perceptStore: PerceptStore;
   readonly retainDuration: number;
+  readonly scope: () => MemoryScope | undefined;
   readonly vision: VisionProjector;
 }
 
@@ -48,6 +50,7 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
   private retryAt?: number;
   private running = false;
   private timer?: ReturnType<typeof setTimeout>;
+  private unreadSince?: number;
   private unsubscribe?: Unsubscribe;
 
   constructor(private readonly options: EpisodeArchiveOptions) {
@@ -61,7 +64,10 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
 
   start(): void {
     this.running = true;
-    this.unsubscribe = this.options.perceptStore.on('append', () => this.schedule());
+    this.unsubscribe = this.options.perceptStore.on('append', () => {
+      this.unreadSince ??= Date.now();
+      this.schedule();
+    });
     this.schedule();
   }
 
@@ -95,10 +101,11 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     }
     this.clearTimer();
     const checkout = this.options.perceptStore.checkout(this.consumerId);
+    this.unreadSince = undefined;
     const operation = this.createOperation(checkout);
     this.recordStarted(operation);
     this.emit('start', operation);
-    const pending = this.archive(checkout, operation.operationId);
+    const pending = this.archive(checkout, operation.operationId, this.options.scope());
     this.inFlight = pending;
     void pending.then(
       result => this.finish(pending, operation, true, result),
@@ -125,7 +132,12 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     const lastAppendAt = this.options.perceptStore.lastAppendAt;
     if (lastAppendAt === undefined) return;
 
-    const dueAt = Math.max(lastAppendAt + this.options.idleTimeout, this.retryAt ?? -Infinity);
+    this.unreadSince ??= lastAppendAt;
+    const normalDueAt = Math.min(
+      lastAppendAt + this.options.idleTimeout,
+      this.unreadSince + this.options.maxInterval,
+    );
+    const dueAt = Math.max(normalDueAt, this.retryAt ?? -Infinity);
     this.timer = setTimeout(
       () => {
         this.timer = undefined;
@@ -138,6 +150,7 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
   private async archive(
     checkout = this.options.perceptStore.checkout(this.consumerId),
     parentOperationId?: string,
+    scope = this.options.scope(),
   ): Promise<EpisodeRecordResult | void> {
     if (checkout.records.length === 0) {
       this.options.perceptStore.commit(checkout);
@@ -147,7 +160,7 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     const result = await this.options.memory.recordEpisode(
       data,
       `percept-store:${checkout.consumerId}:${checkout.fromSequence}-${checkout.throughSequence}`,
-      { parentOperationId },
+      { context: { parentOperationId }, scope },
     );
     this.options.perceptStore.commit(checkout);
     this.retryAt = undefined;
@@ -221,7 +234,10 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
   ): void {
     if (this.inFlight !== pending) return;
     this.inFlight = undefined;
-    if (!succeeded) this.retryAt = Date.now() + RETRY_DELAY;
+    if (!succeeded) {
+      this.retryAt = Date.now() + RETRY_DELAY;
+      this.unreadSince ??= operation.startedAt;
+    }
     this.schedule();
     const durationMs = Date.now() - operation.startedAt;
     this.emit('settled', operation, durationMs, succeeded, result ?? undefined);

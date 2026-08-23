@@ -229,6 +229,35 @@ describe('Nucleus', () => {
     expect(prompt).toContain('用户此前正在检查直播。');
   });
 
+  it('只注入全局记忆与当前场景记忆', async () => {
+    const currentScope = { id: 'room:100', label: '直播间 100（甲主播）' };
+    const otherScope = { id: 'room:200', label: '直播间 200（乙主播）' };
+    const memory = await createMemory();
+    await memory.updateLongTerm('用户喜欢简洁互动。');
+    await memory.updateLongTerm('甲主播喜欢聊猫。', { scope: currentScope });
+    await memory.updateLongTerm('乙主播喜欢聊狗。', { scope: otherScope });
+    await memory.appendEpisode('甲主播回应了弹幕。', new Date(), undefined, {
+      scope: currentScope,
+    });
+    await memory.appendEpisode('乙主播回应了弹幕。', new Date(), undefined, {
+      scope: otherScope,
+    });
+    const model = createModel('完成');
+    const nucleus = new Nucleus({
+      memory,
+      memoryScope: () => currentScope,
+      model,
+    });
+
+    expect(await nucleus.think()).toBe('完成');
+    const prompt = JSON.stringify(model.doGenerateCalls[0]?.prompt);
+    expect(prompt).toContain('用户喜欢简洁互动。');
+    expect(prompt).toContain('甲主播喜欢聊猫。');
+    expect(prompt).toContain('甲主播回应了弹幕。');
+    expect(prompt).not.toContain('乙主播喜欢聊狗。');
+    expect(prompt).not.toContain('乙主播回应了弹幕。');
+  });
+
   it('独立 think 读取当前感知但不消费自动思考的 checkout', async () => {
     const stimulus = new TestStimulus();
     let calls = 0;
@@ -426,6 +455,34 @@ describe('Nucleus', () => {
     expect(model.doGenerateCalls).toHaveLength(0);
     expect(summaryModel.doGenerateCalls).toHaveLength(1);
     expect(await memory.readRecent()).toContain('这段时间用户发来了一条消息。');
+    await nucleus.stop();
+  });
+
+  it('持续有新事件时仍按最大间隔总结经历', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const summaryModel = createModel('持续活跃场景的阶段总结。');
+    const memory = await createMemory(summaryModel);
+    const stimulus = new TestStimulus();
+    const nucleus = new Nucleus({
+      model: createModel(),
+      memory,
+      memorySummary: { idleTimeout: 50, maxInterval: 120, maxTokens: 10_000 },
+    });
+    nucleus.register(stimulus);
+    nucleus.start();
+    nucleus.ingest(stimulus, createReading('第一条消息', 0));
+
+    await vi.advanceTimersByTimeAsync(40);
+    nucleus.ingest(stimulus, createReading('第二条消息', 40));
+    await vi.advanceTimersByTimeAsync(40);
+    nucleus.ingest(stimulus, createReading('第三条消息', 80));
+    await vi.advanceTimersByTimeAsync(39);
+    expect(summaryModel.doGenerateCalls).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => expect(summaryModel.doGenerateCalls).toHaveLength(1));
+    expect(await memory.readRecent()).toContain('持续活跃场景的阶段总结。');
     await nucleus.stop();
   });
 

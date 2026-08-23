@@ -57,8 +57,13 @@ class Microphone extends Stimulus<typeof signals> {
   async stop() {}
 }
 
+const currentScene = { id: 'microphone:local', label: '本机麦克风' };
 const ciel = new Ciel(new Microphone(), {
-  nucleus: { model, memory },
+  nucleus: {
+    model,
+    memory,
+    memoryScope: () => currentScene,
+  },
 });
 
 await ciel.start();
@@ -81,7 +86,9 @@ await ciel.start();
 
 Context 按 `originSignal` 与感知类型组织实时输入，并合并内部设定、应用消息和记忆。Oculus 只持久化达到变化阈值的采样帧，每张上下文图片最多合成九帧。
 
-Memory 要求显式提供 `resourceId`，并用它隔离全局记忆、每日经历、语义召回和幂等 ID，因此多个运行时可以共用同一数据库。多维业务标识使用 `createMemoryResourceId('app', 'account', accountId, 'scene', sceneId)` 逐段编码，避免自行拼接产生碰撞。
+Memory 要求显式提供 `resourceId`，并用它隔离不同主体；同一主体内可通过 `memoryScope` 区分场景。长期记忆与每日 Episode 都保留 scope，默认只注入当前场景，`memory_recall` 可显式使用 `all` 跨场景检索，并始终返回来源。持续活跃时 Episode 默认最迟每五分钟归档一次，场景空闲一分钟则提前归档。
+
+多维主体标识使用 `createMemoryResourceId('app', 'account', accountId)` 逐段编码；场景使用稳定的 `{ id, label }`，例如 `id` 为 `room:123`。不要把场景拼入 `resourceId`，否则无法在同一主体内跨场景召回。
 
 ## Vigilia
 
