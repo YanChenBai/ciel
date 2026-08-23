@@ -1,4 +1,5 @@
 export const IPC = {
+  areas: 'blive:areas',
   bootstrap: 'blive:bootstrap',
   command: 'blive:command',
   event: 'blive:event',

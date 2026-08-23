@@ -8,6 +8,7 @@ import type { WebContents } from 'electron';
 
 import { IPC } from '../shared/ipc.ts';
 import type { BliveCommand, LiveViewBounds } from '../shared/types.ts';
+import { fetchLiveAreas } from './bilibili-api.ts';
 import { LivePage } from './live-page.ts';
 import type { RuntimeController } from './runtime-controller.ts';
 
@@ -56,6 +57,10 @@ async function createWindow(): Promise<void> {
   ipcMain.handle(IPC.bootstrap, event => {
     assertSender(event.sender, window);
     return controller?.state();
+  });
+  ipcMain.handle(IPC.areas, event => {
+    assertSender(event.sender, window);
+    return fetchLiveAreas();
   });
   ipcMain.handle(IPC.command, async (event, command: BliveCommand) => {
     assertSender(event.sender, window);

@@ -9,6 +9,15 @@ export interface BilibiliAccount {
   readonly uid: number;
 }
 
+export interface BilibiliLiveArea {
+  readonly id: number;
+  readonly name: string;
+}
+
+export interface BilibiliLiveAreaGroup extends BilibiliLiveArea {
+  readonly areas: readonly BilibiliLiveArea[];
+}
+
 interface BliveStartCommonOptions {
   readonly danmakuDelivery: DanmakuDelivery;
 }
@@ -101,6 +110,7 @@ export interface LiveViewBounds {
 export interface BliveDesktopApi {
   bootstrap(): Promise<BliveDesktopState>;
   command(command: BliveCommand): Promise<void>;
+  listAreas(): Promise<readonly BilibiliLiveAreaGroup[]>;
   onEvent(listener: (event: BliveDesktopEvent) => void): () => void;
   setLiveBounds(bounds: LiveViewBounds): void;
 }

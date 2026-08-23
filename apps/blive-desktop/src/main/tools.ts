@@ -106,7 +106,7 @@ export function createBliveTools(options: {
 
 function createListLiveRoomsTool(listLiveRooms: (page: number, limit: number) => Promise<unknown>) {
   return tool({
-    description: '从已配置的 Bilibili 直播分区页面获取真实直播间候选。每次探索必须从 page=1 开始。',
+    description: '通过 Bilibili API 获取已选分区的真实直播间候选。每次探索必须从 page=1 开始。',
     inputSchema: jsonSchema<ListLiveRoomsInput>({
       type: 'object',
       properties: {

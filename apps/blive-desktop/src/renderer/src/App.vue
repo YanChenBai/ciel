@@ -8,15 +8,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { NativeSelectOptGroup } from '@/components/ui/native-select';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 
-import type { BliveDesktopState, BliveMode, DanmakuDelivery } from '../../shared/types.ts';
+import type {
+  BilibiliLiveAreaGroup,
+  BliveDesktopState,
+  BliveMode,
+  DanmakuDelivery,
+} from '../../shared/types.ts';
 
 const state = shallowRef<BliveDesktopState>();
-const roomId = ref('6374209');
+const roomId = ref('');
 const mode = ref<BliveMode>('standard');
 const danmakuDelivery = ref<DanmakuDelivery>('simulate');
 const areaUrl = ref('');
+const areas = shallowRef<readonly BilibiliLiveAreaGroup[]>([]);
+const areasPending = ref(false);
 const pending = ref(false);
 const localError = ref('');
 const liveHost = ref<HTMLElement>();
@@ -38,6 +46,18 @@ onMounted(async () => {
   try {
     if (!window.blive) throw new Error('Electron preload 未加载，请完全退出应用后重新启动');
     state.value = await window.blive.bootstrap();
+    areasPending.value = true;
+    void window.blive
+      .listAreas()
+      .then(value => {
+        areas.value = value;
+      })
+      .catch(error => {
+        localError.value = formatCommandError(error);
+      })
+      .finally(() => {
+        areasPending.value = false;
+      });
     stopEvents = window.blive.onEvent(event => {
       if (event.type === 'state') {
         state.value = event.state;
@@ -104,6 +124,11 @@ function start(): Promise<void> {
       options,
     }),
   );
+}
+
+function areaUrlFor(parentAreaId: number, areaId: number): string {
+  const query = new URLSearchParams({ areaId: String(areaId), parentAreaId: String(parentAreaId) });
+  return `https://live.bilibili.com/p/eden/area-tags?${query}`;
 }
 
 function stop(): Promise<void> {
@@ -173,46 +198,38 @@ function updateLiveBounds(): void {
       </div>
     </header>
 
-    <p v-if="localError || state?.error" class="error-banner">
+    <p
+      v-if="localError || state?.error"
+      class="border-destructive/45 bg-destructive/15 m-0 border-b px-3.5 py-[7px] text-xs text-[#ffb4bd]"
+    >
       {{ localError || state?.error }}
     </p>
 
-    <section v-if="!state?.running" class="launch-view">
-      <form class="launch-form" @submit.prevent="start">
-        <div class="launch-header">
-          <div class="launch-icon"><Radio /></div>
-          <h1>进入直播间</h1>
-          <p>选择观看方式，Ciel 会在开始后接收直播内容并独立思考。</p>
+    <section
+      v-if="!state?.running"
+      class="grid min-h-0 flex-1 place-items-center bg-[#171819] px-6 pt-8 pb-14"
+    >
+      <form class="grid w-full max-w-[420px] gap-7" @submit.prevent="start">
+        <div class="grid justify-items-center gap-2 text-center">
+          <div
+            class="border-primary/35 bg-primary/10 text-primary mb-1.5 grid size-[34px] place-items-center rounded-xl border [&_svg]:size-[17px]"
+          >
+            <Radio />
+          </div>
+          <h1 class="text-foreground mt-2 text-xl font-semibold tracking-[-0.02em]">进入直播间</h1>
+          <p class="text-muted-foreground m-0 max-w-[360px] text-[13px] leading-[1.65]">
+            选择观看方式，Ciel 会在开始后接收直播内容并独立思考。
+          </p>
         </div>
 
-        <div class="launch-fields">
-          <div v-if="mode === 'standard'" class="field-group">
-            <Label for="room-id">直播间 ID</Label>
-            <Input
-              id="room-id"
-              v-model="roomId"
-              class="launch-input"
-              inputmode="numeric"
-              placeholder="输入直播间 ID"
-            />
-          </div>
-          <div class="field-group">
-            <Label for="danmaku-delivery">弹幕执行</Label>
-            <NativeSelect id="danmaku-delivery" v-model="danmakuDelivery" class="launch-select">
-              <NativeSelectOption value="simulate">仅测试工具调用 · 不发送</NativeSelectOption>
-              <NativeSelectOption value="live">真实发送到直播间</NativeSelectOption>
-            </NativeSelect>
-            <p class="field-hint">
-              {{
-                danmakuDelivery === 'live'
-                  ? 'Agent 调用工具后会操作直播网页发送弹幕。'
-                  : '保留完整工具调用与轨迹，但不会操作网页或写入发送历史。'
-              }}
-            </p>
-          </div>
-          <div class="field-group">
-            <Label for="watch-mode">观看模式</Label>
-            <NativeSelect id="watch-mode" v-model="mode" class="launch-select">
+        <div class="grid gap-5">
+          <div class="grid gap-[7px]">
+            <Label for="watch-mode" class="text-xs font-medium text-[#d8d8da]">观看模式</Label>
+            <NativeSelect
+              id="watch-mode"
+              v-model="mode"
+              class="w-full [&_[data-slot='native-select']]:h-[38px] [&_[data-slot='native-select']]:rounded-[10px] [&_[data-slot='native-select']]:bg-[#171819]"
+            >
               <NativeSelectOption value="standard"
                 >标准模式 · 固定观看当前直播间</NativeSelectOption
               >
@@ -220,7 +237,7 @@ function updateLiveBounds(): void {
                 >自主模式 · 从分区探索直播间</NativeSelectOption
               >
             </NativeSelect>
-            <p class="field-hint">
+            <p class="m-0 text-[11px] leading-normal text-[#74767c]">
               {{
                 mode === 'autonomous'
                   ? 'Agent 会评估内容质量并决定继续停留或切换。'
@@ -228,15 +245,63 @@ function updateLiveBounds(): void {
               }}
             </p>
           </div>
-          <div v-if="mode === 'autonomous'" class="field-group">
-            <Label for="area-url">分区地址</Label>
+          <div v-if="mode === 'standard'" class="grid gap-[7px]">
+            <Label for="room-id" class="text-xs font-medium text-[#d8d8da]">直播间 ID</Label>
             <Input
+              id="room-id"
+              v-model="roomId"
+              class="h-[38px] w-full rounded-[10px] bg-[#171819]"
+              inputmode="numeric"
+              placeholder="输入直播间 ID"
+            />
+          </div>
+          <div class="grid gap-[7px]">
+            <Label for="danmaku-delivery" class="text-xs font-medium text-[#d8d8da]"
+              >弹幕执行</Label
+            >
+            <NativeSelect
+              id="danmaku-delivery"
+              v-model="danmakuDelivery"
+              class="w-full [&_[data-slot='native-select']]:h-[38px] [&_[data-slot='native-select']]:rounded-[10px] [&_[data-slot='native-select']]:bg-[#171819]"
+            >
+              <NativeSelectOption value="simulate">仅测试工具调用 · 不发送</NativeSelectOption>
+              <NativeSelectOption value="live">真实发送到直播间</NativeSelectOption>
+            </NativeSelect>
+            <p class="m-0 text-[11px] leading-normal text-[#74767c]">
+              {{
+                danmakuDelivery === 'live'
+                  ? 'Agent 调用工具后会操作直播网页发送弹幕。'
+                  : '保留完整工具调用与轨迹，但不会操作网页或写入发送历史。'
+              }}
+            </p>
+          </div>
+          <div v-if="mode === 'autonomous'" class="grid gap-[7px]">
+            <Label for="area-url" class="text-xs font-medium text-[#d8d8da]">直播分区</Label>
+            <NativeSelect
               id="area-url"
               v-model="areaUrl"
-              class="launch-input"
-              placeholder="https://live.bilibili.com/p/eden/area-tags..."
-            />
-            <p class="field-hint">Agent 会从该分区的真实候选中选择初始直播间，无需填写房间号。</p>
+              class="w-full [&_[data-slot='native-select']]:h-[38px] [&_[data-slot='native-select']]:rounded-[10px] [&_[data-slot='native-select']]:bg-[#171819]"
+              :disabled="areasPending"
+            >
+              <NativeSelectOption value="" disabled>
+                {{ areasPending ? '正在获取分区…' : '选择直播分区' }}
+              </NativeSelectOption>
+              <NativeSelectOptGroup v-for="group in areas" :key="group.id" :label="group.name">
+                <NativeSelectOption :value="areaUrlFor(group.id, 0)">
+                  {{ group.name }} · 全部
+                </NativeSelectOption>
+                <NativeSelectOption
+                  v-for="area in group.areas"
+                  :key="area.id"
+                  :value="areaUrlFor(group.id, area.id)"
+                >
+                  {{ area.name }}
+                </NativeSelectOption>
+              </NativeSelectOptGroup>
+            </NativeSelect>
+            <p class="m-0 text-[11px] leading-normal text-[#74767c]">
+              分区和直播间候选均通过 Bilibili API 实时获取。
+            </p>
           </div>
         </div>
 
