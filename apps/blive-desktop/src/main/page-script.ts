@@ -6,11 +6,71 @@ function installLivePageBridge(): void {
       dispose(): void;
       sendDanmaku(content: string): Promise<{ ok: boolean; error?: string }>;
     };
+    livePlayer?: {
+      on(event: 'ScreenStateChange', listener: (state: string) => void): void;
+      setFullscreenStatus(status: number): void;
+    };
   };
 
   root.__cielBliveBridge?.dispose();
 
   const disposers: Array<() => void> = [];
+  const hadHiddenAside = document.body.classList.contains('hide-aside-area');
+  const previousBodyOverflow = document.body.style.overflow;
+  document.body.classList.add('hide-aside-area');
+  document.body.style.overflow = 'hidden';
+  disposers.push(() => {
+    if (!hadHiddenAside) document.body.classList.remove('hide-aside-area');
+    document.body.style.overflow = previousBodyOverflow;
+  });
+
+  const style = document.createElement('style');
+  style.dataset.cielBlive = 'true';
+  style.textContent = `
+    #web-player__bottom-bar__container,
+    #gift-control-vm,
+    #sidebar-vm,
+    .side-bar-cntr,
+    .aside-area {
+      display: none !important;
+    }
+
+    .player-full-win .player-section {
+      width: 100% !important;
+    }
+  `;
+  (document.head ?? document.documentElement).append(style);
+  disposers.push(() => style.remove());
+
+  let playerListenerActive = true;
+  const installPlayerBehavior = (): boolean => {
+    const player = root.livePlayer;
+    if (!player) return false;
+
+    try {
+      player.setFullscreenStatus(1);
+      player.on('ScreenStateChange', state => {
+        if (!playerListenerActive || state !== 'normal') return;
+        requestAnimationFrame(() => {
+          if (playerListenerActive) player.setFullscreenStatus(1);
+        });
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!installPlayerBehavior()) {
+    const playerInterval = window.setInterval(() => {
+      if (!installPlayerBehavior()) return;
+      window.clearInterval(playerInterval);
+    }, 250);
+    disposers.push(() => window.clearInterval(playerInterval));
+  }
+  disposers.push(() => {
+    playerListenerActive = false;
+  });
+
   const emit = (event: Record<string, unknown>): void => {
     window.postMessage(
       {
@@ -123,7 +183,7 @@ function installLivePageBridge(): void {
       }
 
       button.click();
-      emit({ type: 'danmaku-sent', content: normalized });
+      emit({ type: 'danmaku-sent', content: normalized, roomId: roomId() });
       return { ok: true };
     },
   };

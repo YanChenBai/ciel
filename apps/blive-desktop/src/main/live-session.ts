@@ -1,5 +1,6 @@
 import { BilibiliLive, bilibiliLiveSignals } from '@ciels/blive';
 import { Stimulus } from '@ciels/core';
+import type { StimulusSignal } from '@ciels/core';
 
 interface LiveSessionCloseEvent {
   readonly code: number | null;
@@ -18,10 +19,11 @@ export class BilibiliLiveSession extends Stimulus<typeof bilibiliLiveSignals> {
   readonly signals = bilibiliLiveSignals;
   private readonly closeListeners = new Set<(event: LiveSessionCloseEvent) => void>();
   private readonly errorListeners = new Set<(error: Error) => void>();
-  private readonly stderrListeners = new Set<(message: string) => void>();
+  private readonly stderrListeners = new Set<(roomId: number, message: string) => void>();
   private current?: BilibiliLive;
   private currentUnsubscribers: (() => void)[] = [];
   private expectedClosing?: BilibiliLive;
+  private readonly pendingSignals = new Set<Promise<void>>();
   private running = false;
 
   constructor(private readonly ffmpegPath?: string) {
@@ -49,11 +51,11 @@ export class BilibiliLiveSession extends Stimulus<typeof bilibiliLiveSignals> {
     this.current = live;
     this.currentUnsubscribers = [
       live.on('data', signal => {
-        void this.send(signal).catch(error => this.emitError(toError(error)));
+        this.forward(signal);
       }),
       live.onError(error => this.emitError(error)),
       live.onStderr(message => {
-        for (const listener of this.stderrListeners) listener(message);
+        for (const listener of this.stderrListeners) listener(live.roomId, message);
       }),
       live.onClose((code, signal) => this.handleClose(live, code, signal)),
     ];
@@ -75,19 +77,23 @@ export class BilibiliLiveSession extends Stimulus<typeof bilibiliLiveSignals> {
     return () => this.errorListeners.delete(listener);
   }
 
-  onStderr(listener: (message: string) => void): () => void {
+  onStderr(listener: (roomId: number, message: string) => void): () => void {
     this.stderrListeners.add(listener);
     return () => this.stderrListeners.delete(listener);
   }
 
   private async closeCurrent(): Promise<void> {
     const live = this.current;
-    if (!live) return;
+    if (!live) {
+      await Promise.allSettled(this.pendingSignals);
+      return;
+    }
     this.expectedClosing = live;
     try {
       await live.stop();
     } finally {
       this.cleanup(live);
+      await Promise.allSettled(this.pendingSignals);
     }
   }
 
@@ -116,6 +122,14 @@ export class BilibiliLiveSession extends Stimulus<typeof bilibiliLiveSignals> {
 
   private emitError(error: Error): void {
     for (const listener of this.errorListeners) listener(error);
+  }
+
+  private forward(signal: StimulusSignal<typeof bilibiliLiveSignals>): void {
+    const pending = this.send(signal);
+    this.pendingSignals.add(pending);
+    void pending
+      .catch(error => this.emitError(toError(error)))
+      .finally(() => this.pendingSignals.delete(pending));
   }
 }
 

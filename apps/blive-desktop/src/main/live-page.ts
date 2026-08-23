@@ -36,7 +36,7 @@ export class LivePage extends EventEmitter<LivePageEvents> {
 
   async open(roomId: number): Promise<void> {
     this.roomId = roomId;
-    await this.view.webContents.loadURL(`https://live.bilibili.com/${roomId}`);
+    await this.view.webContents.loadURL(`https://live.bilibili.com/blanc/${roomId}`);
   }
 
   setBounds(bounds: LiveViewBounds): void {
@@ -65,6 +65,8 @@ export class LivePage extends EventEmitter<LivePageEvents> {
 
   private readonly handlePageEvent = (event: Electron.IpcMainEvent, value: LivePageEvent): void => {
     if (event.sender !== this.view.webContents || !isLivePageEvent(value)) return;
+    const roomId = eventRoomId(value);
+    if (roomId !== undefined && roomId !== this.roomId) return;
     this.emit('event', value);
   };
 
@@ -74,11 +76,15 @@ export class LivePage extends EventEmitter<LivePageEvents> {
   }
 }
 
+function eventRoomId(event: LivePageEvent): number | undefined {
+  return event.type === 'room-info' ? event.info.roomId : event.roomId;
+}
+
 function isLivePageEvent(value: unknown): value is LivePageEvent {
   if (!value || typeof value !== 'object') return false;
-  const event = value as { time?: unknown; type?: unknown };
-  return (
-    typeof event.time === 'number' &&
-    ['danmaku-sent', 'live-ended', 'page-ready', 'room-info'].includes(String(event.type))
-  );
+  const event = value as Record<string, unknown>;
+  if (typeof event.time !== 'number' || !Number.isFinite(event.time)) return false;
+  if (event.type === 'room-info') return Boolean(event.info && typeof event.info === 'object');
+  if (event.type === 'danmaku-sent') return typeof event.content === 'string';
+  return event.type === 'live-ended' || event.type === 'page-ready';
 }

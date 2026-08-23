@@ -67,7 +67,12 @@ export interface BliveThought {
 }
 
 export type LivePageEvent =
-  | { readonly type: 'danmaku-sent'; readonly content: string; readonly time: number }
+  | {
+      readonly type: 'danmaku-sent';
+      readonly content: string;
+      readonly roomId?: number;
+      readonly time: number;
+    }
   | { readonly type: 'live-ended'; readonly roomId?: number; readonly time: number }
   | { readonly type: 'page-ready'; readonly roomId?: number; readonly time: number }
   | { readonly type: 'room-info'; readonly info: Partial<LiveRoomInfo>; readonly time: number };

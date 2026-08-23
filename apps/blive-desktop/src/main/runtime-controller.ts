@@ -80,6 +80,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   private memory?: Memory;
   private liveSession?: BilibiliLiveSession;
   private room?: LiveRoomInfo;
+  private openingRoomId?: number;
   private roomStartedAt = 0;
   private snapshot: VigiliaSnapshot = emptySnapshot();
   private unsubscribeVigilia?: () => void;
@@ -157,6 +158,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
     if (ciel) await ciel.stop().catch(error => this.reportError(error));
     await memory?.close().catch(error => this.reportError(error));
     this.room = undefined;
+    this.openingRoomId = undefined;
     this.roomStartedAt = 0;
     this.emitState();
   }
@@ -243,7 +245,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
       },
       oculus: { differenceThreshold: 0.03, sampleInterval: 0 },
     });
-    const ffmpegErrors: string[] = [];
+    const ffmpegErrors = new Map<number, string[]>();
     const unsubscribeVigilia = ciel.vigilia.subscribe((event, snapshot) => {
       this.events = [...this.events, event];
       this.snapshot = snapshot;
@@ -257,15 +259,18 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
       this.reportError(error);
     });
     ciel.on('thought', thought => this.handleThought(thought));
-    liveSession.onStderr(message => {
-      ffmpegErrors.push(message);
-      if (ffmpegErrors.length > 4) ffmpegErrors.shift();
+    liveSession.onStderr((roomId, message) => {
+      const errors = ffmpegErrors.get(roomId) ?? [];
+      errors.push(message);
+      if (errors.length > 4) errors.shift();
+      ffmpegErrors.set(roomId, errors);
     });
     liveSession.onError(error => this.reportError(error));
     liveSession.onClose(event => {
+      const detail = ffmpegErrors.get(event.roomId)?.at(-1);
+      ffmpegErrors.delete(event.roomId);
       if (event.expected || event.code === 0 || this.ciel !== ciel) return;
       const normalizedCode = normalizeWindowsExitCode(event.code);
-      const detail = ffmpegErrors.at(-1);
       this.reportError(
         new Error(
           `FFmpeg 异常退出（room=${event.roomId}, code=${String(normalizedCode)}, signal=${String(event.signal)}）${detail ? `：${detail}` : ''}`,
@@ -302,19 +307,38 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
 
   private async openRoom(requestedRoomId: number, _reason: string): Promise<LiveRoomInfo> {
     const liveSession = this.liveSession;
-    if (!liveSession || !this.ciel) throw new Error('直播运行时尚未启动');
+    const ciel = this.ciel;
+    const memory = this.memory;
+    if (!liveSession || !ciel || !memory) throw new Error('直播运行时尚未启动');
     if (!this.lastCandidates.has(requestedRoomId) && this.mode === 'autonomous') {
       throw new Error(`不能打开本次探索候选之外的直播间：${requestedRoomId}`);
     }
     const room = await fetchLiveRoomInfo(requestedRoomId);
     if (!room.live) throw new Error(`直播间 ${room.roomId} 当前未开播`);
-    await this.livePage.open(room.roomId);
-    await liveSession.open(room.roomId);
-    this.room = room;
-    this.roomStartedAt = Date.now();
-    this.lastError = undefined;
-    this.emitState();
-    return room;
+    const hadRoom = this.room !== undefined;
+    this.openingRoomId = room.roomId;
+    try {
+      if (hadRoom) {
+        await ciel.resetPerception();
+        this.room = undefined;
+        this.roomStartedAt = 0;
+        this.emitState();
+      }
+      await liveSession.open(room.roomId);
+      try {
+        await this.livePage.open(room.roomId);
+      } catch (error) {
+        await ciel.resetPerception().catch(resetError => this.reportError(resetError));
+        throw error;
+      }
+      this.room = room;
+      this.roomStartedAt = Date.now();
+      this.lastError = undefined;
+      this.emitState();
+      return room;
+    } finally {
+      this.openingRoomId = undefined;
+    }
   }
 
   private createDynamicContext(): string {
@@ -343,10 +367,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   private async exploreRooms(reason: 'initial' | 'live-ended' | 'not-interested' | 'stream-ended') {
     const ciel = this.ciel;
     if (!ciel || this.mode !== 'autonomous') return;
-    if (this.exploring) {
-      this.scheduleExploreRetry(reason);
-      return;
-    }
+    if (this.exploring) return;
     if (this.exploreRetryTimer) clearTimeout(this.exploreRetryTimer);
     this.exploreRetryTimer = undefined;
     this.exploring = true;
@@ -429,17 +450,20 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   }
 
   private async handlePageEvent(event: LivePageEvent): Promise<void> {
+    const room = this.room;
+    if (!room || this.openingRoomId !== undefined || event.time < this.roomStartedAt) return;
     if (event.type === 'danmaku-sent') {
+      if (event.roomId !== room.roomId) return;
       await this.recordSentDanmaku(event.content);
       return;
     }
-    if (event.type === 'live-ended' && this.room && event.roomId === this.room.roomId) {
+    if (event.type === 'live-ended' && event.roomId === room.roomId) {
       if (this.mode === 'standard') await this.stop();
       else setTimeout(() => void this.exploreRooms('live-ended').catch(() => undefined), 0);
       return;
     }
-    if (event.type === 'room-info' && this.room) {
-      this.room = { ...this.room, ...compact(event.info), roomId: this.room.roomId };
+    if (event.type === 'room-info' && event.info.roomId === room.roomId) {
+      this.room = { ...room, ...compact(event.info), roomId: room.roomId };
       this.emitState();
     }
   }
