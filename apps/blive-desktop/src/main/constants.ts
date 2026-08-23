@@ -2,6 +2,12 @@ export const DANMAKU_HISTORY_LIMIT = 100;
 export const DANMAKU_PROMPT_HISTORY_LIMIT = 12;
 export const MAX_DANMAKU_LENGTH = 40;
 export const ROOM_REVIEW_AFTER_MS = 3 * 60_000;
+export const ROOM_SCORE_CRITICAL_THRESHOLD = 20;
+export const ROOM_SCORE_EXPLORE_CONFIDENCE = 0.7;
+export const ROOM_SCORE_EXPLORE_THRESHOLD = 50;
+export const ROOM_SCORE_LOW_CONFIDENCE = 0.6;
+export const ROOM_SCORE_LOW_THRESHOLD = 40;
+export const ROOM_SCORE_RECOVERY_THRESHOLD = 60;
 
 export const BILIBILI_EMOJI_TAGS = [
   '[dog]',

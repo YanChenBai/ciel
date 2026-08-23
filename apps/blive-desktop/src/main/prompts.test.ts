@@ -10,6 +10,8 @@ describe('自主探索提示词', () => {
   it('把不感兴定义为重新搜索并要求真正打开候选房间', () => {
     expect(AUTONOMOUS_MODE_PROMPT).toContain('explore');
     expect(AUTONOMOUS_MODE_PROMPT).toContain('重新搜索');
+    expect(AUTONOMOUS_MODE_PROMPT).toContain('80～100');
+    expect(AUTONOMOUS_MODE_PROMPT).toContain('连续多轮评分');
     expect(EXPLORE_LIVE_ROOMS_PROMPT).toContain('必须先调用 list_live_rooms');
     expect(EXPLORE_LIVE_ROOMS_PROMPT).toContain('必须调用 open_live_room');
   });

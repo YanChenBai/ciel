@@ -32,6 +32,7 @@ import {
 import { DanmakuHistory } from './danmaku-history.ts';
 import type { LivePage } from './live-page.ts';
 import { BilibiliLiveSession } from './live-session.ts';
+import { createBliveMemoryResourceId } from './memory-scope.ts';
 import {
   AUTONOMOUS_MODE_PROMPT,
   COMMON_BLIVE_PROMPT,
@@ -39,6 +40,7 @@ import {
   EXPLORE_LIVE_ROOMS_PROMPT,
   STANDARD_MODE_PROMPT,
 } from './prompts.ts';
+import { RoomScorePolicy } from './room-score-policy.ts';
 import { createToolCompatibleObjectOutput } from './tool-compatible-output.ts';
 import { createBliveTools, createExploreTools } from './tools.ts';
 
@@ -80,6 +82,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   private memory?: Memory;
   private liveSession?: BilibiliLiveSession;
   private room?: LiveRoomInfo;
+  private readonly roomScorePolicy = new RoomScorePolicy();
   private openingRoomId?: number;
   private roomStartedAt = 0;
   private snapshot: VigiliaSnapshot = emptySnapshot();
@@ -160,6 +163,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
     this.room = undefined;
     this.openingRoomId = undefined;
     this.roomStartedAt = 0;
+    this.roomScorePolicy.reset();
     this.emitState();
   }
 
@@ -193,7 +197,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
       embedder,
       model,
       path: join(this.userDataPath, 'memory.db'),
-      resourceId: 'blive:desktop',
+      resourceId: createBliveMemoryResourceId(this.account?.uid),
     });
     this.memory = memory;
     const tools = createBliveTools({
@@ -333,6 +337,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
       }
       this.room = room;
       this.roomStartedAt = Date.now();
+      this.roomScorePolicy.reset();
       this.lastError = undefined;
       this.emitState();
       return room;
@@ -439,13 +444,11 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   }
 
   private handleThought(thought: BliveThought): void {
-    if (
-      this.mode !== 'autonomous' ||
-      thought.action !== 'explore' ||
-      Date.now() - this.roomStartedAt < ROOM_REVIEW_AFTER_MS
-    ) {
-      return;
-    }
+    if (this.mode !== 'autonomous') return;
+    const evaluatedAt = Date.now();
+    if (evaluatedAt - this.roomStartedAt < ROOM_REVIEW_AFTER_MS) return;
+    const decision = this.roomScorePolicy.evaluate({ ...thought, evaluatedAt });
+    if (!decision.shouldSwitch) return;
     setTimeout(() => void this.exploreRooms('not-interested').catch(() => undefined), 0);
   }
 
