@@ -1,3 +1,4 @@
+import { isVigiliaName } from './name.ts';
 import { initialVigiliaSnapshot, reduceVigilia } from './projection.ts';
 import { snapshotJson } from './serialize.ts';
 import type {
@@ -38,6 +39,12 @@ export class VigiliaJournal {
 
     this.recording = true;
     try {
+      if (type.startsWith('operation.')) {
+        const name = (data as { readonly name?: unknown }).name;
+        if (typeof name !== 'string' || !isVigiliaName(name)) {
+          throw new TypeError('Vigilia operation name must use kebab-case');
+        }
+      }
       const time = this.clock();
       if (!Number.isFinite(time) || Object.is(time, -0)) {
         throw new TypeError('Vigilia clock must return a finite JSON number');

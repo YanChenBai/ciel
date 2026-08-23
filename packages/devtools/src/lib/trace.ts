@@ -17,6 +17,7 @@ export interface VigiliaStep {
   readonly events: readonly AnyVigiliaEvent[];
   readonly id: string;
   readonly input?: unknown;
+  readonly label: string;
   readonly lane: VigiliaStepLane;
   readonly name: string;
   readonly output?: unknown;
@@ -46,7 +47,13 @@ export interface VigiliaPerceptRecord {
   readonly time: number;
 }
 
-export type VigiliaConversationEntryKind = 'asr' | 'model' | 'percept' | 'reading' | 'visual';
+export type VigiliaConversationEntryKind =
+  | 'asr'
+  | 'danmaku'
+  | 'model'
+  | 'percept'
+  | 'reading'
+  | 'visual';
 
 export interface VigiliaConversationEntry {
   readonly content?: unknown;
@@ -60,24 +67,31 @@ export interface VigiliaConversationEntry {
 export function buildVigiliaConversationEntries(
   events: readonly AnyVigiliaEvent[],
 ): readonly VigiliaConversationEntry[] {
-  return buildVigiliaThoughtRuns(events)
-    .flatMap(run => [
-      ...run.inputPercepts
-        .filter(percept => percept.perceptType.toLocaleLowerCase() !== 'sight')
-        .map(percept => perceptConversationEntry(run.id, percept)),
-      ...(run.output === undefined
-        ? []
-        : [
-            {
-              content: run.output,
-              id: `model:${run.id}`,
-              kind: 'model' as const,
-              label: 'MODEL',
-              metadata: `Final response${run.durationMs === undefined ? '' : ` · ${formatDuration(run.durationMs)}`}`,
-              time: run.completedAt ?? run.startedAt,
-            },
-          ]),
-    ])
+  return splitJournals(events)
+    .flatMap(journal =>
+      buildJournalThoughtRuns(journal).flatMap(run => [
+        ...run.inputPercepts
+          .filter(percept => percept.perceptType.toLocaleLowerCase() !== 'sight')
+          .map(percept => perceptConversationEntry(run.id, percept)),
+        ...composedVisionConversationEntries(journal, run),
+        ...run.steps.flatMap(step => {
+          const entry = danmakuConversationEntry(run.id, step);
+          return entry ? [entry] : [];
+        }),
+        ...(run.output === undefined
+          ? []
+          : [
+              {
+                content: run.output,
+                id: `model:${run.id}`,
+                kind: 'model' as const,
+                label: 'MODEL',
+                metadata: `Final response${run.durationMs === undefined ? '' : ` · ${formatDuration(run.durationMs)}`}`,
+                time: run.completedAt ?? run.startedAt,
+              },
+            ]),
+      ]),
+    )
     .sort((left, right) => left.time - right.time);
 }
 
@@ -87,38 +101,92 @@ export function buildVigiliaThoughtRuns(
   return splitJournals(events).flatMap(journal => buildJournalThoughtRuns(journal));
 }
 
-/** 将已经提交的转写和多帧合成事实转换为时间图上的即时信号。 */
+/** 将已经提交的转写区间和多帧合成事实转换为时间图信号。 */
 export function buildVigiliaSignalSteps(
   events: readonly AnyVigiliaEvent[],
 ): readonly VigiliaStep[] {
   const steps: VigiliaStep[] = [];
   for (const [journalIndex, journal] of splitJournals(events).entries()) {
+    const capturedCompositions = new Set<number>();
     for (const event of journal) {
       if (event.type === 'percept.appended' && event.data.perceptType.toLowerCase() === 'hearing') {
         const text = perceptText(event.data.content);
         if (text) {
           steps.push({
-            completedAt: event.time,
-            durationMs: 0,
+            completedAt: event.data.endAt,
+            durationMs: Math.max(0, event.data.endAt - event.data.startAt),
             events: [event],
             id: `asr:${journalIndex}:${event.sequence}`,
+            label: 'ASR Transcription',
             lane: 'asr' as const,
-            name: 'ASR transcription',
+            name: 'asr-transcription',
             output: text,
-            startedAt: event.time,
+            startedAt: event.data.startAt,
             status: 'completed' as const,
           });
         }
         continue;
       }
-      if (event.type === 'vision.composed') {
+      if (
+        event.type === 'operation.started' &&
+        event.data.category === 'sensory' &&
+        event.data.name === 'vision'
+      ) {
+        const settlement = journal.find(
+          candidate =>
+            (candidate.type === 'operation.completed' || candidate.type === 'operation.failed') &&
+            candidate.data.operationId === event.data.operationId,
+        );
+        const composition = journal.find(
+          candidate =>
+            candidate.type === 'vision.composed' &&
+            candidate.time >= event.time &&
+            candidate.time <= (settlement?.time ?? Number.POSITIVE_INFINITY),
+        );
+        if (composition?.type === 'vision.composed') capturedCompositions.add(composition.sequence);
+        steps.push({
+          ...(settlement
+            ? {
+                completedAt: settlement.time,
+                durationMs:
+                  settlement.type === 'operation.completed' ||
+                  settlement.type === 'operation.failed'
+                    ? settlement.data.durationMs
+                    : Math.max(0, settlement.time - event.time),
+              }
+            : {}),
+          events: [
+            event,
+            ...(composition ? [composition] : []),
+            ...(settlement ? [settlement] : []),
+          ],
+          id: `vision:${journalIndex}:${event.data.operationId}`,
+          label:
+            composition?.type === 'vision.composed'
+              ? `${composition.data.frameCount}-Frame Mosaic`
+              : 'Vision',
+          lane: 'vision' as const,
+          name: 'vision',
+          ...(composition?.type === 'vision.composed' ? { output: composition.data } : {}),
+          startedAt: event.time,
+          status:
+            settlement?.type === 'operation.failed'
+              ? ('failed' as const)
+              : settlement
+                ? ('completed' as const)
+                : ('running' as const),
+        });
+        continue;
+      }
+      if (event.type === 'vision.composed' && !capturedCompositions.has(event.sequence)) {
         steps.push({
           completedAt: event.time,
           durationMs: 0,
           events: [event],
           id: `vision:${journalIndex}:${event.sequence}`,
+          label: `${event.data.frameCount}-Frame Mosaic`,
           lane: 'vision' as const,
-          name: `${event.data.frameCount}-frame mosaic`,
+          name: 'vision-mosaic',
           output: event.data,
           startedAt: event.time,
           status: 'completed' as const,
@@ -176,7 +244,7 @@ function buildJournalThoughtRuns(events: readonly AnyVigiliaEvent[]): readonly V
             ? 'completed'
             : 'running',
       steps: steps.sort((left, right) => left.startedAt - right.startedAt),
-      trigger: start.data.trigger,
+      trigger: thinkName(start) ?? start.data.trigger,
     };
   });
 }
@@ -211,6 +279,7 @@ function createRootStep(
   start: Extract<AnyVigiliaEvent, { type: 'nucleus.think.started' }>,
   settlement: AnyVigiliaEvent | undefined,
 ): VigiliaStep {
+  const name = thinkName(start);
   const completed =
     settlement?.type === 'nucleus.think.completed' || settlement?.type === 'nucleus.think.failed'
       ? settlement
@@ -220,8 +289,9 @@ function createRootStep(
     ...(completed ? { completedAt: completed.time, durationMs: completed.data.durationMs } : {}),
     events: completed ? [start, completed] : [start],
     id: start.data.operationId,
+    label: name ? kebabCaseLabel(name) : 'Think',
     lane: 'nucleus',
-    name: `think · ${start.data.trigger}`,
+    name: name ?? 'think',
     ...(completed?.type === 'nucleus.think.completed'
       ? {
           output: {
@@ -242,6 +312,13 @@ function createRootStep(
   };
 }
 
+function thinkName(
+  start: Extract<AnyVigiliaEvent, { type: 'nucleus.think.started' }>,
+): string | undefined {
+  if (!('name' in start.data)) return undefined;
+  return typeof start.data.name === 'string' ? start.data.name : undefined;
+}
+
 function createOperationStep(
   start: Extract<AnyVigiliaEvent, { type: 'operation.started' }>,
   events: readonly AnyVigiliaEvent[],
@@ -260,6 +337,7 @@ function createOperationStep(
     events: completed ? [start, completed] : [start],
     id: start.data.operationId,
     ...(start.data.detail === undefined ? {} : { input: start.data.detail }),
+    label: kebabCaseLabel(start.data.name),
     lane: laneFor(start.data.category),
     name: start.data.name,
     ...(start.data.parentOperationId ? { parentId: start.data.parentOperationId } : {}),
@@ -290,6 +368,13 @@ function createOperationStep(
   };
 }
 
+function kebabCaseLabel(name: string): string {
+  return name
+    .split('-')
+    .map(word => `${word.charAt(0).toLocaleUpperCase()}${word.slice(1)}`)
+    .join(' ');
+}
+
 function laneFor(category: VigiliaObservationCategory): VigiliaStepLane {
   return category;
 }
@@ -310,16 +395,81 @@ function perceptConversationEntry(
     time: percept.time,
   };
   if (type === 'hearing') return { ...common, kind: 'asr', label: 'ASR' };
-  if (type === 'sight') {
-    return {
-      ...common,
-      content: '直播画面已采集',
-      kind: 'visual',
-      label: '视觉',
-    };
-  }
   if (type === 'reading') return { ...common, kind: 'reading', label: '文本' };
   return { ...common, kind: 'percept', label: '感知' };
+}
+
+function composedVisionConversationEntries(
+  events: readonly AnyVigiliaEvent[],
+  run: VigiliaThoughtRun,
+): readonly VigiliaConversationEntry[] {
+  const completedAt = run.completedAt ?? Number.POSITIVE_INFINITY;
+  return events.flatMap(event => {
+    if (
+      event.type !== 'vision.composed' ||
+      event.time < run.startedAt ||
+      event.time > completedAt
+    ) {
+      return [];
+    }
+    return [
+      {
+        content: { path: event.data.path, type: 'image' },
+        id: `vision:${run.id}:${event.sequence}`,
+        kind: 'visual' as const,
+        label: 'VISION',
+        metadata: `${event.data.frameCount}-Frame Mosaic · ${event.data.stimulus} / ${event.data.signal}`,
+        time: event.time,
+      },
+    ];
+  });
+}
+
+function danmakuConversationEntry(
+  runId: string,
+  step: VigiliaStep,
+): VigiliaConversationEntry | undefined {
+  if (step.lane !== 'tool' || step.name !== 'send-danmaku') return;
+  const input = nestedRecord(step.input, 'input');
+  if (input?.action !== 'send' || typeof input.content !== 'string' || !input.content.trim())
+    return;
+  const simulated = findBoolean(step.output, 'simulated');
+  const sent = findBoolean(step.output, 'sent');
+  const outcome =
+    step.status === 'failed'
+      ? '发送失败'
+      : simulated
+        ? '模拟发送'
+        : sent
+          ? '已发送'
+          : '已调用发送工具';
+  return {
+    content: input.content.trim(),
+    id: `danmaku:${runId}:${step.id}`,
+    kind: 'danmaku',
+    label: 'DANMAKU',
+    metadata: `Agent 弹幕 · ${outcome}`,
+    time: step.completedAt ?? step.startedAt,
+  };
+}
+
+function nestedRecord(value: unknown, key: string): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || !(key in value)) return;
+  const nested = (value as Record<string, unknown>)[key];
+  return nested && typeof nested === 'object' && !Array.isArray(nested)
+    ? (nested as Record<string, unknown>)
+    : undefined;
+}
+
+function findBoolean(value: unknown, key: string, depth = 0): boolean | undefined {
+  if (!value || typeof value !== 'object' || depth > 4) return;
+  if (key in value && typeof (value as Record<string, unknown>)[key] === 'boolean') {
+    return (value as Record<string, boolean>)[key];
+  }
+  for (const nested of Object.values(value)) {
+    const match = findBoolean(nested, key, depth + 1);
+    if (match !== undefined) return match;
+  }
 }
 
 function formatDuration(duration: number): string {

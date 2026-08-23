@@ -16,17 +16,20 @@ import { EpisodeArchive } from '#src/memory/episode-archive.ts';
 import { createMemoryTools } from '#src/memory/tool.ts';
 import { InMemoryPerceptStore } from '#src/percepts/index.ts';
 import type { Percept } from '#src/percepts/index.ts';
-import type { PerceptCheckout, PerceptStore } from '#src/percepts/index.ts';
+import type { PerceptCheckout, PerceptSnapshot, PerceptStore } from '#src/percepts/index.ts';
 import type { SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
+import { toVigiliaName } from '#src/vigilia/name.ts';
 
 import { normalizeNucleusOptions } from './options.ts';
 import type { NormalizedNucleusOptions } from './options.ts';
 import type {
   NucleusEventMap,
+  NucleusGenerationOptions,
   NucleusObservedOperationStarted,
   NucleusOperationCategory,
   NucleusOptions,
+  NucleusThinkOptions,
   NucleusThinkStarted,
 } from './types.ts';
 
@@ -66,7 +69,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private lastInputTokens = 0;
   private speechEndPending = false;
   private timer?: ReturnType<typeof setTimeout>;
-  private inFlight?: Promise<TOutput>;
+  private inFlight?: Promise<unknown>;
 
   constructor(options: NucleusOptions<TOutput>) {
     super();
@@ -101,23 +104,25 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       this.emit('archiveStarted', operation);
       this.clearTimer();
     });
-    this.modelAgent = this.createAgent();
+    this.modelAgent = this.createAgent(this.options);
   }
 
-  private createAgent(): NucleusAgent<TOutput> {
-    const tools = this.options.tools ?? {};
+  private createAgent<TGenerationOutput>(
+    options: NucleusGenerationOptions<TGenerationOutput>,
+  ): NucleusAgent<TGenerationOutput> {
+    const tools = options.tools ?? {};
     const memoryTools = createMemoryTools(this.options.memory);
     return new ToolLoopAgent<
       NucleusCallOptions,
       ToolSet,
       Record<string, unknown>,
-      Output.Output<TOutput>
+      Output.Output<TGenerationOutput>
     >({
-      model: this.options.model,
+      model: options.model,
       tools,
-      output: (this.options.output ?? Output.text()) as Output.Output<TOutput>,
-      ...(this.options.prepareStep ? { prepareStep: this.options.prepareStep } : {}),
-      ...(this.options.stopWhen ? { stopWhen: this.options.stopWhen } : {}),
+      output: (options.output ?? Output.text()) as Output.Output<TGenerationOutput>,
+      ...(options.prepareStep ? { prepareStep: options.prepareStep } : {}),
+      ...(options.stopWhen ? { stopWhen: options.stopWhen } : {}),
       prepareCall: ({ options: call, ...settings }) => {
         return {
           ...settings,
@@ -192,8 +197,14 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     }
   }
 
-  think(): Promise<TOutput> {
-    return this.requestThink('manual');
+  think(): Promise<TOutput>;
+  think<TRequestedOutput>(
+    options: NucleusThinkOptions<TRequestedOutput>,
+  ): Promise<TRequestedOutput>;
+  think<TRequestedOutput>(
+    options?: NucleusThinkOptions<TRequestedOutput>,
+  ): Promise<TOutput | TRequestedOutput> {
+    return options ? this.requestIndependentThink(options) : this.requestThink('manual');
   }
 
   async getContext(createdAt: Date = new Date()): Promise<ContextSnapshot> {
@@ -210,10 +221,29 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
 
   private requestThink(trigger: ContextTrigger): Promise<TOutput> {
     if (this.inFlight) {
-      return this.inFlight;
+      return this.inFlight.then(
+        () => this.requestThink(trigger),
+        () => this.requestThink(trigger),
+      );
     }
     this.clearTimer();
     const pending = this.execute(trigger);
+    this.inFlight = pending;
+    void pending.then(
+      () => this.finish(pending),
+      () => this.finish(pending),
+    );
+    return pending;
+  }
+
+  private async requestIndependentThink<TRequestedOutput>(
+    options: NucleusThinkOptions<TRequestedOutput>,
+  ): Promise<TRequestedOutput> {
+    while (this.inFlight) {
+      await this.inFlight.catch(() => undefined);
+    }
+    this.clearTimer();
+    const pending = this.executeIndependent(options);
     this.inFlight = pending;
     void pending.then(
       () => this.finish(pending),
@@ -264,70 +294,10 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
           }),
       );
       const estimatedImageTokens = await this.context.estimateInputTokens(context.data);
-      const toolOperations = new Map<string, NucleusObservedOperationStarted>();
-      const stepOperations = new Map<number, NucleusObservedOperationStarted>();
-      const result = await this.observeOperation(
+      const result = await this.generate(
         operation.operationId,
-        'model',
-        'generate',
-        async () => {
-          try {
-            return await this.modelAgent.generate({
-              messages: [...modelContext.messages],
-              options: { input, context: modelContext },
-              onStepStart: step => {
-                stepOperations.set(
-                  step.stepNumber,
-                  this.startOperation(operation.operationId, 'model', `step:${step.stepNumber}`),
-                );
-              },
-              onStepEnd: step => {
-                const stepOperation = stepOperations.get(step.stepNumber);
-                if (!stepOperation) return;
-                stepOperations.delete(step.stepNumber);
-                this.completeOperation(stepOperation, {
-                  callId: step.callId,
-                  finishReason: step.finishReason,
-                  reasoning: step.reasoningText,
-                  text: step.text,
-                  usage: step.usage,
-                });
-              },
-              onToolExecutionStart: event => {
-                const toolOperation = this.startOperation(
-                  operation.operationId,
-                  'tool',
-                  event.toolCall.toolName,
-                  {
-                    input: event.toolCall.input,
-                    toolCallId: event.toolCall.toolCallId,
-                  },
-                );
-                toolOperations.set(event.toolCall.toolCallId, toolOperation);
-              },
-              onToolExecutionEnd: event => {
-                const toolOperation = toolOperations.get(event.toolCall.toolCallId);
-                if (!toolOperation) return;
-                toolOperations.delete(event.toolCall.toolCallId);
-                if (event.toolOutput.type === 'tool-error') {
-                  this.failOperation(toolOperation, event.toolOutput.error);
-                  return;
-                }
-                this.completeOperation(toolOperation, {
-                  output: event.toolOutput,
-                  toolCallId: event.toolCall.toolCallId,
-                });
-              },
-            });
-          } catch (error) {
-            for (const child of [...stepOperations.values(), ...toolOperations.values()]) {
-              this.failOperation(child, error);
-            }
-            stepOperations.clear();
-            toolOperations.clear();
-            throw error;
-          }
-        },
+        this.modelAgent,
+        input,
         modelContext,
       );
       this.perceptStore.commit(checkout);
@@ -355,6 +325,161 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       this.emit('error', normalized);
       throw normalized;
     }
+  }
+
+  private async executeIndependent<TRequestedOutput>(
+    options: NucleusThinkOptions<TRequestedOutput>,
+  ): Promise<TRequestedOutput> {
+    const snapshot = this.perceptStore.snapshot(new Date(), this.options.context.perceptWindow);
+    const firstSequence = snapshot.records.at(0)?.sequence;
+    const throughSequence = snapshot.records.at(-1)?.sequence ?? 0;
+    const operation: NucleusThinkStarted = {
+      fromSequence: firstSequence === undefined ? throughSequence : Math.max(0, firstSequence - 1),
+      name: toVigiliaName(options.name, 'requested-think'),
+      operationId: randomUUID(),
+      startedAt: Date.now(),
+      throughSequence,
+      trigger: 'requested',
+    };
+    this.emit('thinkStarted', operation);
+    try {
+      const [longTermMemory, recentMemory] = await Promise.all([
+        this.observeOperation(operation.operationId, 'memory', 'read-long-term', () =>
+          this.options.memory.readLongTerm(),
+        ),
+        this.observeOperation(operation.operationId, 'memory', 'read-recent', () =>
+          this.options.memory.readRecent(),
+        ),
+      ]);
+      const context = await this.observeOperation(
+        operation.operationId,
+        'context',
+        'resolve-percepts',
+        () => this.resolveSnapshot(snapshot),
+      );
+      const input: ContextInput = { ...context, trigger: 'requested' };
+      const prompt =
+        typeof options.prompt === 'string'
+          ? () => ({ role: 'user' as const, content: options.prompt as string })
+          : options.prompt;
+      const modelContext = await this.observeOperation(
+        operation.operationId,
+        'context',
+        'build-model-request',
+        () =>
+          this.context.build({
+            input,
+            internalSystem: [this.soul, this.identity, this.agent],
+            longTermMemory,
+            recentMemory,
+            system: options.system,
+            messages: [prompt],
+          }),
+      );
+      const agent = this.createAgent<TRequestedOutput>({
+        model: this.options.model,
+        output: options.output,
+        ...(options.prepareStep ? { prepareStep: options.prepareStep } : {}),
+        ...(options.stopWhen ? { stopWhen: options.stopWhen } : {}),
+        ...(options.tools ? { tools: options.tools } : {}),
+      });
+      const estimatedImageTokens = await this.context.estimateInputTokens(context.data);
+      const result = await this.generate(operation.operationId, agent, input, modelContext);
+      this.lastInputTokens = result.usage.inputTokens ?? estimatedImageTokens;
+      const output = result.output as TRequestedOutput;
+      this.emit('thinkCompleted', {
+        ...operation,
+        durationMs: Date.now() - operation.startedAt,
+        inputTokens: result.usage.inputTokens,
+        output,
+        outputTokens: result.usage.outputTokens,
+        reasoning: result.reasoningText,
+      });
+      return output;
+    } catch (error) {
+      const normalized = toError(error);
+      this.emit('thinkFailed', {
+        ...operation,
+        durationMs: Date.now() - operation.startedAt,
+        error: normalized,
+      });
+      this.emit('error', normalized);
+      throw normalized;
+    }
+  }
+
+  private generate<TGenerationOutput>(
+    operationId: string,
+    agent: NucleusAgent<TGenerationOutput>,
+    input: ContextInput,
+    modelContext: ModelContext,
+  ) {
+    const toolOperations = new Map<string, NucleusObservedOperationStarted>();
+    const stepOperations = new Map<number, NucleusObservedOperationStarted>();
+    return this.observeOperation(
+      operationId,
+      'model',
+      'generate',
+      async () => {
+        try {
+          return await agent.generate({
+            messages: [...modelContext.messages],
+            options: { input, context: modelContext },
+            onStepStart: step => {
+              const name =
+                step.stepNumber === 0 ? 'choose-response-or-tools' : 'continue-with-tool-results';
+              stepOperations.set(step.stepNumber, this.startOperation(operationId, 'model', name));
+            },
+            onStepEnd: step => {
+              const stepOperation = stepOperations.get(step.stepNumber);
+              if (!stepOperation) return;
+              stepOperations.delete(step.stepNumber);
+              this.completeOperation(stepOperation, {
+                callId: step.callId,
+                finishReason: step.finishReason,
+                reasoning: step.reasoningText,
+                text: step.text,
+                usage: step.usage,
+              });
+            },
+            onToolExecutionStart: event => {
+              const toolOperation = this.startOperation(
+                operationId,
+                'tool',
+                toVigiliaName(event.toolCall.toolName, 'tool'),
+                {
+                  input: event.toolCall.input,
+                  toolCallId: event.toolCall.toolCallId,
+                  toolName: event.toolCall.toolName,
+                },
+              );
+              toolOperations.set(event.toolCall.toolCallId, toolOperation);
+            },
+            onToolExecutionEnd: event => {
+              const toolOperation = toolOperations.get(event.toolCall.toolCallId);
+              if (!toolOperation) return;
+              toolOperations.delete(event.toolCall.toolCallId);
+              if (event.toolOutput.type === 'tool-error') {
+                this.failOperation(toolOperation, event.toolOutput.error);
+                return;
+              }
+              this.completeOperation(toolOperation, {
+                output: event.toolOutput,
+                toolCallId: event.toolCall.toolCallId,
+              });
+            },
+          });
+        } catch (error) {
+          for (const child of [...stepOperations.values(), ...toolOperations.values()]) {
+            this.failOperation(child, error);
+          }
+          stepOperations.clear();
+          toolOperations.clear();
+          throw error;
+        }
+      },
+      modelContext,
+    );
   }
 
   private async observeOperation<T>(
@@ -411,7 +536,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     return normalized;
   }
 
-  private finish(pending: Promise<TOutput>): void {
+  private finish(pending: Promise<unknown>): void {
     if (this.inFlight !== pending) {
       return;
     }
@@ -467,6 +592,16 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     const data = await this.context.resolveInputData(checkout.records, recent);
     return {
       createdAt: checkout.createdAt,
+      data,
+      definitions: this.context.definitions,
+    };
+  }
+
+  private async resolveSnapshot(snapshot: PerceptSnapshot): Promise<ContextSnapshot> {
+    const recentTexts = snapshot.records.filter(record => record.content.type === 'text');
+    const data = await this.context.resolveInputData(snapshot.records, recentTexts);
+    return {
+      createdAt: snapshot.createdAt,
       data,
       definitions: this.context.definitions,
     };

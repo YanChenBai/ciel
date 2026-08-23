@@ -4,9 +4,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { Output } from 'ai';
 import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+import { z } from 'zod';
 
 import type { ContextInput } from '#src/context/index.ts';
 import { Memory } from '#src/memory/index.ts';
@@ -224,6 +226,40 @@ describe('Nucleus', () => {
     expect(prompt).toContain('用户喜欢简洁回答。');
     expect(prompt).toContain('# 最近经历');
     expect(prompt).toContain('用户此前正在检查直播。');
+  });
+
+  it('独立 think 读取当前感知但不消费自动思考的 checkout', async () => {
+    const stimulus = new TestStimulus();
+    let calls = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        calls += 1;
+        return response(calls === 1 ? '{"roomId":123,"reason":"值得观察"}' : '已看到当前直播内容');
+      },
+    });
+    const nucleus = new Nucleus({ memory: await createMemory(), model });
+    const normalThoughtInputs: ContextInput[] = [];
+    nucleus.register(stimulus);
+    nucleus.ingest(stimulus, createReading('当前正在唱歌', Date.now()));
+    nucleus.on('thought', (_output, input) => normalThoughtInputs.push(input));
+
+    await expect(
+      nucleus.think({
+        name: 'select-live-room',
+        output: Output.object({
+          schema: z.object({ reason: z.string(), roomId: z.number().int().positive() }),
+        }),
+        prompt: '选择一个直播间。',
+      }),
+    ).resolves.toEqual({ reason: '值得观察', roomId: 123 });
+    expect(normalThoughtInputs).toEqual([]);
+
+    await expect(nucleus.think()).resolves.toBe('已看到当前直播内容');
+    expect(normalThoughtInputs[0]?.data.map(record => record.content)).toContainEqual({
+      text: '当前正在唱歌',
+      type: 'text',
+    });
+    expect(model.doGenerateCalls).toHaveLength(2);
   });
 
   it('图片进入主思考与独立的经历归档，但原始痕迹仍可读取', async () => {

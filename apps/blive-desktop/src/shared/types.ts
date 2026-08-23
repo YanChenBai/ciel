@@ -9,12 +9,21 @@ export interface BilibiliAccount {
   readonly uid: number;
 }
 
-export interface BliveStartOptions {
-  readonly areaUrl?: string;
-  readonly mode: BliveMode;
-  readonly roomId: number;
+interface BliveStartCommonOptions {
   readonly danmakuDelivery: DanmakuDelivery;
 }
+
+export type BliveStartOptions =
+  | (BliveStartCommonOptions & {
+      readonly mode: 'autonomous';
+      readonly areaUrl: string;
+      readonly roomId?: never;
+    })
+  | (BliveStartCommonOptions & {
+      readonly mode: 'standard';
+      readonly areaUrl?: never;
+      readonly roomId: number;
+    });
 
 export interface LiveRoomInfo {
   readonly areaName: string;
@@ -41,12 +50,11 @@ export interface LiveRoomCandidate {
 }
 
 export interface BliveThought {
-  readonly action: 'stay' | 'switch';
+  readonly action: 'explore' | 'stay';
   readonly confidence: number;
   readonly evidence: readonly string[];
   readonly reason: string;
   readonly score: number;
-  readonly targetRoomId?: number;
 }
 
 export type LivePageEvent =
@@ -57,6 +65,7 @@ export type LivePageEvent =
 
 export interface BliveDesktopState {
   readonly account?: BilibiliAccount;
+  readonly assetBaseUrl?: string;
   readonly connected: boolean;
   readonly danmakuDelivery: DanmakuDelivery;
   readonly error?: string;

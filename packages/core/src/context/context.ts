@@ -21,6 +21,7 @@ import type { VisionProjector } from './vision.ts';
 
 const TRIGGER_NAMES = {
   manual: '手动触发',
+  requested: '主动思考',
   'speech-end': '语音结束',
   interval: '主动思考',
 } as const;

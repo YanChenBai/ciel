@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 describe('CielBridge assets', () => {
-  it('reads an image by relative path and rejects traversal', async () => {
+  it('reads an encoded relative image API path and rejects absolute paths and traversal', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'ciel-bridge-'));
     temporaryDirectories.push(root);
     await writeFile(path.join(root, 'mosaic.jpg'), Buffer.from('image'));
@@ -29,6 +29,12 @@ describe('CielBridge assets', () => {
     const response = await bridge.app.handle(new Request('http://localhost/assets/mosaic.jpg'));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('image');
+
+    const rootedPath = path.resolve(root, 'mosaic.jpg').replaceAll('\\', '/');
+    const rooted = await bridge.app.handle(
+      new Request(`http://localhost/assets/${encodeURIComponent(rootedPath)}`),
+    );
+    expect(rooted.status).toBe(404);
 
     const traversal = await bridge.app.handle(
       new Request('http://localhost/assets/%2e%2e/secret.jpg'),

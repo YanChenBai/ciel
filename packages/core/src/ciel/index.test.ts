@@ -1,18 +1,24 @@
 // @env node
 
+import path from 'node:path';
+
+import { Output } from 'ai';
 import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+import { z } from 'zod';
 
 import { Memory } from '#src/memory/index.ts';
-import { Reading } from '#src/percepts/index.ts';
+import { Reading, Sight } from '#src/percepts/index.ts';
 import { Echo, Photon, Script } from '#src/signals/index.ts';
 import { Stimulus } from '#src/stimulus/index.ts';
+import type { VigiliaOptions } from '#src/vigilia/index.ts';
 
 const processorState = vi.hoisted(() => ({
   closes: 0,
   echoes: [] as unknown[],
   photons: [] as unknown[],
   sensusSignals: [] as (readonly unknown[])[],
+  sightPath: undefined as string | undefined,
 }));
 
 vi.mock('#sensus', async () => {
@@ -42,8 +48,20 @@ vi.mock('#sensus', async () => {
           this.emit('speechstart', (signal as Echo).startAt);
           this.emit('speechend', (signal as Echo).endAt);
         } else if (value.type === 'photon') {
+          const photon = signal as Photon;
           await Promise.resolve();
           processorState.photons.push(signal);
+          if (processorState.sightPath) {
+            this.emit(
+              'data',
+              new Sight({
+                endAt: new Date(1),
+                originSignal: photon.constructor as typeof Photon,
+                path: processorState.sightPath,
+                startAt: new Date(0),
+              }),
+            );
+          }
         } else if (value.type === 'script') {
           const script = signal as Script;
           this.emit(
@@ -88,6 +106,11 @@ async function createMemory(): Promise<Memory> {
 }
 
 afterEach(async () => {
+  processorState.closes = 0;
+  processorState.echoes.length = 0;
+  processorState.photons.length = 0;
+  processorState.sensusSignals.length = 0;
+  processorState.sightPath = undefined;
   await Promise.all(memories.splice(0).map(memory => memory.close()));
 });
 
@@ -105,13 +128,17 @@ function createModel(text = '保持安静'): MockLanguageModelV3 {
   });
 }
 
-async function createCiel(stimulus: TestStimulus): Promise<InstanceType<typeof Ciel>> {
+async function createCiel(
+  stimulus: TestStimulus,
+  vigilia?: VigiliaOptions,
+): Promise<InstanceType<typeof Ciel>> {
   return new Ciel(stimulus, {
     nucleus: {
       context: { perceptWindow: Number.MAX_SAFE_INTEGER },
       memory: await createMemory(),
       model: createModel(),
     },
+    ...(vigilia ? { vigilia } : {}),
   });
 }
 
@@ -161,6 +188,61 @@ class TestStimulus extends Stimulus<typeof testSignals> {
 }
 
 describe('Ciel', () => {
+  it('通过 think 执行可观测的独立结构化思考', async () => {
+    const memory = await createMemory();
+    const model = createModel('{"roomId":123,"reason":"值得先观察"}');
+    const ciel = new Ciel(new TestStimulus(), {
+      nucleus: { memory, model, system: ['房内默认互动指令'] },
+      vigilia: { capture: { result: true } },
+    });
+    const thoughts: unknown[] = [];
+    ciel.on('thought', output => thoughts.push(output));
+
+    const result = await ciel.think({
+      name: 'select-live-room',
+      output: Output.object({
+        schema: z.object({ reason: z.string(), roomId: z.number().int().positive() }),
+      }),
+      prompt: '从候选中选择一个直播间。',
+      system: ['只能选择真实候选。'],
+    });
+
+    expect(result).toEqual({ reason: '值得先观察', roomId: 123 });
+    expect(thoughts).toEqual([]);
+    expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).toContain('只能选择真实候选');
+    expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).not.toContain('房内默认互动指令');
+    const events = ciel.vigilia.events({ limit: 100 });
+    expect(events.find(event => event.type === 'nucleus.think.started')?.data).toMatchObject({
+      name: 'select-live-room',
+      trigger: 'requested',
+    });
+    expect(events.find(event => event.type === 'nucleus.think.completed')?.data).toMatchObject({
+      name: 'select-live-room',
+      output: { reason: '值得先观察', roomId: 123 },
+      trigger: 'requested',
+    });
+  });
+
+  it('stores captured Sight paths relative to the Vigilia asset root', async () => {
+    const assetRoot = path.resolve('.ciel-data');
+    processorState.sightPath = path.join(assetRoot, 'sights', 'frame.jpg');
+    const ciel = await createCiel(new TestStimulus(), {
+      assetRoot,
+      capturePerceptContent: true,
+    });
+
+    await ciel.start();
+    await ciel.stop();
+
+    const sight = ciel.vigilia
+      .events({ limit: 100 })
+      .find(
+        (event): event is Extract<typeof event, { type: 'percept.appended' }> =>
+          event.type === 'percept.appended' && event.data.perceptType === 'sight',
+      );
+    expect(sight?.data.content).toEqual({ path: 'sights/frame.jpg', type: 'image' });
+  });
+
   it('discovers signals and routes emitted instances to automatic processors', async () => {
     const stimulus = new TestStimulus();
     const readings: Reading[] = [];
@@ -206,6 +288,21 @@ describe('Ciel', () => {
       ]),
     );
     expect(events.map(event => event.sequence)).toEqual(events.map((_, index) => index + 1));
+    const operationNames = events.flatMap(event =>
+      event.type === 'operation.started' ||
+      event.type === 'operation.completed' ||
+      event.type === 'operation.failed'
+        ? [event.data.name]
+        : [],
+    );
+    expect(operationNames.every(name => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name))).toBe(true);
+    expect(operationNames).toEqual(
+      expect.arrayContaining(['generate', 'choose-response-or-tools']),
+    );
+    expect(events.find(event => event.type === 'percept.appended')?.data).toMatchObject({
+      endAt: 0,
+      startAt: 0,
+    });
     expect(ciel.vigilia.snapshot()).toMatchObject({
       activeOperations: [],
       state: 'idle',

@@ -49,6 +49,7 @@ export class VigiliaOpenTelemetry {
         break;
       case 'nucleus.think.started':
         this.start(event.data.operationId, 'ciel.nucleus.think', event.time, {
+          ...(event.data.name ? { 'ciel.think.name': event.data.name } : {}),
           'ciel.think.trigger': event.data.trigger,
           'ciel.percept.from_sequence': event.data.fromSequence,
           'ciel.percept.through_sequence': event.data.throughSequence,

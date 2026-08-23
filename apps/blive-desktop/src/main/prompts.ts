@@ -32,12 +32,11 @@ export const COMMON_BLIVE_PROMPT = definePrompt(`
 
 send_danmaku 执行完成后，只输出一个原始 JSON 对象，不要使用 Markdown 代码块、解释文字或额外字段：
 
-- action：stay 或 switch；标准模式只能是 stay。
+- action：stay 或 explore；标准模式只能是 stay。
 - confidence：0～1 的数字。
 - evidence：最多 5 条字符串数组。
 - reason：本轮最终判断，必须与 send_danmaku 的真实结果一致。
 - score：0～100 的数字。
-- targetRoomId：仅自主模式决定 switch 时填写，必须来自 list_live_rooms 的候选；其他情况省略。
 `);
 
 export const STANDARD_MODE_PROMPT = definePrompt(`
@@ -51,11 +50,24 @@ export const AUTONOMOUS_MODE_PROMPT = definePrompt(`
 
 你可以判断当前直播间是否值得继续停留。刚进入且证据不足时先观察，不要因为短暂无语音或单次无聊片段立即离开。
 
-- 需要比较其他直播间时调用 list_live_rooms，候选必须来自工具结果。
-- list_live_rooms 使用逻辑页码；page=1 从分区顶部重置，hasMore=true 时继续调用 page=2、page=3 获取无限滚动后的下一批候选。
 - score 以 0～100 评估当前内容的活跃度、新鲜度、可理解性、互动价值和兴趣匹配。
-- 只有已经达到允许切换时间，且当前房间持续缺乏价值，或真实候选明显更合适时，才返回 switch。
-- 切换由桌面控制器在本轮思考结束后执行；不要尝试停止当前运行时。
+- 只有已经达到允许切换时间，且当前房间持续缺乏价值或明显不再感兴趣时，才返回 explore。
+- explore 表示结束对当前直播间的停留，由桌面控制器重新搜索并选择新的直播间。
+`);
+
+export const EXPLORE_LIVE_ROOMS_PROMPT = definePrompt(`
+# 自主探索直播间
+
+你正在为自主观看模式搜索下一个值得进入的直播间。
+
+- 必须先调用 list_live_rooms，从 page=1 获取当前真实候选。
+- 只能从本次工具返回的候选中选择，不得编造房间号。
+- 结合主播名、标题、当前兴趣与近期经历，选择最值得进一步观察、最可能产生自然互动内容的房间。
+- 不要选择任务输入中标记为已经不感兴趣的当前房间。
+- 确定后必须调用 open_live_room 真正打开该房间，不要只在文本中声明选择。
+- open_live_room 成功后，用一句简短文本说明已进入哪个直播间。工具执行结果是唯一权威事实。
+
+不要在最终文本中另行编造或更改房间号。
 `);
 
 export function createRoomContextMessage(input: {

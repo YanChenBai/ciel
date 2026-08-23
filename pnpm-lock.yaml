@@ -70,6 +70,9 @@ importers:
       '@ciels/devtools':
         specifier: workspace:*
         version: link:../../packages/devtools
+      '@ciels/vigilia-bridge':
+        specifier: workspace:*
+        version: link:../../packages/bridge
       '@lucide/vue':
         specifier: ^1.31.0
         version: 1.31.0(vue@3.6.0-rc.4(typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2))

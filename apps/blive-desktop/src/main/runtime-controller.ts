@@ -4,9 +4,12 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { BilibiliLive, createBliveAI } from '@ciels/blive';
+import { createBliveAI } from '@ciels/blive';
 import { Ciel, Memory } from '@ciels/core';
 import type { AnyVigiliaEvent, VigiliaSnapshot } from '@ciels/core';
+import { createBridge } from '@ciels/vigilia-bridge';
+import type { CielBridge } from '@ciels/vigilia-bridge';
+import { Output } from 'ai';
 import type { BrowserWindow } from 'electron';
 import { z } from 'zod';
 
@@ -28,14 +31,16 @@ import {
 } from './constants.ts';
 import { DanmakuHistory } from './danmaku-history.ts';
 import type { LivePage } from './live-page.ts';
+import { BilibiliLiveSession } from './live-session.ts';
 import {
   AUTONOMOUS_MODE_PROMPT,
   COMMON_BLIVE_PROMPT,
   createRoomContextMessage,
+  EXPLORE_LIVE_ROOMS_PROMPT,
   STANDARD_MODE_PROMPT,
 } from './prompts.ts';
 import { createToolCompatibleObjectOutput } from './tool-compatible-output.ts';
-import { createBliveTools } from './tools.ts';
+import { createBliveTools, createExploreTools } from './tools.ts';
 
 interface RuntimeControllerEvents {
   state: [BliveDesktopState];
@@ -43,13 +48,16 @@ interface RuntimeControllerEvents {
 }
 
 const thoughtSchema = z.object({
-  action: z.enum(['stay', 'switch']),
+  action: z.enum(['explore', 'stay']),
   confidence: z.number().min(0).max(1),
   evidence: z.array(z.string()).max(5),
   reason: z.string(),
   score: z.number().min(0).max(100),
-  targetRoomId: z.number().int().positive().optional(),
 });
+const VIGILIA_BRIDGE_HOST = '127.0.0.1';
+const VIGILIA_BRIDGE_PORT = 3210;
+const VIGILIA_ASSET_BASE_URL = `http://${VIGILIA_BRIDGE_HOST}:${VIGILIA_BRIDGE_PORT}/assets/`;
+const EXPLORE_RETRY_AFTER_MS = 10_000;
 
 export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   private readonly catalog = new AreaCatalog();
@@ -59,17 +67,20 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   private readonly userDataPath: string;
   private areaUrl?: string;
   private account?: BliveDesktopState['account'];
+  private bridge?: CielBridge;
   private ciel?: Ciel<BliveThought>;
   private events: AnyVigiliaEvent[] = [];
+  private exploring = false;
+  private exploreRetryTimer?: ReturnType<typeof setTimeout>;
   private lastCandidates = new Set<number>();
   private lastError?: string;
   private mode: BliveMode = 'standard';
   private danmakuDelivery: BliveStartOptions['danmakuDelivery'] = 'simulate';
   private memory?: Memory;
+  private liveSession?: BilibiliLiveSession;
   private room?: LiveRoomInfo;
   private roomStartedAt = 0;
   private snapshot: VigiliaSnapshot = emptySnapshot();
-  private switching = false;
   private unsubscribeVigilia?: () => void;
 
   constructor(options: { readonly livePage: LivePage; readonly userDataPath: string }) {
@@ -92,6 +103,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   state(): BliveDesktopState {
     return {
       ...(this.account ? { account: this.account } : {}),
+      ...(this.bridge ? { assetBaseUrl: VIGILIA_ASSET_BASE_URL } : {}),
       connected: true,
       danmakuDelivery: this.danmakuDelivery,
       ...(this.lastError ? { error: this.lastError } : {}),
@@ -110,21 +122,41 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
     this.danmakuDelivery = options.danmakuDelivery;
     this.areaUrl = options.areaUrl?.trim() || undefined;
     this.lastError = undefined;
+    this.events = [];
+    this.snapshot = emptySnapshot();
     try {
-      await this.startRoom(options.roomId);
+      await this.startRuntime();
+      if (options.mode === 'autonomous') {
+        await this.exploreRooms('initial').catch(() => undefined);
+        return;
+      }
+      await this.openRoom(options.roomId, '打开用户指定的直播间');
     } catch (error) {
       const normalized = formatStartError(error);
+      await this.stop();
       this.reportError(normalized);
       throw normalized;
     }
   }
 
   async stop(): Promise<void> {
+    const bridge = this.bridge;
+    this.bridge = undefined;
     const ciel = this.ciel;
     this.ciel = undefined;
+    this.exploring = false;
+    if (this.exploreRetryTimer) clearTimeout(this.exploreRetryTimer);
+    this.exploreRetryTimer = undefined;
+    const memory = this.memory;
+    this.memory = undefined;
+    this.liveSession = undefined;
     this.unsubscribeVigilia?.();
     this.unsubscribeVigilia = undefined;
+    await bridge?.stop().catch(error => this.reportError(error));
     if (ciel) await ciel.stop().catch(error => this.reportError(error));
+    await memory?.close().catch(error => this.reportError(error));
+    this.room = undefined;
+    this.roomStartedAt = 0;
     this.emitState();
   }
 
@@ -145,34 +177,27 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   async close(): Promise<void> {
     await this.stop();
     this.catalog.close();
-    await this.memory?.close();
-    this.memory = undefined;
     this.removeAllListeners();
   }
 
-  private async startRoom(requestedRoomId: number): Promise<void> {
+  private async startRuntime(): Promise<void> {
     assertAurisModels();
-    const room = await fetchLiveRoomInfo(requestedRoomId);
-    if (!room.live) throw new Error(`直播间 ${room.roomId} 当前未开播`);
     const ffmpegPath = process.env.BLIVE_FFMPEG_PATH?.trim();
-    const live = new BilibiliLive({
-      roomId: room.roomId,
-      ...(ffmpegPath ? { ffmpegPath } : {}),
-    });
+    const liveSession = new BilibiliLiveSession(ffmpegPath);
+    this.liveSession = liveSession;
     const { embedder, model } = createBliveAI();
-    this.memory ??= new Memory({
+    const memory = new Memory({
       embedder,
       model,
       path: join(this.userDataPath, 'memory.db'),
       resourceId: 'blive:desktop',
     });
+    this.memory = memory;
     const tools = createBliveTools({
-      autonomous: this.mode === 'autonomous',
-      listLiveRooms: (page, limit) => this.listLiveRooms(page, limit),
       sendDanmaku: content => this.sendDanmaku(content),
       simulateDanmaku: this.danmakuDelivery === 'simulate',
     });
-    const ciel = new Ciel<BliveThought>(live, {
+    const ciel = new Ciel<BliveThought>(liveSession, {
       vigilia: {
         assetRoot: process.env.CIEL_DATA_DIR,
         capturePerceptContent: true,
@@ -189,7 +214,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
       nucleus: {
         context: { maxImages: 9, perceptWindow: 60_000 },
         maxThinkInterval: 60_000,
-        memory: this.memory,
+        memory,
         messages: [() => ({ role: 'user', content: this.createDynamicContext() })],
         minThinkInterval: 10_000,
         model,
@@ -199,8 +224,8 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
           );
           if (interactionResolved) {
             return {
-              activeTools: this.mode === 'autonomous' ? ['list_live_rooms'] : [],
-              toolChoice: 'auto',
+              activeTools: [],
+              toolChoice: 'none',
             };
           }
           return {
@@ -231,39 +256,64 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
       this.reportError(error);
     });
     ciel.on('thought', thought => this.handleThought(thought));
-    live.onStderr(message => {
+    liveSession.onStderr(message => {
       ffmpegErrors.push(message);
       if (ffmpegErrors.length > 4) ffmpegErrors.shift();
     });
-    live.onClose((code, signal) => {
-      if (code === 0 || this.ciel !== ciel) return;
-      const normalizedCode = normalizeWindowsExitCode(code);
+    liveSession.onError(error => this.reportError(error));
+    liveSession.onClose(event => {
+      if (event.expected || event.code === 0 || this.ciel !== ciel) return;
+      const normalizedCode = normalizeWindowsExitCode(event.code);
       const detail = ffmpegErrors.at(-1);
       this.reportError(
         new Error(
-          `FFmpeg 异常退出（code=${String(normalizedCode)}, signal=${String(signal)}）${detail ? `：${detail}` : ''}`,
+          `FFmpeg 异常退出（room=${event.roomId}, code=${String(normalizedCode)}, signal=${String(event.signal)}）${detail ? `：${detail}` : ''}`,
         ),
       );
-      setTimeout(() => {
-        if (this.ciel === ciel) void this.stop();
-      }, 0);
+      if (this.mode === 'autonomous') {
+        setTimeout(() => void this.exploreRooms('stream-ended').catch(() => undefined), 0);
+      }
     });
+    let bridge: CielBridge | undefined;
     try {
-      await this.livePage.open(room.roomId);
       await ciel.start();
-      this.room = room;
-      this.roomStartedAt = Date.now();
-      this.lastCandidates.clear();
+      bridge = createBridge(ciel).listen({
+        hostname: VIGILIA_BRIDGE_HOST,
+        port: VIGILIA_BRIDGE_PORT,
+      });
       this.ciel = ciel;
+      this.bridge = bridge;
       this.snapshot = ciel.vigilia.snapshot();
       this.unsubscribeVigilia = unsubscribeVigilia;
       this.emitState();
     } catch (error) {
       unsubscribeVigilia();
+      await bridge?.stop();
+      this.bridge = undefined;
+      if (this.memory === memory) this.memory = undefined;
+      await memory.close().catch(closeError => this.reportError(closeError));
+      this.liveSession = undefined;
       this.room = undefined;
       this.snapshot = emptySnapshot();
       throw formatStartError(error);
     }
+  }
+
+  private async openRoom(requestedRoomId: number, _reason: string): Promise<LiveRoomInfo> {
+    const liveSession = this.liveSession;
+    if (!liveSession || !this.ciel) throw new Error('直播运行时尚未启动');
+    if (!this.lastCandidates.has(requestedRoomId) && this.mode === 'autonomous') {
+      throw new Error(`不能打开本次探索候选之外的直播间：${requestedRoomId}`);
+    }
+    const room = await fetchLiveRoomInfo(requestedRoomId);
+    if (!room.live) throw new Error(`直播间 ${room.roomId} 当前未开播`);
+    await this.livePage.open(room.roomId);
+    await liveSession.open(room.roomId);
+    this.room = room;
+    this.roomStartedAt = Date.now();
+    this.lastError = undefined;
+    this.emitState();
+    return room;
   }
 
   private createDynamicContext(): string {
@@ -280,38 +330,94 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
   private async listLiveRooms(page: number, limit: number) {
     if (!this.areaUrl) throw new Error('自主模式尚未配置分区 URL');
     const result = await this.catalog.list(this.areaUrl, page, limit);
-    for (const candidate of result.candidates) this.lastCandidates.add(candidate.roomId);
+    if (page === 1) this.lastCandidates.clear();
+    const candidates = result.candidates.filter(item => item.roomId !== this.room?.roomId);
+    for (const candidate of candidates) this.lastCandidates.add(candidate.roomId);
     return {
       ...result,
-      candidates: result.candidates.filter(item => item.roomId !== this.room?.roomId),
+      candidates,
     };
+  }
+
+  private async exploreRooms(reason: 'initial' | 'live-ended' | 'not-interested' | 'stream-ended') {
+    const ciel = this.ciel;
+    if (!ciel || this.mode !== 'autonomous') return;
+    if (this.exploring) {
+      this.scheduleExploreRetry(reason);
+      return;
+    }
+    if (this.exploreRetryTimer) clearTimeout(this.exploreRetryTimer);
+    this.exploreRetryTimer = undefined;
+    this.exploring = true;
+    const previousRoom = this.room;
+    let openedRoom: LiveRoomInfo | undefined;
+    try {
+      await ciel.think({
+        name: reason === 'initial' ? 'select-initial-live-room' : 'find-next-live-room',
+        output: Output.text(),
+        prepareStep: ({ steps }) => {
+          const calls = steps.flatMap(step => step.toolCalls);
+          if (!calls.some(call => call.toolName === 'list_live_rooms')) {
+            return {
+              activeTools: ['list_live_rooms'],
+              toolChoice: { toolName: 'list_live_rooms', type: 'tool' },
+            };
+          }
+          if (!calls.some(call => call.toolName === 'open_live_room')) {
+            return {
+              activeTools: ['open_live_room'],
+              toolChoice: { toolName: 'open_live_room', type: 'tool' },
+            };
+          }
+          return { activeTools: [], toolChoice: 'none' };
+        },
+        prompt: [
+          `探索原因：${explorationReason(reason)}`,
+          previousRoom
+            ? `当前房间 ${previousRoom.roomId}（${previousRoom.streamerName} / ${previousRoom.title}）已不适合继续停留，不得再选它。`
+            : '当前还没有打开任何直播间。',
+        ].join('\n'),
+        system: [EXPLORE_LIVE_ROOMS_PROMPT],
+        tools: createExploreTools({
+          listLiveRooms: (page, limit) => this.listLiveRooms(page, limit),
+          openLiveRoom: async (roomId, selectionReason) => {
+            openedRoom = await this.openRoom(roomId, selectionReason);
+            return openedRoom;
+          },
+        }),
+      });
+      if (this.ciel !== ciel) return;
+      if (!openedRoom) throw new Error('自主探索未实际打开任何直播间');
+      if (this.room?.roomId !== openedRoom.roomId)
+        throw new Error('当前直播间与 open_live_room 工具结果不一致');
+    } catch (error) {
+      this.reportError(error);
+      this.scheduleExploreRetry(reason);
+      throw error;
+    } finally {
+      this.exploring = false;
+    }
+  }
+
+  private scheduleExploreRetry(
+    reason: 'initial' | 'live-ended' | 'not-interested' | 'stream-ended',
+  ): void {
+    if (this.exploreRetryTimer || !this.ciel || this.mode !== 'autonomous') return;
+    this.exploreRetryTimer = setTimeout(() => {
+      this.exploreRetryTimer = undefined;
+      void this.exploreRooms(reason).catch(() => undefined);
+    }, EXPLORE_RETRY_AFTER_MS);
   }
 
   private handleThought(thought: BliveThought): void {
     if (
       this.mode !== 'autonomous' ||
-      thought.action !== 'switch' ||
-      !thought.targetRoomId ||
-      !this.lastCandidates.has(thought.targetRoomId) ||
+      thought.action !== 'explore' ||
       Date.now() - this.roomStartedAt < ROOM_REVIEW_AFTER_MS
     ) {
       return;
     }
-    const targetRoomId = thought.targetRoomId;
-    setTimeout(() => void this.switchRoom(targetRoomId), 0);
-  }
-
-  private async switchRoom(roomId: number): Promise<void> {
-    if (this.switching) return;
-    this.switching = true;
-    try {
-      await this.stop();
-      await this.startRoom(roomId);
-    } catch (error) {
-      this.reportError(error);
-    } finally {
-      this.switching = false;
-    }
+    setTimeout(() => void this.exploreRooms('not-interested').catch(() => undefined), 0);
   }
 
   private async handlePageEvent(event: LivePageEvent): Promise<void> {
@@ -321,7 +427,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
     }
     if (event.type === 'live-ended' && this.room && event.roomId === this.room.roomId) {
       if (this.mode === 'standard') await this.stop();
-      else this.reportError(new Error(`直播间 ${this.room.roomId} 已下播，等待选择新房间`));
+      else setTimeout(() => void this.exploreRooms('live-ended').catch(() => undefined), 0);
       return;
     }
     if (event.type === 'room-info' && this.room) {
@@ -355,6 +461,15 @@ function compact<T extends object>(value: T): Partial<T> {
 
 function normalizeWindowsExitCode(code: number | null): number | null {
   return code !== null && code > 0x7fff_ffff ? code - 0x1_0000_0000 : code;
+}
+
+function explorationReason(
+  reason: 'initial' | 'live-ended' | 'not-interested' | 'stream-ended',
+): string {
+  if (reason === 'initial') return '首次进入自主观看模式';
+  if (reason === 'not-interested') return '对当前直播内容已不感兴趣';
+  if (reason === 'live-ended') return '直播页面确认当前直播已下播';
+  return '当前直播流已结束';
 }
 
 function isRecoverableModelOutputError(error: Error): boolean {

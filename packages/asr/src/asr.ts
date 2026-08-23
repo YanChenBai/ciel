@@ -6,6 +6,7 @@ import sherpaOnnx from 'sherpa-onnx-node';
 import type {
   CircularBuffer as CircularBufferInstance,
   OfflineRecognizer as OfflineRecognizerInstance,
+  OfflineRecognizerResult,
   SpeechSegment,
   Vad as VadInstance,
 } from 'sherpa-onnx-node';
@@ -24,11 +25,14 @@ import type { ASREventMap, ASROptions, ASRSegment } from './types.ts';
 
 const { CircularBuffer, OfflineRecognizer, SpeakerEmbeddingExtractor, Vad } = sherpaOnnx;
 const QWEN3_ASR_TEXT_MARKER = '<asr_text>';
+const MAX_TRANSCRIPTION_RETRY_DEPTH = 2;
+const MIN_TRANSCRIPTION_RETRY_SAMPLES = AURIS_SAMPLE_RATE * 4;
 
 export class NativeASR {
   private readonly emitter = new EventEmitter<ASREventMap>();
   private readonly buffer: CircularBufferInstance;
   private readonly bufferCapacity: number;
+  private readonly maxNewTokens: number;
   private readonly recognizer: OfflineRecognizerInstance;
   private readonly speaker: SpeakerTracker;
   private readonly vad: VadInstance;
@@ -43,6 +47,7 @@ export class NativeASR {
     this.bufferCapacity = Math.ceil(bufferSeconds * AURIS_SAMPLE_RATE);
     this.buffer = new CircularBuffer(this.bufferCapacity);
     this.recognizer = new OfflineRecognizer(models.recognizer);
+    this.maxNewTokens = models.recognizer.modelConfig?.qwen3Asr?.maxNewTokens ?? 128;
     this.vad = new Vad(models.vad, bufferSeconds);
     this.windowSize = models.vad.tenVad?.windowSize ?? AURIS_VAD_WINDOW_SIZE;
     this.speaker = new SpeakerTracker(
@@ -132,14 +137,7 @@ export class NativeASR {
     const segmentEndAt = addSamples(segmentStartAt, segment.samples.length);
     this.emit('speechstart', segmentStartAt);
 
-    const stream = this.recognizer.createStream();
-    stream.acceptWaveform({
-      samples: segment.samples,
-      sampleRate: AURIS_SAMPLE_RATE,
-    });
-    this.recognizer.decode(stream);
-    const result = this.recognizer.getResult(stream);
-    const content = parseQwen3AsrText(result.text);
+    const content = this.recognize(segment.samples);
     if (content) {
       this.emit('result', {
         content,
@@ -149,6 +147,29 @@ export class NativeASR {
       });
     }
     this.emit('speechend', segmentEndAt);
+  }
+
+  private recognize(samples: Float32Array, depth = 0): string {
+    const stream = this.recognizer.createStream();
+    stream.acceptWaveform({
+      samples,
+      sampleRate: AURIS_SAMPLE_RATE,
+    });
+    this.recognizer.decode(stream);
+    const result = this.recognizer.getResult(stream);
+    const content = parseQwen3AsrText(result.text);
+    if (!isDegenerateResult(result, content, this.maxNewTokens)) return content;
+    if (
+      depth >= MAX_TRANSCRIPTION_RETRY_DEPTH ||
+      samples.length < MIN_TRANSCRIPTION_RETRY_SAMPLES
+    ) {
+      return '';
+    }
+    const midpoint = Math.floor(samples.length / 2);
+    return joinTranscriptParts([
+      this.recognize(samples.subarray(0, midpoint), depth + 1),
+      this.recognize(samples.subarray(midpoint), depth + 1),
+    ]);
   }
 }
 
@@ -195,6 +216,39 @@ function pcm16ToFloat32(data: Buffer): Float32Array {
 function parseQwen3AsrText(text: string): string {
   const marker = text.indexOf(QWEN3_ASR_TEXT_MARKER);
   return (marker < 0 ? text : text.slice(marker + QWEN3_ASR_TEXT_MARKER.length)).trim();
+}
+
+function isDegenerateResult(
+  result: OfflineRecognizerResult,
+  content: string,
+  maxNewTokens: number,
+): boolean {
+  return result.tokens.length >= maxNewTokens || hasExcessiveRepetition(content);
+}
+
+function hasExcessiveRepetition(content: string): boolean {
+  const characters = Array.from(content.normalize().replaceAll(/[\s\p{P}\p{S}]+/gu, ''));
+  if (characters.length < 32) return false;
+  for (let unitLength = 1; unitLength <= 8; unitLength += 1) {
+    const unitStart = characters.length - unitLength;
+    const unit = characters.slice(unitStart).join('');
+    let repeats = 1;
+    for (let cursor = unitStart - unitLength; cursor >= 0; cursor -= unitLength) {
+      if (characters.slice(cursor, cursor + unitLength).join('') !== unit) break;
+      repeats += 1;
+    }
+    if (repeats >= 8 && repeats * unitLength >= characters.length / 2) return true;
+  }
+  return false;
+}
+
+function joinTranscriptParts(parts: readonly string[]): string {
+  return parts.filter(Boolean).reduce((combined, part) => {
+    if (!combined) return part;
+    const separator =
+      /[\p{Script=Han}\p{P}]$/u.test(combined) || /^[\p{Script=Han}\p{P}]/u.test(part) ? '' : ' ';
+    return `${combined}${separator}${part}`;
+  }, '');
 }
 
 function addSamples(at: Date, samples: number): Date {

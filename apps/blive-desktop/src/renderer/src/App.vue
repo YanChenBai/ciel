@@ -30,6 +30,9 @@ const title = computed(() => {
 const modeLabel = computed(() =>
   (state.value?.mode ?? mode.value) === 'autonomous' ? '自主模式' : '标准模式',
 );
+const canStart = computed(() =>
+  mode.value === 'autonomous' ? Boolean(areaUrl.value.trim()) : Boolean(roomId.value.trim()),
+);
 
 onMounted(async () => {
   try {
@@ -83,15 +86,22 @@ function formatCommandError(error: unknown): string {
 }
 
 function start(): Promise<void> {
+  const options =
+    mode.value === 'autonomous'
+      ? {
+          areaUrl: areaUrl.value.trim(),
+          danmakuDelivery: danmakuDelivery.value,
+          mode: 'autonomous' as const,
+        }
+      : {
+          danmakuDelivery: danmakuDelivery.value,
+          mode: 'standard' as const,
+          roomId: Number(roomId.value),
+        };
   return run(() =>
     window.blive.command({
       type: 'start',
-      options: {
-        ...(areaUrl.value.trim() ? { areaUrl: areaUrl.value.trim() } : {}),
-        mode: mode.value,
-        roomId: Number(roomId.value),
-        danmakuDelivery: danmakuDelivery.value,
-      },
+      options,
     }),
   );
 }
@@ -145,6 +155,7 @@ function updateLiveBounds(): void {
           :src="state.account.face"
           :alt="state.account.name"
           referrerpolicy="no-referrer"
+          width="30"
         />
         <span>{{ state?.account?.name ?? '未登录' }}</span>
         <Button
@@ -175,7 +186,7 @@ function updateLiveBounds(): void {
         </div>
 
         <div class="launch-fields">
-          <div class="field-group">
+          <div v-if="mode === 'standard'" class="field-group">
             <Label for="room-id">直播间 ID</Label>
             <Input
               id="room-id"
@@ -225,11 +236,12 @@ function updateLiveBounds(): void {
               class="launch-input"
               placeholder="https://live.bilibili.com/p/eden/area-tags..."
             />
+            <p class="field-hint">Agent 会从该分区的真实候选中选择初始直播间，无需填写房间号。</p>
           </div>
         </div>
 
         <div class="launch-actions">
-          <Button type="submit" size="lg" :disabled="pending || !roomId.trim()">
+          <Button type="submit" size="lg" :disabled="pending || !canStart">
             <Play data-icon="inline-start" />
             {{ pending ? '正在启动…' : '开始观看' }}
           </Button>
@@ -251,20 +263,11 @@ function updateLiveBounds(): void {
         <div class="devtools-column">
           <CielDevTools
             v-if="state?.running"
+            :asset-base-url="state.assetBaseUrl"
             :connected="state.connected"
             :events="state.events"
             :snapshot="state.snapshot"
-            :title="title"
-          >
-            <template #title-extra>
-              <Badge variant="outline" class="mode-badge" :class="state.mode">
-                {{ modeLabel }}
-              </Badge>
-              <Badge variant="outline" class="mode-badge">
-                {{ state.danmakuDelivery === 'live' ? '真实弹幕' : '测试弹幕' }}
-              </Badge>
-            </template>
-          </CielDevTools>
+          />
         </div>
       </ResizablePanel>
     </ResizablePanelGroup>

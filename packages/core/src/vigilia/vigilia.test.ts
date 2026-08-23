@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 
-import { Vigilia, VigiliaJournal, VigiliaOpenTelemetry, snapshotJson } from './index.ts';
+import {
+  snapshotJson,
+  toVigiliaName,
+  Vigilia,
+  VigiliaJournal,
+  VigiliaOpenTelemetry,
+} from './index.ts';
 
 describe('VigiliaJournal', () => {
   it('commits immutable events before publishing them', () => {
@@ -48,9 +54,11 @@ describe('VigiliaJournal', () => {
     expect(() =>
       journal.record('percept.appended', {
         content: { value: Number.NaN },
+        endAt: 2,
         perceptType: 'Reading',
         sequence: 1,
         signal: 'script',
+        startAt: 1,
         stimulus: 'test',
       }),
     ).toThrow('finite JSON numbers');
@@ -64,6 +72,19 @@ describe('VigiliaJournal', () => {
       'clock',
     );
     expect(journal.events()).toEqual([]);
+  });
+
+  it('requires operation names to use kebab-case', () => {
+    const journal = new VigiliaJournal();
+    expect(() =>
+      journal.record('operation.started', {
+        category: 'tool',
+        name: 'Send Danmaku',
+        operationId: 'tool-1',
+      }),
+    ).toThrow('kebab-case');
+    expect(journal.events()).toEqual([]);
+    expect(toVigiliaName('SendDanmaku')).toBe('send-danmaku');
   });
 
   it('projects totals, durations, tokens, and active operations deterministically', () => {

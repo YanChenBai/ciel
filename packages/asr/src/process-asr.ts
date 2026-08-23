@@ -26,8 +26,14 @@ export class ProcessASR {
     this.process.stderr.setEncoding('utf8');
     this.process.stdout.on('data', chunk => this.consume(String(chunk)));
     this.process.stderr.on('data', chunk => {
-      const message = String(chunk).trim();
-      if (message) this.emit('error', new Error(`ASR worker: ${message}`));
+      const messages = String(chunk)
+        .split(/\r?\n/u)
+        .map(message => message.trim())
+        .filter(Boolean);
+      for (const message of messages) {
+        if (message.includes('Result is truncated. max_new_tokens')) continue;
+        this.emit('error', new Error(`ASR worker: ${message}`));
+      }
     });
     this.process.on('error', error => this.emit('error', toError(error)));
     this.process.on('exit', code => {

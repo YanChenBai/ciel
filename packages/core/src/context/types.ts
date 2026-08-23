@@ -17,7 +17,7 @@ export interface ContextTime {
   readonly endAt: Date;
 }
 
-export type ContextTrigger = 'manual' | 'speech-end' | 'interval';
+export type ContextTrigger = 'manual' | 'requested' | 'speech-end' | 'interval';
 
 /** 对外可观察的原始上下文快照，不包含任何模型提示词。 */
 export interface ContextSnapshot {

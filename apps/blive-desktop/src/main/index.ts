@@ -28,7 +28,7 @@ async function createWindow(): Promise<void> {
     title: 'Ciel Blive',
     titleBarOverlay: {
       color: '#1c1d1e',
-      height: 41,
+      height: 40,
       symbolColor: '#eeeeef',
     },
     titleBarStyle: 'hidden',

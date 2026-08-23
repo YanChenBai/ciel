@@ -57,6 +57,7 @@ export interface VigiliaEventDataMap {
     readonly durationMs: number;
     readonly inputTokens?: number;
     readonly operationId: string;
+    readonly name?: string;
     readonly output?: VigiliaJsonValue;
     readonly outputTokens?: number;
     readonly reasoning?: VigiliaJsonValue;
@@ -66,19 +67,23 @@ export interface VigiliaEventDataMap {
     readonly durationMs: number;
     readonly error: VigiliaError;
     readonly operationId: string;
+    readonly name?: string;
     readonly trigger: string;
   };
   readonly 'nucleus.think.started': {
     readonly fromSequence: number;
     readonly operationId: string;
+    readonly name?: string;
     readonly throughSequence: number;
     readonly trigger: string;
   };
   readonly 'percept.appended': {
     readonly content?: VigiliaJsonValue;
+    readonly endAt: number;
     readonly perceptType: string;
     readonly sequence: number;
     readonly signal: string;
+    readonly startAt: number;
     readonly stimulus: string;
   };
   readonly 'vision.composed': {

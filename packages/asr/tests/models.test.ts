@@ -8,7 +8,7 @@ describe('createAurisModelConfig', () => {
 
     expect(config.recognizer.modelConfig?.qwen3Asr).toMatchObject({
       hotwords: '',
-      maxNewTokens: 128,
+      maxNewTokens: 256,
       maxTotalLen: 512,
     });
     expect(config.recognizer.modelConfig?.qwen3Asr?.convFrontend).toMatch(/conv_frontend\.onnx$/);

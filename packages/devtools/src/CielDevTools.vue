@@ -13,15 +13,17 @@ import {
 } from '@lucide/vue';
 import { useVirtualList } from '@vueuse/core';
 import { computed, defineAsyncComponent, nextTick, ref, shallowRef, watch } from 'vue';
+import type { ObjectDirective } from 'vue';
 
+import ObjectInspector from '@/components/devtools/ObjectInspector.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { resolveAssetUrl } from '@/lib/assets';
 import {
   buildVigiliaConversationEntries,
   buildVigiliaSignalSteps,
@@ -35,36 +37,55 @@ import TraceInspector from './components/devtools/TraceInspector.vue';
 const TraceTimeline = defineAsyncComponent(() => import('@/components/devtools/TraceTimeline.vue'));
 
 const props = defineProps<{
+  assetBaseUrl?: string;
   connected?: boolean;
   events: readonly AnyVigiliaEvent[];
   snapshot: VigiliaSnapshot;
-  title?: string;
-}>();
-
-const slots = defineSlots<{
-  'header-actions'?: () => unknown;
-  'title-extra'?: () => unknown;
 }>();
 
 type ViewTab = 'conversation' | 'trace';
+interface StepListItem {
+  readonly preview: string;
+  readonly searchText: string;
+  readonly step: VigiliaStep;
+}
+interface ConversationListItem {
+  readonly entry: ReturnType<typeof buildVigiliaConversationEntries>[number];
+  readonly imageUrl?: string;
+  readonly structured: boolean;
+  readonly text: string;
+}
 
 const viewTab = shallowRef<ViewTab>('trace');
 const selectedStepId = shallowRef('');
 const inspectorOpen = ref(true);
 const search = ref('');
 const conversationHovered = ref(false);
+const conversationHeights = shallowRef<ReadonlyMap<string, number>>(new Map());
+const conversationObservers = new WeakMap<HTMLElement, ResizeObserver>();
 
 const chronologicalRuns = computed(() => buildVigiliaThoughtRuns(props.events));
 const runs = computed(() => [...chronologicalRuns.value].reverse());
 const conversationEntries = computed(() => buildVigiliaConversationEntries(props.events));
+const conversationListItems = computed<readonly ConversationListItem[]>(() =>
+  conversationEntries.value.map(entry => ({
+    entry,
+    ...(entry.kind === 'visual'
+      ? { imageUrl: resolveAssetUrl(props.assetBaseUrl, entry.content) }
+      : {}),
+    structured:
+      entry.kind === 'model' && entry.content !== null && typeof entry.content === 'object',
+    text: displayText(entry.content),
+  })),
+);
 const {
   containerProps: conversationContainerProps,
-  list: virtualConversationEntries,
+  list: virtualConversationItems,
   scrollTo: scrollConversationTo,
   wrapperProps: conversationWrapperProps,
-} = useVirtualList(conversationEntries, {
-  itemHeight: 112,
-  overscan: 8,
+} = useVirtualList(conversationListItems, {
+  itemHeight: index => conversationItemHeight(index),
+  overscan: 5,
 });
 const selectedRun = computed(() => runs.value[0]);
 const visibleSteps = computed(() =>
@@ -76,16 +97,20 @@ const visibleSteps = computed(() =>
 const selectedStep = computed(
   () => visibleSteps.value.find(step => step.id === selectedStepId.value) ?? visibleSteps.value[0],
 );
-const filteredSteps = computed(() => {
-  const steps = visibleSteps.value;
+const stepListItems = computed(() => visibleSteps.value.map(createStepListItem));
+const filteredStepItems = computed(() => {
+  const items = stepListItems.value;
   const query = search.value.trim().toLocaleLowerCase();
-  if (!query) return steps;
-  return steps.filter(step =>
-    [step.name, step.lane, step.status, pretty(step.input), pretty(step.output)]
-      .join(' ')
-      .toLocaleLowerCase()
-      .includes(query),
-  );
+  if (!query) return items;
+  return items.filter(item => item.searchText.includes(query));
+});
+const {
+  containerProps: stepContainerProps,
+  list: virtualStepItems,
+  wrapperProps: stepWrapperProps,
+} = useVirtualList(filteredStepItems, {
+  itemHeight: 40,
+  overscan: 12,
 });
 const traceEnd = computed(() => {
   const step = visibleSteps.value.at(-1);
@@ -96,37 +121,72 @@ const traceEnd = computed(() => {
   );
 });
 const traceStart = computed(() => visibleSteps.value[0]?.startedAt ?? traceEnd.value - 1);
-const title = computed(() => {
-  if (props.title?.trim()) return props.title.trim();
-  const percept = selectedRun.value?.inputPercepts.at(-1);
-  return percept ? truncate(displayText(percept.content), 66) : 'Ciel runtime';
-});
-
 watch(
-  [() => conversationEntries.value.length, viewTab],
+  [() => conversationListItems.value.length, viewTab],
   async ([length, tab]) => {
     if (!length || tab !== 'conversation' || conversationHovered.value) return;
     await nextTick();
-    scrollConversationTo(length - 1);
+    scrollConversationToEnd();
   },
   { flush: 'post', immediate: true },
 );
 
+function scrollConversationToEnd(): void {
+  const lastIndex = conversationListItems.value.length - 1;
+  if (lastIndex >= 0) scrollConversationTo(lastIndex, { block: 'end' });
+}
+
 function resumeConversationAutoScroll(): void {
   conversationHovered.value = false;
-  const lastIndex = conversationEntries.value.length - 1;
-  if (lastIndex >= 0) scrollConversationTo(lastIndex);
+  scrollConversationToEnd();
 }
+
+function conversationItemHeight(index: number): number {
+  const item = conversationListItems.value[index];
+  if (!item) return 104;
+  return conversationHeights.value.get(item.entry.id) ?? estimateConversationHeight(item);
+}
+
+function estimateConversationHeight(item: ConversationListItem): number {
+  if (item.imageUrl || item.structured) return 260;
+  return Math.max(104, 80 + Math.ceil(item.text.length / 72) * 24);
+}
+
+function setConversationHeight(id: string, height: number): void {
+  const measured = Math.ceil(height);
+  if (conversationHeights.value.get(id) === measured) return;
+  conversationHeights.value = new Map(conversationHeights.value).set(id, measured);
+  if (!conversationHovered.value && viewTab.value === 'conversation') {
+    void nextTick(scrollConversationToEnd);
+  }
+}
+
+const vMeasureConversation: ObjectDirective<HTMLElement, string> = {
+  mounted(element, binding) {
+    const observer = new ResizeObserver(entries => {
+      const height =
+        entries[0]?.borderBoxSize[0]?.blockSize ?? element.getBoundingClientRect().height;
+      setConversationHeight(binding.value, height);
+    });
+    observer.observe(element);
+    conversationObservers.set(element, observer);
+  },
+  unmounted(element) {
+    conversationObservers.get(element)?.disconnect();
+    conversationObservers.delete(element);
+  },
+};
 
 function conversationBadgeClass(kind: string): string {
   if (kind === 'model') return 'lane-model';
-  if (kind === 'visual') return 'lane-context';
-  return 'lane-sensory';
+  if (kind === 'visual') return 'lane-vision';
+  if (kind === 'danmaku') return 'lane-tool';
+  return 'lane-asr';
 }
 
 function shouldShowStep(step: VigiliaStep): boolean {
   if (step.lane === 'nucleus') return false;
-  if (step.lane === 'sensory' && step.name === 'asr') return false;
+  if (step.lane === 'sensory') return false;
   if (step.lane === 'memory' && step.output === '') return false;
   return true;
 }
@@ -157,13 +217,13 @@ function laneSteps(lane: VigiliaStepLane): readonly VigiliaStep[] {
 function laneClass(lane: VigiliaStepLane): string {
   return {
     context: 'lane-context',
-    asr: 'lane-sensory',
+    asr: 'lane-asr',
     memory: 'lane-memory',
     model: 'lane-model',
     nucleus: 'lane-nucleus',
     sensory: 'lane-sensory',
     tool: 'lane-tool',
-    vision: 'lane-context',
+    vision: 'lane-vision',
   }[lane];
 }
 
@@ -182,8 +242,42 @@ function pretty(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function preview(step: VigiliaStep): string {
-  return truncate(pretty(step.output ?? step.input).replaceAll(/\s+/g, ' '), 160);
+function createStepListItem(step: VigiliaStep): StepListItem {
+  const preview = previewValue(step.output ?? step.input);
+  return {
+    preview,
+    searchText: [step.name, step.label, step.lane, step.status, preview]
+      .join(' ')
+      .toLocaleLowerCase(),
+    step,
+  };
+}
+
+function previewValue(value: unknown): string {
+  if (value === undefined) return 'No captured data';
+  if (typeof value === 'string') return truncate(value.replaceAll(/\s+/g, ' '), 160);
+  const serialized = JSON.stringify(compactPreviewValue(value));
+  return typeof serialized === 'string'
+    ? truncate(serialized.replaceAll(/\s+/g, ' '), 160)
+    : String(value);
+}
+
+function compactPreviewValue(value: unknown, depth = 0): unknown {
+  if (typeof value === 'string') return truncate(value, 160);
+  if (value === null || typeof value !== 'object') return value;
+  if (depth >= 2) return Array.isArray(value) ? `[${value.length} items]` : '{…}';
+  if (Array.isArray(value)) {
+    const entries = value.slice(0, 6).map(entry => compactPreviewValue(entry, depth + 1));
+    return value.length > entries.length
+      ? [...entries, `… ${value.length - entries.length} more`]
+      : entries;
+  }
+  const entries = Object.entries(value).slice(0, 6);
+  const compact = Object.fromEntries(
+    entries.map(([key, entry]) => [key, compactPreviewValue(entry, depth + 1)]),
+  );
+  if (Object.keys(value).length > entries.length) compact['…'] = 'more fields';
+  return compact;
 }
 
 function truncate(value: string, length: number): string {
@@ -226,38 +320,19 @@ function exportTrace(): void {
 <template>
   <Tabs
     v-model="viewTab"
-    class="ciel-devtools cl:flex cl:h-dvh cl:min-h-[620px] cl:flex-col cl:gap-0 cl:overflow-hidden cl:bg-[#171819] cl:text-[#d8d8da]"
+    class="ciel-devtools cl:flex cl:h-full cl:min-h-0 cl:flex-col cl:gap-0 cl:overflow-hidden cl:bg-[#171819] cl:text-[#d8d8da]"
   >
-    <header
-      class="cl:flex cl:h-16 cl:shrink-0 cl:flex-col cl:border-b cl:border-[#343537] cl:bg-[#1c1d1e]"
+    <TabsList
+      class="cl:h-8 cl:w-full cl:shrink-0 cl:justify-start cl:gap-6 cl:rounded-none cl:border-b cl:border-[#343537] cl:bg-transparent cl:px-3 cl:py-0 cl:sm:px-4"
+      aria-label="调试视图"
     >
-      <div
-        class="cl:flex cl:h-9 cl:min-w-0 cl:shrink-0 cl:items-center cl:border-b cl:border-white/7 cl:px-3 cl:py-2 cl:sm:px-4"
-      >
-        <div class="cl:flex cl:min-w-0 cl:flex-1 cl:items-center cl:gap-3">
-          <h1
-            class="cl:truncate cl:text-[14px] cl:font-medium cl:tracking-[-0.005em] cl:text-[#eeeeef]"
-          >
-            {{ title }}
-          </h1>
-          <slot name="title-extra" />
-        </div>
-        <div v-if="slots['header-actions']" class="cl:flex cl:shrink-0 cl:items-center cl:gap-3">
-          <slot name="header-actions" />
-        </div>
-      </div>
-      <TabsList
-        class="cl:h-7 cl:justify-start cl:gap-6 cl:rounded-none cl:bg-transparent cl:px-3 cl:py-0 cl:sm:px-4"
-        aria-label="调试视图"
-      >
-        <TabsTrigger value="conversation" class="devtools-view-tab"> 对话 </TabsTrigger>
-        <TabsTrigger value="trace" class="devtools-view-tab"> 轨迹 </TabsTrigger>
-      </TabsList>
-    </header>
+      <TabsTrigger value="conversation" class="devtools-view-tab"> 对话 </TabsTrigger>
+      <TabsTrigger value="trace" class="devtools-view-tab"> 轨迹 </TabsTrigger>
+    </TabsList>
 
     <TabsContent value="conversation" class="cl:mt-0 cl:min-h-0 cl:flex-1 cl:overflow-hidden">
       <div
-        v-if="conversationEntries.length"
+        v-if="conversationListItems.length"
         v-bind="conversationContainerProps"
         class="cl:h-full cl:overflow-y-auto cl:bg-[#1c1d1e]"
         @mouseenter="conversationHovered = true"
@@ -265,27 +340,49 @@ function exportTrace(): void {
       >
         <div v-bind="conversationWrapperProps">
           <article
-            v-for="item in virtualConversationEntries"
-            :key="item.data.id"
-            class="cl:grid cl:h-28 cl:grid-cols-[86px_minmax(0,1fr)] cl:overflow-hidden cl:border-b cl:border-white/7"
+            v-for="item in virtualConversationItems"
+            :key="item.data.entry.id"
+            v-measure-conversation="item.data.entry.id"
+            class="cl:grid cl:min-h-24 cl:grid-cols-[86px_minmax(0,1fr)] cl:border-b cl:border-white/7"
           >
-            <div class="cl:flex cl:justify-end cl:px-3 cl:py-4">
+            <div class="cl:flex cl:justify-end cl:px-3 cl:py-5">
               <Badge
                 class="cl:h-fit cl:border-0 cl:font-mono cl:text-[10px]"
-                :class="conversationBadgeClass(item.data.kind)"
+                :class="conversationBadgeClass(item.data.entry.kind)"
               >
-                {{ item.data.label }}
+                {{ item.data.entry.label }}
               </Badge>
             </div>
-            <div class="cl:min-w-0 cl:overflow-hidden cl:py-4 cl:pr-6">
-              <p
-                class="conversation-content cl:text-[14px] cl:leading-6 cl:whitespace-pre-wrap cl:text-zinc-100"
-                :title="displayText(item.data.content)"
+            <div class="cl:min-w-0 cl:py-5 cl:pr-6">
+              <a
+                v-if="item.data.imageUrl"
+                :href="item.data.imageUrl"
+                target="_blank"
+                rel="noreferrer"
+                class="cl:inline-flex cl:max-w-[50%] cl:rounded-md cl:border cl:border-white/10 cl:bg-black/20 cl:p-1"
               >
-                {{ displayText(item.data.content) }}
+                <img
+                  :src="item.data.imageUrl"
+                  alt="Vision capture"
+                  loading="lazy"
+                  decoding="async"
+                  class="cl:max-h-72 cl:max-w-full cl:rounded cl:object-contain"
+                />
+              </a>
+              <div
+                v-else-if="item.data.structured"
+                class="cl:max-h-[32rem] cl:overflow-auto cl:rounded cl:px-2 cl:py-1"
+              >
+                <ObjectInspector :value="item.data.entry.content" :deep="2" />
+              </div>
+              <p
+                v-else
+                class="cl:text-[14px] cl:leading-6 cl:whitespace-pre-wrap cl:break-words cl:text-zinc-100"
+              >
+                {{ item.data.text }}
               </p>
               <p class="cl:mt-2 cl:font-mono cl:text-[10px] cl:text-zinc-600">
-                {{ item.data.metadata }} · {{ formatClock(item.data.time) }}
+                {{ item.data.entry.metadata }} · {{ formatClock(item.data.entry.time) }}
               </p>
             </div>
           </article>
@@ -380,63 +477,73 @@ function exportTrace(): void {
         <ResizablePanel :default-size="66" :min-size="30">
           <ResizablePanelGroup direction="horizontal" class="cl:min-h-0">
             <ResizablePanel :default-size="inspectorOpen ? 62 : 100" :min-size="35">
-              <ScrollArea class="cl:h-full cl:bg-[#1c1d1e]">
+              <div class="cl:flex cl:h-full cl:min-h-0 cl:flex-col cl:bg-[#1c1d1e]">
                 <div
                   v-if="selectedRun"
-                  class="cl:flex cl:h-6 cl:items-center cl:border-b cl:border-white/6 cl:bg-[#18191a] cl:px-2 cl:font-mono cl:text-[9px] cl:text-zinc-600"
+                  class="cl:flex cl:h-6 cl:shrink-0 cl:items-center cl:border-b cl:border-white/6 cl:bg-[#18191a] cl:px-2 cl:font-mono cl:text-[9px] cl:text-zinc-600"
                 >
                   Trace · {{ chronologicalRuns.length }} runs · {{ visibleSteps.length }} steps
                 </div>
-                <button
-                  v-for="step in filteredSteps"
-                  :key="step.id"
-                  type="button"
-                  class="cl:group cl:grid cl:w-full cl:grid-cols-[26px_68px_minmax(0,1fr)_76px] cl:items-center cl:border-b cl:border-white/7 cl:text-left cl:transition cl:hover:bg-white/3.5"
-                  :class="
-                    selectedStep?.id === step.id
-                      ? 'cl:border-l-primary cl:border-l-3 cl:bg-white/4.5'
-                      : 'cl:border-l-3 cl:border-l-transparent'
-                  "
-                  @click="selectStep(step)"
+                <div
+                  v-if="selectedRun && filteredStepItems.length"
+                  v-bind="stepContainerProps"
+                  class="cl:min-h-0 cl:flex-1 cl:overflow-y-auto"
                 >
-                  <span class="cl:flex cl:justify-center">
-                    <CircleDot
-                      class="cl:size-2.5"
+                  <div v-bind="stepWrapperProps">
+                    <button
+                      v-for="item in virtualStepItems"
+                      :key="item.data.step.id"
+                      type="button"
+                      class="cl:group cl:grid cl:h-10 cl:w-full cl:grid-cols-[26px_68px_minmax(0,1fr)_76px] cl:items-center cl:border-b cl:border-white/7 cl:text-left cl:transition cl:hover:bg-white/3.5"
                       :class="
-                        step.status === 'failed'
-                          ? 'cl:text-red-400'
-                          : step.status === 'running'
-                            ? 'cl:text-amber-400'
-                            : 'cl:text-zinc-600'
+                        selectedStep?.id === item.data.step.id
+                          ? 'cl:border-l-primary cl:border-l-3 cl:bg-white/4.5'
+                          : 'cl:border-l-3 cl:border-l-transparent'
                       "
-                    />
-                  </span>
-                  <span class="cl:py-1.5">
-                    <Badge
-                      class="cl:inline-flex cl:rounded cl:px-1.5 cl:py-0.5 cl:font-mono cl:text-[9px] cl:font-semibold cl:tracking-wide cl:uppercase"
-                      :class="laneClass(step.lane)"
+                      @click="selectStep(item.data.step)"
                     >
-                      {{ step.lane }}
-                    </Badge>
-                  </span>
-                  <span class="cl:flex cl:min-w-0 cl:items-baseline cl:gap-3 cl:py-2 cl:pr-3">
-                    <strong
-                      class="cl:shrink-0 cl:font-mono cl:text-[12px] cl:font-normal cl:text-zinc-200"
-                      >{{ step.name }}</strong
-                    >
-                    <span class="cl:truncate cl:font-mono cl:text-[11px] cl:text-zinc-500">{{
-                      preview(step)
-                    }}</span>
-                  </span>
-                  <span
-                    class="cl:pr-3 cl:text-right cl:font-mono cl:text-[10px] cl:text-zinc-600"
-                    >{{ formatDuration(step.durationMs) }}</span
-                  >
-                </button>
+                      <span class="cl:flex cl:justify-center">
+                        <CircleDot
+                          class="cl:size-2.5"
+                          :class="
+                            item.data.step.status === 'failed'
+                              ? 'cl:text-red-400'
+                              : item.data.step.status === 'running'
+                                ? 'cl:text-amber-400'
+                                : 'cl:text-zinc-600'
+                          "
+                        />
+                      </span>
+                      <span class="cl:py-1.5">
+                        <Badge
+                          class="cl:inline-flex cl:rounded cl:px-1.5 cl:py-0.5 cl:font-mono cl:text-[9px] cl:font-semibold cl:tracking-wide cl:uppercase"
+                          :class="laneClass(item.data.step.lane)"
+                        >
+                          {{ item.data.step.lane }}
+                        </Badge>
+                      </span>
+                      <span
+                        class="cl:flex cl:min-w-0 cl:items-baseline cl:gap-3 cl:overflow-hidden cl:pr-3"
+                      >
+                        <strong
+                          class="cl:shrink-0 cl:font-mono cl:text-[12px] cl:font-normal cl:text-zinc-200"
+                          >{{ item.data.step.label }}</strong
+                        >
+                        <span class="cl:truncate cl:font-mono cl:text-[11px] cl:text-zinc-500">{{
+                          item.data.preview
+                        }}</span>
+                      </span>
+                      <span
+                        class="cl:pr-3 cl:text-right cl:font-mono cl:text-[10px] cl:text-zinc-600"
+                        >{{ formatDuration(item.data.step.durationMs) }}</span
+                      >
+                    </button>
+                  </div>
+                </div>
 
                 <div
-                  v-if="selectedRun && !filteredSteps.length"
-                  class="cl:px-6 cl:py-14 cl:text-center cl:text-xs cl:text-zinc-600"
+                  v-if="selectedRun && !filteredStepItems.length"
+                  class="cl:grid cl:min-h-0 cl:flex-1 cl:place-items-center cl:px-6 cl:text-center cl:text-xs cl:text-zinc-600"
                 >
                   没有匹配的步骤
                 </div>
@@ -446,7 +553,7 @@ function exportTrace(): void {
                 >
                   等待执行轨迹
                 </div>
-              </ScrollArea>
+              </div>
             </ResizablePanel>
 
             <ResizableHandle
@@ -455,7 +562,11 @@ function exportTrace(): void {
               class="cl:hover:bg-primary/70 cl:w-px cl:bg-white/10"
             />
             <ResizablePanel v-if="inspectorOpen" :default-size="38" :min-size="25">
-              <TraceInspector :step="selectedStep" @close="inspectorOpen = false" />
+              <TraceInspector
+                :asset-base-url="props.assetBaseUrl"
+                :step="selectedStep"
+                @close="inspectorOpen = false"
+              />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
@@ -465,13 +576,6 @@ function exportTrace(): void {
 </template>
 
 <style scoped>
-.conversation-content {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
 .devtools-view-tab {
   height: 100%;
   flex: none;
@@ -494,33 +598,43 @@ function exportTrace(): void {
 }
 
 .lane-sensory {
-  background: color-mix(in srgb, var(--trace-sensory) 18%, transparent);
-  color: var(--trace-sensory-foreground);
+  background: var(--trace-sensory);
+  color: var(--trace-surface);
+}
+
+.lane-asr {
+  background: var(--trace-asr);
+  color: var(--trace-surface);
+}
+
+.lane-vision {
+  background: var(--trace-vision);
+  color: var(--trace-surface);
 }
 
 .lane-context {
-  background: color-mix(in srgb, var(--trace-context) 18%, transparent);
-  color: var(--trace-context-foreground);
+  background: var(--trace-context);
+  color: var(--trace-surface);
 }
 
 .lane-memory {
-  background: color-mix(in srgb, var(--trace-memory) 18%, transparent);
-  color: var(--trace-memory-foreground);
+  background: var(--trace-memory);
+  color: var(--trace-surface);
 }
 
 .lane-model {
-  background: color-mix(in srgb, var(--trace-model) 20%, transparent);
-  color: var(--trace-model-foreground);
+  background: var(--trace-model);
+  color: var(--trace-surface);
 }
 
 .lane-tool {
-  background: color-mix(in srgb, var(--trace-tool) 18%, transparent);
-  color: var(--trace-tool-foreground);
+  background: var(--trace-tool);
+  color: var(--trace-surface);
 }
 
 .lane-nucleus {
-  background: color-mix(in srgb, var(--primary) 18%, transparent);
-  color: var(--primary);
+  background: var(--trace-nucleus);
+  color: var(--trace-surface);
 }
 
 .console-scrollbar {

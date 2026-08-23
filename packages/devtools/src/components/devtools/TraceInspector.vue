@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { ChevronRight, PanelRightClose } from '@lucide/vue';
-import { shallowRef } from 'vue';
+import { computed, shallowRef } from 'vue';
 
 import InspectorSection from '@/components/devtools/InspectorSection.vue';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { resolveAssetUrl } from '@/lib/assets';
 import type { VigiliaStep, VigiliaStepLane } from '@/lib/trace';
 
-defineProps<{
+const props = defineProps<{
+  assetBaseUrl?: string;
   step?: VigiliaStep;
 }>();
 
@@ -17,6 +19,7 @@ const emit = defineEmits<{
 }>();
 
 const tab = shallowRef<'events' | 'payload' | 'result' | 'summary'>('summary');
+const imageUrl = computed(() => resolveAssetUrl(props.assetBaseUrl, props.step?.output));
 
 function laneClass(lane: VigiliaStepLane): string {
   return `lane-${lane}`;
@@ -52,7 +55,7 @@ function formatDuration(duration?: number): string {
         {{ step?.lane ?? 'step' }}
       </span>
       <strong class="cl:truncate cl:font-mono cl:text-xs cl:font-normal cl:text-zinc-400">
-        {{ step?.name ?? 'No selection' }}
+        {{ step?.label ?? 'No selection' }}
       </strong>
       <Button
         variant="ghost"
@@ -83,6 +86,21 @@ function formatDuration(duration?: number): string {
         <div>
           <TabsContent value="summary" class="cl:mt-0">
             <section v-if="step" class="cl:border-t cl:border-white/10 cl:text-xs">
+              <a
+                v-if="imageUrl"
+                :href="imageUrl"
+                target="_blank"
+                rel="noreferrer"
+                class="cl:block cl:border-b cl:border-white/10 cl:bg-black/20 cl:p-3"
+              >
+                <img
+                  :src="imageUrl"
+                  alt="Visual percept preview"
+                  loading="lazy"
+                  decoding="async"
+                  class="cl:max-h-72 cl:w-full cl:rounded cl:object-contain"
+                />
+              </a>
               <InspectorSection title="Overview" default-open>
                 <dl class="cl:grid cl:grid-cols-[92px_minmax(0,1fr)] cl:gap-y-2.5">
                   <dt class="cl:text-zinc-500">Hierarchy</dt>
@@ -91,6 +109,8 @@ function formatDuration(duration?: number): string {
                   </dd>
                   <dt class="cl:text-zinc-500">Status</dt>
                   <dd class="cl:text-zinc-200 cl:capitalize">{{ step.status }}</dd>
+                  <dt class="cl:text-zinc-500">Name</dt>
+                  <dd class="cl:font-mono cl:text-zinc-300">{{ step.name }}</dd>
                   <dt class="cl:text-zinc-500">Started</dt>
                   <dd class="cl:font-mono cl:text-zinc-300">{{ formatClock(step.startedAt) }}</dd>
                   <dt class="cl:text-zinc-500">Duration</dt>
@@ -101,8 +121,8 @@ function formatDuration(duration?: number): string {
                   <dd class="cl:truncate cl:font-mono cl:text-zinc-400">{{ step.id }}</dd>
                 </dl>
               </InspectorSection>
-              <InspectorSection title="Payload" :value="step.input" :deep="2" default-open />
-              <InspectorSection title="Result" :value="step.output" :deep="2" default-open />
+              <InspectorSection title="Payload" :value="step.input" :deep="1" default-open />
+              <InspectorSection title="Result" :value="step.output" :deep="1" default-open />
               <InspectorSection title="Events" :value="step.events" />
             </section>
           </TabsContent>

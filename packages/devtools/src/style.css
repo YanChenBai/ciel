@@ -28,6 +28,7 @@
   --scrollbar-thumb-hover: #62656a;
   --scrollbar-track: transparent;
   --trace-axis: #252628;
+  --trace-asr: #38bdf8;
   --trace-context: #4fc38b;
   --trace-context-foreground: #72d7a5;
   --trace-grid: #2b2c2e;
@@ -42,6 +43,7 @@
   --trace-surface: #202123;
   --trace-tool: #f59e42;
   --trace-tool-foreground: #ffb160;
+  --trace-vision: #f472b6;
 }
 
 @theme inline {

@@ -14,8 +14,12 @@ interface ListLiveRoomsInput {
   readonly page?: number;
 }
 
-export function createBliveTools(options: {
-  readonly autonomous: boolean;
+interface OpenLiveRoomInput {
+  readonly reason: string;
+  readonly roomId: number;
+}
+
+export function createExploreTools(options: {
   readonly listLiveRooms: (
     page: number,
     limit: number,
@@ -24,6 +28,37 @@ export function createBliveTools(options: {
     readonly hasMore: boolean;
     readonly page: number;
   }>;
+  readonly openLiveRoom: (roomId: number, reason: string) => Promise<unknown>;
+}): ToolSet {
+  return {
+    list_live_rooms: createListLiveRoomsTool(options.listLiveRooms),
+    open_live_room: tool({
+      description:
+        '打开本次 list_live_rooms 真实返回的一个候选直播间。确认选择后必须调用，不得编造房间号。',
+      inputSchema: jsonSchema<OpenLiveRoomInput>({
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description: '选择该直播间的具体理由',
+          },
+          roomId: {
+            type: 'integer',
+            minimum: 1,
+            description: '必须来自本次 list_live_rooms 结果的房间号',
+          },
+        },
+        required: ['reason', 'roomId'],
+        additionalProperties: false,
+      }),
+      execute: ({ reason, roomId }) => options.openLiveRoom(roomId, reason),
+    }),
+  };
+}
+
+export function createBliveTools(options: {
   readonly sendDanmaku: (content: string) => Promise<void>;
   readonly simulateDanmaku?: boolean;
 }): ToolSet {
@@ -66,29 +101,29 @@ export function createBliveTools(options: {
       },
     }),
   };
-  if (!options.autonomous) return tools;
-  return {
-    ...tools,
-    list_live_rooms: tool({
-      description: '从已配置的 Bilibili 直播分区页面获取真实直播间候选。考虑换房时使用。',
-      inputSchema: jsonSchema<ListLiveRoomsInput>({
-        type: 'object',
-        properties: {
-          limit: {
-            type: 'integer',
-            minimum: 1,
-            maximum: 20,
-            description: '最多返回多少个候选直播间，默认 10',
-          },
-          page: {
-            type: 'integer',
-            minimum: 1,
-            description: '逻辑页码。page=1 重置，后续按 2、3 继续无限滚动',
-          },
+  return tools;
+}
+
+function createListLiveRoomsTool(listLiveRooms: (page: number, limit: number) => Promise<unknown>) {
+  return tool({
+    description: '从已配置的 Bilibili 直播分区页面获取真实直播间候选。每次探索必须从 page=1 开始。',
+    inputSchema: jsonSchema<ListLiveRoomsInput>({
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 20,
+          description: '最多返回多少个候选直播间，默认 20',
         },
-        additionalProperties: false,
-      }),
-      execute: ({ limit, page }) => options.listLiveRooms(page ?? 1, limit ?? 10),
+        page: {
+          type: 'integer',
+          minimum: 1,
+          description: '逻辑页码。page=1 重置，后续按 2、3 继续无限滚动',
+        },
+      },
+      additionalProperties: false,
     }),
-  };
+    execute: ({ limit, page }) => listLiveRooms(page ?? 1, limit ?? 20),
+  });
 }

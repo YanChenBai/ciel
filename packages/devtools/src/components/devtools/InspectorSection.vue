@@ -13,7 +13,7 @@ const props = withDefaults(
     value?: unknown;
   }>(),
   {
-    deep: 3,
+    deep: 1,
     defaultOpen: false,
   },
 );

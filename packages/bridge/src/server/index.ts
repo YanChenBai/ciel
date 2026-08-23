@@ -9,7 +9,7 @@ import { WsChannel } from './ws-channel.ts';
 
 function createApp(wsChannel: WsChannel, assetRoot?: string) {
   return new Elysia({ adapter: node() })
-    .get('/assets/*', async ({ params, set }) => {
+    .get('/assets/*', async ({ params, set }): Promise<Response | string> => {
       const target = resolveAssetPath(assetRoot, params['*']);
       if (!target) {
         set.status = 404;
@@ -89,8 +89,15 @@ export function createBridge<TOutput>(ciel: Ciel<TOutput>): CielBridge {
 
 function resolveAssetPath(root: string | undefined, requested: string): string | undefined {
   if (!root || !requested) return undefined;
+  let relativePath: string;
+  try {
+    relativePath = decodeURIComponent(requested);
+  } catch {
+    return undefined;
+  }
+  if (path.isAbsolute(relativePath)) return undefined;
   const resolvedRoot = path.resolve(root);
-  const target = path.resolve(resolvedRoot, requested);
+  const target = path.resolve(resolvedRoot, relativePath);
   const relative = path.relative(resolvedRoot, target);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
   if (!['.jpeg', '.jpg', '.png', '.webp'].includes(path.extname(target).toLocaleLowerCase())) {

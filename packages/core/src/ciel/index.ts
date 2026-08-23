@@ -11,12 +11,13 @@ import type {
   NucleusObservedOperationCompleted,
   NucleusObservedOperationStarted,
   NucleusOptions,
+  NucleusThinkOptions,
 } from '#src/nucleus/index.ts';
 import { InMemoryPerceptStore } from '#src/percepts/index.ts';
-import type { Percept } from '#src/percepts/index.ts';
+import type { Percept, StoredPerceptContent } from '#src/percepts/index.ts';
 import type { Signal } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
-import { captureVigiliaValue, serializeError, Vigilia } from '#src/vigilia/index.ts';
+import { captureVigiliaValue, serializeError, toVigiliaName, Vigilia } from '#src/vigilia/index.ts';
 import type { VigiliaJsonValue, VigiliaOptions } from '#src/vigilia/index.ts';
 
 import { Identity, Soul } from './prompts.ts';
@@ -90,14 +91,14 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     });
     this.observeNucleus();
     this.perceptStore.on('append', record => {
-      const content = this.vigilia.capturePerceptContent
-        ? (record.content as unknown as VigiliaJsonValue)
-        : undefined;
+      const content = this.capturePerceptContent(record.content);
       this.vigilia.record('percept.appended', {
         ...(content ? { content } : {}),
+        endAt: record.time.endAt.getTime(),
         perceptType: record.percept.type,
         sequence: record.sequence,
         signal: record.signal.name,
+        startAt: record.time.startAt.getTime(),
         stimulus: record.stimulusDefinition.name,
       });
     });
@@ -106,6 +107,11 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
 
   getContext(): Promise<ContextSnapshot> {
     return this.nucleus.getContext();
+  }
+
+  /** 基于当前人格、记忆与感知主动执行一次独立思考。 */
+  think<TThinkOutput>(options: NucleusThinkOptions<TThinkOutput>): Promise<TThinkOutput> {
+    return this.nucleus.think(options);
   }
 
   async start(): Promise<void> {
@@ -244,6 +250,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     this.nucleus.on('thinkStarted', event => {
       this.vigilia.record('nucleus.think.started', {
         fromSequence: event.fromSequence,
+        ...(event.name ? { name: event.name } : {}),
         operationId: event.operationId,
         throughSequence: event.throughSequence,
         trigger: event.trigger,
@@ -257,6 +264,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
         this.vigilia.record('nucleus.think.completed', {
           durationMs: event.durationMs,
           ...(event.inputTokens === undefined ? {} : { inputTokens: event.inputTokens }),
+          ...(event.name ? { name: event.name } : {}),
           operationId: event.operationId,
           ...(output === undefined ? {} : { output }),
           ...(event.outputTokens === undefined ? {} : { outputTokens: event.outputTokens }),
@@ -270,6 +278,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
         this.vigilia.record('nucleus.think.completed', {
           durationMs: event.durationMs,
           ...(event.inputTokens === undefined ? {} : { inputTokens: event.inputTokens }),
+          ...(event.name ? { name: event.name } : {}),
           operationId: event.operationId,
           ...(event.outputTokens === undefined ? {} : { outputTokens: event.outputTokens }),
           trigger: event.trigger,
@@ -280,6 +289,7 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
       this.vigilia.record('nucleus.think.failed', {
         durationMs: event.durationMs,
         error: serializeError(event.error),
+        ...(event.name ? { name: event.name } : {}),
         operationId: event.operationId,
         trigger: event.trigger,
       });
@@ -400,7 +410,10 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
         phase === 'started' ? this.vigilia.capture.toolInput : this.vigilia.capture.toolOutput;
       return enabled ? captureVigiliaValue(value) : undefined;
     }
-    if (event.category === 'model' && event.name.startsWith('step:')) {
+    if (
+      event.category === 'model' &&
+      (event.name === 'choose-response-or-tools' || event.name === 'continue-with-tool-results')
+    ) {
       if (!this.vigilia.capture.reasoning && !this.vigilia.capture.result) return undefined;
       const captured = captureVigiliaValue(value);
       if (typeof captured !== 'object' || captured === null || Array.isArray(captured))
@@ -416,6 +429,13 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
       return this.vigilia.capture.context ? captureVigiliaValue(value) : undefined;
     }
     return undefined;
+  }
+
+  private capturePerceptContent(content: StoredPerceptContent): VigiliaJsonValue | undefined {
+    if (!this.vigilia.capturePerceptContent) return undefined;
+    if (content.type === 'text') return content as unknown as VigiliaJsonValue;
+    const relativePath = this.vigilia.assetPath(content.path);
+    return relativePath ? { path: relativePath, type: 'image' } : undefined;
   }
 
   private setState(state: CielState): void {
@@ -467,5 +487,5 @@ function sensoryOperationName(signal: string): string {
   if (normalized.includes('photon')) return 'vision';
   if (normalized.includes('echo')) return 'audio-ingest';
   if (normalized.includes('script')) return 'text-ingest';
-  return `process:${signal}`;
+  return `process-${toVigiliaName(signal, 'signal')}`;
 }

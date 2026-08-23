@@ -1,10 +1,21 @@
-import { describe, expect, it, vi } from 'vite-plus/test';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+
+const recognizerResult = vi.hoisted(() => ({
+  calls: 0,
+  splitRetry: false,
+  text: 'language Chinese<asr_text>你好',
+  tokens: [] as string[],
+  vadSamples: 16_000,
+}));
 
 vi.mock('sherpa-onnx-node', () => {
   class FakeStream {
     decoded = false;
+    sampleCount = 0;
 
-    acceptWaveform(): void {}
+    acceptWaveform(input: { samples: Float32Array }): void {
+      this.sampleCount = input.samples.length;
+    }
 
     inputFinished(): void {}
   }
@@ -48,7 +59,7 @@ vi.mock('sherpa-onnx-node', () => {
     flush(): void {
       this.segments.push({
         start: 1_600,
-        samples: new Float32Array(16_000),
+        samples: new Float32Array(recognizerResult.vadSamples),
       });
     }
 
@@ -78,13 +89,20 @@ vi.mock('sherpa-onnx-node', () => {
       stream.decoded = true;
     }
 
-    getResult(): object {
+    getResult(stream: FakeStream): object {
+      recognizerResult.calls += 1;
+      const retryingLongSegment =
+        recognizerResult.splitRetry && stream.sampleCount === recognizerResult.vadSamples;
       return {
-        text: 'language Chinese<asr_text>你好',
+        text: retryingLongSegment
+          ? `language Chinese<asr_text>${'这啊，'.repeat(80)}`
+          : recognizerResult.text,
         lang: '<|zh|>',
         emotion: '<|NEUTRAL|>',
         event: '<|Speech|>',
-        tokens: [],
+        tokens: retryingLongSegment
+          ? Array.from({ length: 256 }, () => 'token')
+          : recognizerResult.tokens,
         timestamps: [],
         durations: [],
         ys_log_probs: [],
@@ -122,6 +140,14 @@ vi.mock('sherpa-onnx-node', () => {
 const { ASR } = await import('../src/asr.ts');
 
 describe('ASR', () => {
+  beforeEach(() => {
+    recognizerResult.calls = 0;
+    recognizerResult.splitRetry = false;
+    recognizerResult.text = 'language Chinese<asr_text>你好';
+    recognizerResult.tokens = [];
+    recognizerResult.vadSamples = 16_000;
+  });
+
   it('emits timestamped final results with a stable speaker', () => {
     const asr = new ASR();
     const results: import('../src/types.ts').ASRResult[] = [];
@@ -156,5 +182,46 @@ describe('ASR', () => {
     });
 
     expect(errors[0]?.message).toContain('aligned s16le');
+  });
+
+  it('drops transcripts that still hit the token limit after shorter retries', () => {
+    recognizerResult.text = 'language Chinese<asr_text>未完成';
+    recognizerResult.tokens = Array.from({ length: 256 }, () => 'token');
+    const asr = new ASR();
+    const results: import('../src/types.ts').ASRResult[] = [];
+    asr.on('result', result => results.push(result));
+
+    asr.write({ data: Buffer.alloc(1_024), startAt: new Date(0) });
+    asr.flush();
+
+    expect(results).toEqual([]);
+  });
+
+  it('drops excessively repetitive transcripts', () => {
+    recognizerResult.text = `language Chinese<asr_text>啊，这个点都是广东人。${'这啊，'.repeat(80)}`;
+    recognizerResult.tokens = [];
+    const asr = new ASR();
+    const results: import('../src/types.ts').ASRResult[] = [];
+    asr.on('result', result => results.push(result));
+
+    asr.write({ data: Buffer.alloc(1_024), startAt: new Date(0) });
+    asr.flush();
+
+    expect(results).toEqual([]);
+  });
+
+  it('retries a degenerate long segment as two shorter transcriptions', () => {
+    recognizerResult.splitRetry = true;
+    recognizerResult.text = 'language Chinese<asr_text>恢复';
+    recognizerResult.vadSamples = 160_000;
+    const asr = new ASR();
+    const results: import('../src/types.ts').ASRResult[] = [];
+    asr.on('result', result => results.push(result));
+
+    asr.write({ data: Buffer.alloc(1_024), startAt: new Date(0) });
+    asr.flush();
+
+    expect(recognizerResult.calls).toBe(3);
+    expect(results.map(result => result.content)).toEqual(['恢复恢复']);
   });
 });

@@ -28,6 +28,20 @@ export interface NucleusGenerationOptions<TOutput = string> {
   readonly stopWhen?: ToolLoopAgentSettings<never, ToolSet>['stopWhen'];
 }
 
+export interface NucleusThinkOptions<TOutput> {
+  /** Vigilia 中用于识别这次主动思考的稳定名称。 */
+  readonly name: string;
+  /** 本次思考的任务输入；字符串会作为 user message 注入。 */
+  readonly prompt: string | ContextMessage;
+  /** 在 Ciel 内部人格、场景定义和记忆之后注入的本次任务指令。 */
+  readonly system?: readonly string[];
+  /** 本次思考独立的结构化输出契约。 */
+  readonly output: Output.Output<TOutput>;
+  readonly tools?: ToolSet;
+  readonly prepareStep?: ToolLoopAgentSettings<never, ToolSet>['prepareStep'];
+  readonly stopWhen?: ToolLoopAgentSettings<never, ToolSet>['stopWhen'];
+}
+
 export interface NucleusOptions<TOutput = string> extends NucleusGenerationOptions<TOutput> {
   /** 认知主体的身份定义；作为内部 system 内容注入 Context。 */
   readonly identity?: string;
@@ -53,7 +67,7 @@ export interface NucleusEventMap<TOutput = string> {
   archiveFailed(error: Error, operation: EpisodeArchiveOperation, durationMs: number): void;
   archiveStarted(operation: EpisodeArchiveOperation): void;
   thought(output: TOutput, input: ContextInput): void;
-  thinkCompleted(event: NucleusThinkCompleted<TOutput>): void;
+  thinkCompleted(event: NucleusThinkCompleted<unknown>): void;
   thinkFailed(event: NucleusThinkFailed): void;
   thinkStarted(event: NucleusThinkStarted): void;
   operationCompleted(event: NucleusObservedOperationCompleted): void;
@@ -87,6 +101,7 @@ export interface NucleusObservedOperationFailed extends NucleusObservedOperation
 export interface NucleusThinkStarted {
   readonly fromSequence: number;
   readonly operationId: string;
+  readonly name?: string;
   readonly startedAt: number;
   readonly throughSequence: number;
   readonly trigger: ContextTrigger;

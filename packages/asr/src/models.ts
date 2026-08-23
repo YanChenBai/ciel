@@ -20,7 +20,7 @@ export function createAurisModelConfig(): AurisModelConfig {
           tokenizer: path.join(AURIS_MODEL_PATHS.asr, 'tokenizer'),
           hotwords: '',
           maxTotalLen: 512,
-          maxNewTokens: 128,
+          maxNewTokens: 256,
           temperature: 0.000_001,
           topP: 0.8,
           seed: 42,
