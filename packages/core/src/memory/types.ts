@@ -3,6 +3,7 @@ import type { EmbeddingModel, LanguageModel } from 'ai';
 import type { PerceptRecord } from '#src/percepts/index.ts';
 
 export type MemoryEmbeddingModel = Exclude<EmbeddingModel, string>;
+export type MemoryResourceSegment = number | string;
 
 export interface MemoryOptions {
   /** LibSQL 主数据库路径；向量库会以同目录的 `*.vector.db` 保存。 */
@@ -21,7 +22,7 @@ export interface MemoryOptions {
   readonly recallLimit?: number;
 
   /** 隔离长期记忆、每日经历、语义召回与幂等 ID 的资源标识。 */
-  readonly resourceId?: string;
+  readonly resourceId: string;
 }
 
 export interface MemoryRecall {

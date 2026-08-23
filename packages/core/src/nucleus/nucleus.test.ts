@@ -72,6 +72,7 @@ function createMemoryAt(model = createModel('经历摘要')): Memory {
     path: ':memory:',
     embedder: createEmbedder(),
     model,
+    resourceId: 'test:nucleus',
   });
   memories.push(memory);
   return memory;

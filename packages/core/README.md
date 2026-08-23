@@ -80,7 +80,7 @@ await ciel.start();
 
 Context 按 `originSignal` 与感知类型组织实时输入，并合并内部设定、应用消息和记忆。Oculus 只持久化达到变化阈值的采样帧，每张上下文图片最多合成九帧。
 
-Memory 使用 `resourceId` 隔离全局记忆、每日经历、语义召回和幂等 ID，因此多个运行时可以共用同一数据库。
+Memory 要求显式提供 `resourceId`，并用它隔离全局记忆、每日经历、语义召回和幂等 ID，因此多个运行时可以共用同一数据库。多维业务标识使用 `createMemoryResourceId('app', 'account', accountId, 'scene', sceneId)` 逐段编码，避免自行拼接产生碰撞。
 
 ## Vigilia
 

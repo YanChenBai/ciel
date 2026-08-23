@@ -1,24 +1,23 @@
 // @env node
 
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { Memory as MastraMemory } from '@mastra/memory';
-import { generateText } from 'ai';
-import type { FilePart, LanguageModel, TextPart } from 'ai';
 
 import type { PerceptRecord } from '#src/percepts/index.ts';
 
 import {
   DEFAULT_MEMORY_PATH,
   DEFAULT_MEMORY_RECALL_LIMIT,
-  DEFAULT_MEMORY_RESOURCE_ID,
   DEFAULT_RECENT_MEMORY_DAYS,
   MEMORY_KIND_METADATA,
 } from './constants.ts';
+import { EpisodeSummarizer } from './episode-summarizer.ts';
+import { createScopedMemoryId, normalizeMemoryResourceId } from './resource-id.ts';
 import type {
   EpisodeRecordResult,
   CielMemoryStore,
@@ -67,30 +66,6 @@ function formatTime(date: Date): string {
   ].join(':');
 }
 
-function formatRange(time: PerceptRecord['time']): string {
-  const startAt = time.startAt.toISOString();
-  const endAt = time.endAt.toISOString();
-  return startAt === endAt ? startAt : `${startAt} - ${endAt}`;
-}
-
-async function resolveImagePart(imagePath: string): Promise<FilePart> {
-  return {
-    type: 'file',
-    mediaType: 'image/jpeg',
-    data: {
-      type: 'data',
-      data: (await readFile(imagePath)).toString('base64'),
-    },
-  };
-}
-
-/**
- * Mastra 的 thread 与 message ID 是全局主键，因此所有持久化 ID 都必须纳入 resourceId 命名空间。
- */
-function createScopedId(resourceId: string, id: string): string {
-  return `${encodeURIComponent(resourceId)}:${id}`;
-}
-
 function resolveDatabaseUrl(databasePath: string): string {
   if (databasePath === ':memory:') {
     return databasePath;
@@ -131,9 +106,9 @@ export class Memory implements CielMemoryStore {
   private readonly storage: LibSQLStore;
   private readonly vector: LibSQLVector;
   private readonly store: MastraMemory;
+  private readonly summarizer: EpisodeSummarizer;
   private readonly recentDays: number;
   private readonly recallLimit: number;
-  private readonly model: LanguageModel;
   private readonly resourceId: string;
   private readonly globalThreadId: string;
   private readonly ready: Promise<void>;
@@ -144,10 +119,9 @@ export class Memory implements CielMemoryStore {
     const vectorPath = resolveVectorPath(databasePath);
     this.recentDays = options.recentDays ?? DEFAULT_RECENT_MEMORY_DAYS;
     this.recallLimit = options.recallLimit ?? DEFAULT_MEMORY_RECALL_LIMIT;
-    this.model = options.model;
-    this.resourceId = (options.resourceId ?? DEFAULT_MEMORY_RESOURCE_ID).trim();
-    if (!this.resourceId) throw new Error('memory.resourceId must not be empty');
-    this.globalThreadId = createScopedId(this.resourceId, 'global');
+    this.resourceId = normalizeMemoryResourceId(options.resourceId);
+    this.globalThreadId = createScopedMemoryId(this.resourceId, 'global');
+    this.summarizer = new EpisodeSummarizer(options.model);
     this.validatePositiveInteger('recentDays', this.recentDays);
     this.validatePositiveInteger('recallLimit', this.recallLimit);
 
@@ -184,32 +158,10 @@ export class Memory implements CielMemoryStore {
     data: readonly PerceptRecord[],
     idempotencyKey?: string,
   ): Promise<EpisodeRecordResult | void> {
-    if (data.length === 0) {
-      return;
-    }
-    const content: Array<TextPart | FilePart> = [];
-    for (const entry of data) {
-      const header = `[${entry.stimulusDefinition.name} / ${entry.signal.name}]\n[${formatRange(entry.time)}]`;
-      if (entry.content.type === 'image') {
-        content.push({ type: 'text', text: header });
-        content.push(await resolveImagePart(entry.content.path));
-      } else {
-        const speaker = entry.content.speaker ? `[${entry.content.speaker}] ` : '';
-        content.push({ type: 'text', text: `${header} ${speaker}${entry.content.text}` });
-      }
-    }
-    const result = await generateText({
-      model: this.model,
-      system: '将这段经历总结为简洁、客观、过去时的纯文本。只记录实际发生的事情，不推测。',
-      messages: [{ role: 'user', content }],
-    });
-    const summary = result.text.trim();
-    if (!summary) {
-      throw new Error('Episode summarizer returned an empty summary');
-    }
-    const createdAt = new Date(Math.max(...data.map(entry => entry.time.endAt.getTime())));
-    await this.appendEpisode(summary, createdAt, idempotencyKey);
-    return { createdAt, summary };
+    const episode = await this.summarizer.summarize(data);
+    if (!episode) return;
+    await this.appendEpisode(episode.summary, episode.createdAt, idempotencyKey);
+    return episode;
   }
 
   /** 读取跨日期共享的全局记忆。 */
@@ -293,12 +245,12 @@ export class Memory implements CielMemoryStore {
     return this.mutate(async () => {
       await this.ready;
       const date = formatDate(createdAt);
-      const threadId = createScopedId(this.resourceId, `episode:${date}`);
+      const threadId = createScopedMemoryId(this.resourceId, `episode:${date}`);
       await this.ensureThread(threadId, date, createdAt, 'episode');
       await this.store.saveMessages({
         messages: [
           {
-            id: createScopedId(this.resourceId, idempotencyKey ?? randomUUID()),
+            id: createScopedMemoryId(this.resourceId, idempotencyKey ?? randomUUID()),
             role: 'user',
             createdAt,
             threadId,

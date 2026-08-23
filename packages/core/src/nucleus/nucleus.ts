@@ -1,19 +1,16 @@
 import { randomUUID } from 'node:crypto';
 
 import { EventHost, toError } from '@ciels/event';
-import { Output, ToolLoopAgent } from 'ai';
-import type { ToolSet } from 'ai';
 
 import { Context } from '#src/context/index.ts';
 import type {
   ContextInput,
+  ContextMessage,
   ContextSnapshot,
   ContextTrigger,
-  ModelContext,
 } from '#src/context/index.ts';
 import { VisionProjector } from '#src/context/vision.ts';
 import { EpisodeArchive } from '#src/memory/episode-archive.ts';
-import { createMemoryTools } from '#src/memory/tool.ts';
 import { InMemoryPerceptStore } from '#src/percepts/index.ts';
 import type { Percept } from '#src/percepts/index.ts';
 import type { PerceptCheckout, PerceptSnapshot, PerceptStore } from '#src/percepts/index.ts';
@@ -21,13 +18,13 @@ import type { SignalConstructor } from '#src/signals/index.ts';
 import type { Stimulus } from '#src/stimulus/index.ts';
 import { toVigiliaName } from '#src/vigilia/name.ts';
 
+import { createNucleusAgent } from './agent.ts';
+import type { NucleusAgent } from './agent.ts';
+import { NucleusOperationObserver } from './operation-observer.ts';
 import { normalizeNucleusOptions } from './options.ts';
 import type { NormalizedNucleusOptions } from './options.ts';
 import type {
   NucleusEventMap,
-  NucleusGenerationOptions,
-  NucleusObservedOperationStarted,
-  NucleusOperationCategory,
   NucleusOptions,
   NucleusThinkOptions,
   NucleusThinkStarted,
@@ -35,18 +32,15 @@ import type {
 
 type NucleusState = 'idle' | 'running' | 'stopping';
 
-interface NucleusCallOptions {
-  readonly [key: string]: unknown;
-  readonly input: ContextInput;
-  readonly context: ModelContext;
+interface ThinkExecution<TOutput> {
+  readonly agent: NucleusAgent<TOutput>;
+  readonly messages?: readonly ContextMessage[];
+  readonly onFailed?: () => void;
+  readonly onSucceeded?: (output: TOutput, input: ContextInput) => void;
+  readonly operation: NucleusThinkStarted;
+  readonly resolveContext: () => Promise<ContextSnapshot>;
+  readonly system?: readonly string[];
 }
-
-type NucleusAgent<TOutput> = ToolLoopAgent<
-  NucleusCallOptions,
-  ToolSet,
-  Record<string, unknown>,
-  Output.Output<TOutput>
->;
 
 /**
  * Ciel 的认知调度器，负责构建上下文并触发模型思考。
@@ -62,6 +56,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private readonly perceptStore: PerceptStore;
   private readonly modelAgent: NucleusAgent<TOutput>;
   private readonly episodeArchive: EpisodeArchive;
+  private readonly operations: NucleusOperationObserver;
   private readonly nucleusConsumer: string;
   private state: NucleusState = 'idle';
   private startedAt = 0;
@@ -83,6 +78,11 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     this.context = new Context(this.signals, this.stimuli, vision);
     this.perceptStore = options.perceptStore ?? new InMemoryPerceptStore();
     this.nucleusConsumer = this.perceptStore.createConsumer('nucleus');
+    this.operations = new NucleusOperationObserver({
+      completed: event => this.emit('operationCompleted', event),
+      failed: event => this.emit('operationFailed', event),
+      started: event => this.emit('operationStarted', event),
+    });
     this.episodeArchive = new EpisodeArchive({
       idleTimeout: this.options.memorySummary.idleTimeout,
       isBlocked: () => this.inFlight !== undefined,
@@ -104,36 +104,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       this.emit('archiveStarted', operation);
       this.clearTimer();
     });
-    this.modelAgent = this.createAgent(this.options);
-  }
-
-  private createAgent<TGenerationOutput>(
-    options: NucleusGenerationOptions<TGenerationOutput>,
-  ): NucleusAgent<TGenerationOutput> {
-    const tools = options.tools ?? {};
-    const memoryTools = createMemoryTools(this.options.memory);
-    return new ToolLoopAgent<
-      NucleusCallOptions,
-      ToolSet,
-      Record<string, unknown>,
-      Output.Output<TGenerationOutput>
-    >({
-      model: options.model,
-      tools,
-      output: (options.output ?? Output.text()) as Output.Output<TGenerationOutput>,
-      ...(options.prepareStep ? { prepareStep: options.prepareStep } : {}),
-      ...(options.stopWhen ? { stopWhen: options.stopWhen } : {}),
-      prepareCall: ({ options: call, ...settings }) => {
-        return {
-          ...settings,
-          instructions: [{ role: 'system', content: call.context.system }],
-          tools: {
-            ...tools,
-            ...memoryTools,
-          },
-        };
-      },
-    });
+    this.modelAgent = createNucleusAgent(this.options, this.options.memory);
   }
 
   register(stimulus: Stimulus): void {
@@ -204,7 +175,8 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   think<TRequestedOutput>(
     options?: NucleusThinkOptions<TRequestedOutput>,
   ): Promise<TOutput | TRequestedOutput> {
-    return options ? this.requestIndependentThink(options) : this.requestThink('manual');
+    if (options) return this.requestIndependentThink(options);
+    return this.requestThink('manual');
   }
 
   async getContext(createdAt: Date = new Date()): Promise<ContextSnapshot> {
@@ -239,6 +211,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private async requestIndependentThink<TRequestedOutput>(
     options: NucleusThinkOptions<TRequestedOutput>,
   ): Promise<TRequestedOutput> {
+    // 主动思考与自动思考共享模型和记忆状态，因此必须串行，不能只等待最初看到的任务。
     while (this.inFlight) {
       await this.inFlight.catch(() => undefined);
     }
@@ -262,69 +235,22 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       throughSequence: checkout.throughSequence,
       trigger,
     };
-    this.emit('thinkStarted', operation);
-    try {
-      const [longTermMemory, recentMemory] = await Promise.all([
-        this.observeOperation(operation.operationId, 'memory', 'read-long-term', () =>
-          this.options.memory.readLongTerm(),
-        ),
-        this.observeOperation(operation.operationId, 'memory', 'read-recent', () =>
-          this.options.memory.readRecent(),
-        ),
-      ]);
-      const context = await this.observeOperation(
-        operation.operationId,
-        'context',
-        'resolve-percepts',
-        () => this.resolveCheckout(checkout),
-      );
-      const input: ContextInput = { ...context, trigger };
-      const modelContext = await this.observeOperation(
-        operation.operationId,
-        'context',
-        'build-model-request',
-        () =>
-          this.context.build({
-            input,
-            internalSystem: [this.soul, this.identity, this.agent],
-            longTermMemory,
-            recentMemory,
-            system: this.options.system,
-            messages: this.options.messages,
-          }),
-      );
-      const estimatedImageTokens = await this.context.estimateInputTokens(context.data);
-      const result = await this.generate(
-        operation.operationId,
-        this.modelAgent,
-        input,
-        modelContext,
-      );
-      this.perceptStore.commit(checkout);
-      this.compactPerceptStore();
-      this.lastInputTokens = result.usage.inputTokens ?? estimatedImageTokens;
-      const output = result.output as TOutput;
-      this.emit('thought', output, input);
-      this.emit('thinkCompleted', {
-        ...operation,
-        durationMs: Date.now() - operation.startedAt,
-        inputTokens: result.usage.inputTokens,
-        output,
-        outputTokens: result.usage.outputTokens,
-        reasoning: result.reasoningText,
-      });
-      return output;
-    } catch (error) {
-      if (trigger === 'speech-end') this.speechEndPending = true;
-      const normalized = toError(error);
-      this.emit('thinkFailed', {
-        ...operation,
-        durationMs: Date.now() - operation.startedAt,
-        error: normalized,
-      });
-      this.emit('error', normalized);
-      throw normalized;
-    }
+    return this.executeThinking({
+      agent: this.modelAgent,
+      messages: this.options.messages,
+      operation,
+      resolveContext: () => this.resolveCheckout(checkout),
+      system: this.options.system,
+      onFailed: () => {
+        if (trigger === 'speech-end') this.speechEndPending = true;
+      },
+      onSucceeded: (output, input) => {
+        // checkout 只有在模型成功后才推进，失败时仍保留同一批感知用于重试。
+        this.perceptStore.commit(checkout);
+        this.compactPerceptStore();
+        this.emit('thought', output, input);
+      },
+    });
   }
 
   private async executeIndependent<TRequestedOutput>(
@@ -333,36 +259,63 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     const snapshot = this.perceptStore.snapshot(new Date(), this.options.context.perceptWindow);
     const firstSequence = snapshot.records.at(0)?.sequence;
     const throughSequence = snapshot.records.at(-1)?.sequence ?? 0;
+    let fromSequence = throughSequence;
+    if (firstSequence !== undefined) fromSequence = Math.max(0, firstSequence - 1);
+
     const operation: NucleusThinkStarted = {
-      fromSequence: firstSequence === undefined ? throughSequence : Math.max(0, firstSequence - 1),
+      fromSequence,
       name: toVigiliaName(options.name, 'requested-think'),
       operationId: randomUUID(),
       startedAt: Date.now(),
       throughSequence,
       trigger: 'requested',
     };
+    const agent = createNucleusAgent<TRequestedOutput>(
+      {
+        model: this.options.model,
+        output: options.output,
+        ...(options.prepareStep ? { prepareStep: options.prepareStep } : {}),
+        ...(options.stopWhen ? { stopWhen: options.stopWhen } : {}),
+        ...(options.tools ? { tools: options.tools } : {}),
+      },
+      this.options.memory,
+    );
+
+    return this.executeThinking({
+      agent,
+      messages: [normalizeThinkPrompt(options.prompt)],
+      operation,
+      resolveContext: () => this.resolveSnapshot(snapshot),
+      system: options.system,
+    });
+  }
+
+  /**
+   * 统一执行两类思考的公共流水线；感知是否提交等业务差异由调用方通过回调明确表达。
+   */
+  private async executeThinking<TThinkOutput>(
+    execution: ThinkExecution<TThinkOutput>,
+  ): Promise<TThinkOutput> {
+    const { operation } = execution;
     this.emit('thinkStarted', operation);
+
     try {
       const [longTermMemory, recentMemory] = await Promise.all([
-        this.observeOperation(operation.operationId, 'memory', 'read-long-term', () =>
+        this.operations.observe(operation.operationId, 'memory', 'read-long-term', () =>
           this.options.memory.readLongTerm(),
         ),
-        this.observeOperation(operation.operationId, 'memory', 'read-recent', () =>
+        this.operations.observe(operation.operationId, 'memory', 'read-recent', () =>
           this.options.memory.readRecent(),
         ),
       ]);
-      const context = await this.observeOperation(
+      const context = await this.operations.observe(
         operation.operationId,
         'context',
         'resolve-percepts',
-        () => this.resolveSnapshot(snapshot),
+        execution.resolveContext,
       );
-      const input: ContextInput = { ...context, trigger: 'requested' };
-      const prompt =
-        typeof options.prompt === 'string'
-          ? () => ({ role: 'user' as const, content: options.prompt as string })
-          : options.prompt;
-      const modelContext = await this.observeOperation(
+      const input: ContextInput = { ...context, trigger: operation.trigger };
+      const modelContext = await this.operations.observe(
         operation.operationId,
         'context',
         'build-model-request',
@@ -372,21 +325,21 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
             internalSystem: [this.soul, this.identity, this.agent],
             longTermMemory,
             recentMemory,
-            system: options.system,
-            messages: [prompt],
+            system: execution.system,
+            messages: execution.messages,
           }),
       );
-      const agent = this.createAgent<TRequestedOutput>({
-        model: this.options.model,
-        output: options.output,
-        ...(options.prepareStep ? { prepareStep: options.prepareStep } : {}),
-        ...(options.stopWhen ? { stopWhen: options.stopWhen } : {}),
-        ...(options.tools ? { tools: options.tools } : {}),
-      });
       const estimatedImageTokens = await this.context.estimateInputTokens(context.data);
-      const result = await this.generate(operation.operationId, agent, input, modelContext);
+      const result = await this.operations.generate(
+        operation.operationId,
+        execution.agent,
+        input,
+        modelContext,
+      );
       this.lastInputTokens = result.usage.inputTokens ?? estimatedImageTokens;
-      const output = result.output as TRequestedOutput;
+      const output = result.output as TThinkOutput;
+      if (execution.onSucceeded) execution.onSucceeded(output, input);
+
       this.emit('thinkCompleted', {
         ...operation,
         durationMs: Date.now() - operation.startedAt,
@@ -397,6 +350,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       });
       return output;
     } catch (error) {
+      if (execution.onFailed) execution.onFailed();
       const normalized = toError(error);
       this.emit('thinkFailed', {
         ...operation,
@@ -406,134 +360,6 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       this.emit('error', normalized);
       throw normalized;
     }
-  }
-
-  private generate<TGenerationOutput>(
-    operationId: string,
-    agent: NucleusAgent<TGenerationOutput>,
-    input: ContextInput,
-    modelContext: ModelContext,
-  ) {
-    const toolOperations = new Map<string, NucleusObservedOperationStarted>();
-    const stepOperations = new Map<number, NucleusObservedOperationStarted>();
-    return this.observeOperation(
-      operationId,
-      'model',
-      'generate',
-      async () => {
-        try {
-          return await agent.generate({
-            messages: [...modelContext.messages],
-            options: { input, context: modelContext },
-            onStepStart: step => {
-              const name =
-                step.stepNumber === 0 ? 'choose-response-or-tools' : 'continue-with-tool-results';
-              stepOperations.set(step.stepNumber, this.startOperation(operationId, 'model', name));
-            },
-            onStepEnd: step => {
-              const stepOperation = stepOperations.get(step.stepNumber);
-              if (!stepOperation) return;
-              stepOperations.delete(step.stepNumber);
-              this.completeOperation(stepOperation, {
-                callId: step.callId,
-                finishReason: step.finishReason,
-                reasoning: step.reasoningText,
-                text: step.text,
-                usage: step.usage,
-              });
-            },
-            onToolExecutionStart: event => {
-              const toolOperation = this.startOperation(
-                operationId,
-                'tool',
-                toVigiliaName(event.toolCall.toolName, 'tool'),
-                {
-                  input: event.toolCall.input,
-                  toolCallId: event.toolCall.toolCallId,
-                  toolName: event.toolCall.toolName,
-                },
-              );
-              toolOperations.set(event.toolCall.toolCallId, toolOperation);
-            },
-            onToolExecutionEnd: event => {
-              const toolOperation = toolOperations.get(event.toolCall.toolCallId);
-              if (!toolOperation) return;
-              toolOperations.delete(event.toolCall.toolCallId);
-              if (event.toolOutput.type === 'tool-error') {
-                this.failOperation(toolOperation, event.toolOutput.error);
-                return;
-              }
-              this.completeOperation(toolOperation, {
-                output: event.toolOutput,
-                toolCallId: event.toolCall.toolCallId,
-              });
-            },
-          });
-        } catch (error) {
-          for (const child of [...stepOperations.values(), ...toolOperations.values()]) {
-            this.failOperation(child, error);
-          }
-          stepOperations.clear();
-          toolOperations.clear();
-          throw error;
-        }
-      },
-      modelContext,
-    );
-  }
-
-  private async observeOperation<T>(
-    parentOperationId: string,
-    category: NucleusOperationCategory,
-    name: string,
-    action: () => Promise<T>,
-    detail?: unknown,
-  ): Promise<T> {
-    const operation = this.startOperation(parentOperationId, category, name, detail);
-    try {
-      const result = await action();
-      this.completeOperation(operation, result);
-      return result;
-    } catch (error) {
-      const normalized = this.failOperation(operation, error);
-      throw normalized;
-    }
-  }
-
-  private startOperation(
-    parentOperationId: string,
-    category: NucleusOperationCategory,
-    name: string,
-    detail?: unknown,
-  ): NucleusObservedOperationStarted {
-    const operation: NucleusObservedOperationStarted = {
-      category,
-      ...(detail === undefined ? {} : { detail }),
-      name,
-      operationId: randomUUID(),
-      parentOperationId,
-      startedAt: Date.now(),
-    };
-    this.emit('operationStarted', operation);
-    return operation;
-  }
-
-  private completeOperation(operation: NucleusObservedOperationStarted, result?: unknown): void {
-    this.emit('operationCompleted', {
-      ...operation,
-      durationMs: Date.now() - operation.startedAt,
-      ...(result === undefined ? {} : { result }),
-    });
-  }
-
-  private failOperation(operation: NucleusObservedOperationStarted, error: unknown): Error {
-    const normalized = toError(error);
-    this.emit('operationFailed', {
-      ...operation,
-      durationMs: Date.now() - operation.startedAt,
-      error: normalized,
-    });
-    return normalized;
   }
 
   private finish(pending: Promise<unknown>): void {
@@ -562,13 +388,15 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     let dueAt = anchor + this.options.maxThinkInterval;
     if (this.speechEndPending) {
       // 第一段语音可立即触发；后续语音至少与上一次思考相隔 minThinkInterval。
-      dueAt = this.lastThinkAt === undefined ? now : anchor + this.options.minThinkInterval;
+      dueAt = anchor + this.options.minThinkInterval;
+      if (this.lastThinkAt === undefined) dueAt = now;
     }
 
     this.timer = setTimeout(
       () => {
         this.timer = undefined;
-        const trigger: ContextTrigger = this.speechEndPending ? 'speech-end' : 'interval';
+        let trigger: ContextTrigger = 'interval';
+        if (this.speechEndPending) trigger = 'speech-end';
         void this.requestThink(trigger).catch(() => undefined);
       },
       Math.max(0, dueAt - now),
@@ -589,19 +417,22 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
       .records.filter(
         record => record.sequence <= checkout.throughSequence && record.content.type === 'text',
       );
-    const data = await this.context.resolveInputData(checkout.records, recent);
-    return {
-      createdAt: checkout.createdAt,
-      data,
-      definitions: this.context.definitions,
-    };
+    return this.resolvePercepts(checkout.createdAt, checkout.records, recent);
   }
 
   private async resolveSnapshot(snapshot: PerceptSnapshot): Promise<ContextSnapshot> {
     const recentTexts = snapshot.records.filter(record => record.content.type === 'text');
-    const data = await this.context.resolveInputData(snapshot.records, recentTexts);
+    return this.resolvePercepts(snapshot.createdAt, snapshot.records, recentTexts);
+  }
+
+  private async resolvePercepts(
+    createdAt: Date,
+    records: PerceptSnapshot['records'],
+    recentTexts: PerceptSnapshot['records'],
+  ): Promise<ContextSnapshot> {
+    const data = await this.context.resolveInputData(records, recentTexts);
     return {
-      createdAt: snapshot.createdAt,
+      createdAt,
       data,
       definitions: this.context.definitions,
     };
@@ -610,4 +441,9 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private compactPerceptStore(): void {
     this.perceptStore.compact(new Date(), this.options.context.perceptWindow);
   }
+}
+
+function normalizeThinkPrompt(prompt: NucleusThinkOptions<unknown>['prompt']): ContextMessage {
+  if (typeof prompt !== 'string') return prompt;
+  return () => ({ role: 'user', content: prompt });
 }

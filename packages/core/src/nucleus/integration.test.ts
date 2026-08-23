@@ -46,6 +46,7 @@ const memories: Memory[] = [];
 function createMemory(): Memory {
   const memory = new Memory({
     path: ':memory:',
+    resourceId: 'test:nucleus-integration',
     embedder: new MockEmbeddingModelV3({
       doEmbed: async ({ values }) => ({
         embeddings: values.map(() => [1, 0]),

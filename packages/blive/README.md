@@ -43,6 +43,7 @@ const ciel = new Ciel(live, {
       path: '.ciel-data/memory.db',
       embedder: embeddingModel,
       model,
+      resourceId: 'blive:example',
     }),
   },
   oculus: {

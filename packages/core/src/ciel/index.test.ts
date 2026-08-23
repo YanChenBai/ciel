@@ -15,6 +15,7 @@ import type { VigiliaOptions } from '#src/vigilia/index.ts';
 
 const processorState = vi.hoisted(() => ({
   closes: 0,
+  completeEcho: true,
   echoes: [] as unknown[],
   photons: [] as unknown[],
   sensusSignals: [] as (readonly unknown[])[],
@@ -46,7 +47,7 @@ vi.mock('#sensus', async () => {
           processorState.echoes.push(signal);
           // 真实 Auris 会先输出 Hearing，再转发 ASR 的 VAD 结束时间。
           this.emit('speechstart', (signal as Echo).startAt);
-          this.emit('speechend', (signal as Echo).endAt);
+          if (processorState.completeEcho) this.emit('speechend', (signal as Echo).endAt);
         } else if (value.type === 'photon') {
           const photon = signal as Photon;
           await Promise.resolve();
@@ -100,6 +101,7 @@ async function createMemory(): Promise<Memory> {
     path: ':memory:',
     embedder: createEmbedder(),
     model: createModel('经历摘要'),
+    resourceId: 'test:ciel',
   });
   memories.push(memory);
   return memory;
@@ -107,6 +109,7 @@ async function createMemory(): Promise<Memory> {
 
 afterEach(async () => {
   processorState.closes = 0;
+  processorState.completeEcho = true;
   processorState.echoes.length = 0;
   processorState.photons.length = 0;
   processorState.sensusSignals.length = 0;
@@ -297,7 +300,13 @@ describe('Ciel', () => {
     );
     expect(operationNames.every(name => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name))).toBe(true);
     expect(operationNames).toEqual(
-      expect.arrayContaining(['generate', 'choose-response-or-tools']),
+      expect.arrayContaining([
+        'audio-ingest',
+        'choose-response-or-tools',
+        'generate',
+        'text-ingest',
+        'vision',
+      ]),
     );
     expect(events.find(event => event.type === 'percept.appended')?.data).toMatchObject({
       endAt: 0,
@@ -322,6 +331,47 @@ describe('Ciel', () => {
     expect(child?.type === 'operation.started' ? child.data.operationId : undefined).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+  });
+
+  it('停止时结算未完成的 ASR，并允许下次启动创建新 operation', async () => {
+    processorState.completeEcho = false;
+    const ciel = await createCiel(new TestStimulus());
+
+    await ciel.start();
+    await ciel.stop();
+
+    let events = ciel.vigilia.events({ limit: 500 });
+    let starts = events.flatMap(event =>
+      event.type === 'operation.started' && event.data.name === 'asr' ? [event] : [],
+    );
+    const firstStart = starts[0];
+    const firstFailure = events.find(
+      event =>
+        event.type === 'operation.failed' &&
+        event.data.name === 'asr' &&
+        event.data.operationId === firstStart?.data.operationId,
+    );
+    expect(firstFailure?.type).toBe('operation.failed');
+    expect(ciel.vigilia.snapshot().activeOperations).toEqual([]);
+
+    processorState.completeEcho = true;
+    await ciel.start();
+    await ciel.stop();
+
+    events = ciel.vigilia.events({ limit: 500 });
+    starts = events.flatMap(event =>
+      event.type === 'operation.started' && event.data.name === 'asr' ? [event] : [],
+    );
+    expect(starts).toHaveLength(2);
+    expect(starts[1]?.data.operationId).not.toBe(starts[0]?.data.operationId);
+    expect(
+      events.some(
+        event =>
+          event.type === 'operation.completed' &&
+          event.data.name === 'asr' &&
+          event.data.operationId === starts[1]?.data.operationId,
+      ),
+    ).toBe(true);
   });
 
   it('可关闭高频 Signal，同时保留 ASR、上下文、结果与记忆详情', async () => {

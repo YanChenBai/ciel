@@ -8,6 +8,7 @@ import { MockEmbeddingModelV3, MockLanguageModelV3 } from 'ai/test';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { Memory } from './memory.ts';
+import { createMemoryResourceId } from './resource-id.ts';
 
 const temporaryDirectories: string[] = [];
 const memories: Memory[] = [];
@@ -52,6 +53,7 @@ async function createMemory(recentDays = 2, persistent = false): Promise<Memory>
     embedder: createEmbedder(),
     model: createModel(),
     recentDays,
+    resourceId: createMemoryResourceId('test', 'memory'),
   });
   memories.push(memory);
   return memory;
@@ -123,22 +125,36 @@ describe('Memory', () => {
     expect(recalled[0]?.content).toContain('黑猫');
   });
 
-  it('使用 resourceId 隔离同一数据库中的长期记忆和每日经历', async () => {
+  it('使用 resourceId 隔离同一数据库中的长期记忆、每日经历和语义召回', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'ciel-memory-'));
     temporaryDirectories.push(root);
     const databasePath = path.join(root, 'memory.db');
-    const first = await createSharedMemory('blive:100', databasePath);
-    const second = await createSharedMemory('blive:200', databasePath);
+    const first = await createSharedMemory(
+      createMemoryResourceId('blive', 'room', 100),
+      databasePath,
+    );
+    const second = await createSharedMemory(
+      createMemoryResourceId('blive', 'room', 200),
+      databasePath,
+    );
 
     await first.updateLongTerm('一号直播间喜欢简洁回答。');
     await second.updateLongTerm('二号直播间喜欢详细回答。');
+    // 两个资源刻意复用幂等键，验证全局 message ID 仍不会互相覆盖。
     await first.appendEpisode('一号直播间的每日经历。', new Date(2026, 7, 14, 10), 'episode:1');
     await second.appendEpisode('二号直播间的每日经历。', new Date(2026, 7, 14, 11), 'episode:1');
+    await first.appendEpisode('一号直播间收养了一只黑猫。', new Date(2026, 7, 14, 12));
+    await second.appendEpisode('二号直播间养了一只白狗。', new Date(2026, 7, 14, 13));
 
     expect(await first.readLongTerm()).toBe('一号直播间喜欢简洁回答。');
     expect(await second.readLongTerm()).toBe('二号直播间喜欢详细回答。');
     expect(await first.readRecent()).toContain('一号直播间的每日经历。');
     expect(await first.readRecent()).not.toContain('二号直播间的每日经历。');
     expect(await second.readRecent()).toContain('二号直播间的每日经历。');
+    expect((await first.recall('那只猫怎么样了？', 1))[0]?.content).toContain('黑猫');
+    const secondRecall = await second.recall('那只猫怎么样了？', 1);
+    expect(secondRecall).toHaveLength(1);
+    expect(secondRecall[0]?.content).toContain('二号直播间');
+    expect(secondRecall[0]?.content).not.toContain('黑猫');
   });
 });
