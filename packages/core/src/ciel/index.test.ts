@@ -342,7 +342,7 @@ describe('Ciel', () => {
         'choose-response-or-tools',
         'generate',
         'text-ingest',
-        'vision',
+        'image-ingest',
       ]),
     );
     expect(events.find(event => event.type === 'percept.appended')?.data).toMatchObject({

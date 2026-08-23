@@ -99,6 +99,6 @@ function signalDisplayName(signal: Signal): string {
 
 function sensoryOperationName(type: Signal['type']): string {
   if (type === 'echo') return 'audio-ingest';
-  if (type === 'photon') return 'vision';
+  if (type === 'photon') return 'image-ingest';
   return 'text-ingest';
 }

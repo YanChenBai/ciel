@@ -167,6 +167,63 @@ describe('buildVigiliaThoughtRuns', () => {
       { content: { action: 'stay' }, kind: 'model' },
     ]);
   });
+
+  it('projects each ASR percept once and shares its identity and media time with the trace', () => {
+    const events = [
+      event(1, 1_000, 'percept.appended', {
+        content: { text: '同一段识别', type: 'text' },
+        endAt: 950,
+        perceptType: 'Hearing',
+        sequence: 7,
+        signal: '直播音频',
+        startAt: 800,
+        stimulus: '场景',
+      }),
+      event(2, 1_010, 'nucleus.think.started', {
+        fromSequence: 0,
+        operationId: 'think-1',
+        throughSequence: 7,
+        trigger: 'interval',
+      }),
+      event(3, 1_020, 'nucleus.think.completed', {
+        durationMs: 10,
+        operationId: 'think-1',
+        output: 'first',
+        trigger: 'interval',
+      }),
+      event(4, 1_030, 'nucleus.think.started', {
+        fromSequence: 0,
+        name: 'requested-think',
+        operationId: 'think-2',
+        throughSequence: 7,
+        trigger: 'requested',
+      }),
+      event(5, 1_040, 'nucleus.think.completed', {
+        durationMs: 10,
+        name: 'requested-think',
+        operationId: 'think-2',
+        output: 'second',
+        trigger: 'requested',
+      }),
+    ] as AnyVigiliaEvent[];
+
+    const conversationAsr = buildVigiliaConversationEntries(events).filter(
+      entry => entry.kind === 'asr',
+    );
+    const traceAsr = buildVigiliaSignalSteps(events).filter(step => step.lane === 'asr');
+
+    expect(conversationAsr).toEqual([
+      expect.objectContaining({
+        content: { text: '同一段识别', type: 'text' },
+        id: 'asr:0:7',
+        metadata: 'Hearing #7 · 场景 / 直播音频',
+        time: 800,
+      }),
+    ]);
+    expect(traceAsr).toEqual([
+      expect.objectContaining({ id: 'asr:0:7', output: '同一段识别', startedAt: 800 }),
+    ]);
+  });
 });
 
 describe('buildVigiliaSignalSteps', () => {
@@ -201,20 +258,20 @@ describe('buildVigiliaSignalSteps', () => {
       }),
       event(4, 125, 'operation.started', {
         category: 'sensory',
-        name: 'vision',
-        operationId: 'vision-1',
+        name: 'image-ingest',
+        operationId: 'image-ingest-1',
       }),
-      event(5, 130, 'vision.composed', {
+      event(5, 126, 'operation.completed', {
+        category: 'sensory',
+        durationMs: 1,
+        name: 'image-ingest',
+        operationId: 'image-ingest-1',
+      }),
+      event(6, 140, 'vision.composed', {
         frameCount: 9,
         path: 'frames/composed.jpg',
         signal: 'Photon',
         stimulus: '直播间',
-      }),
-      event(6, 140, 'operation.completed', {
-        category: 'sensory',
-        durationMs: 15,
-        name: 'vision',
-        operationId: 'vision-1',
       }),
     ] as AnyVigiliaEvent[];
 
@@ -231,11 +288,11 @@ describe('buildVigiliaSignalSteps', () => {
       {
         label: '9-Frame Mosaic',
         lane: 'vision',
-        name: 'vision',
+        name: 'vision-mosaic',
         output: { frameCount: 9, path: 'frames/composed.jpg' },
-        startedAt: 125,
+        startedAt: 140,
         completedAt: 140,
-        durationMs: 15,
+        durationMs: 0,
       },
     ]);
   });

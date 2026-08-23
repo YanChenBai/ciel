@@ -68,12 +68,9 @@ export function buildVigiliaConversationEntries(
   events: readonly AnyVigiliaEvent[],
 ): readonly VigiliaConversationEntry[] {
   return splitJournals(events)
-    .flatMap(journal =>
-      buildJournalThoughtRuns(journal).flatMap(run => [
-        ...run.inputPercepts
-          .filter(percept => percept.perceptType.toLocaleLowerCase() !== 'sight')
-          .map(percept => perceptConversationEntry(run.id, percept)),
-        ...composedVisionConversationEntries(journal, run),
+    .flatMap((journal, journalIndex) => [
+      ...journal.flatMap(event => sensoryConversationEntries(journalIndex, event)),
+      ...buildJournalThoughtRuns(journal).flatMap(run => [
         ...run.steps.flatMap(step => {
           const entry = danmakuConversationEntry(run.id, step);
           return entry ? [entry] : [];
@@ -91,7 +88,7 @@ export function buildVigiliaConversationEntries(
               },
             ]),
       ]),
-    )
+    ])
     .sort((left, right) => left.time - right.time);
 }
 
@@ -107,7 +104,6 @@ export function buildVigiliaSignalSteps(
 ): readonly VigiliaStep[] {
   const steps: VigiliaStep[] = [];
   for (const [journalIndex, journal] of splitJournals(events).entries()) {
-    const capturedCompositions = new Set<number>();
     for (const event of journal) {
       if (event.type === 'percept.appended' && event.data.perceptType.toLowerCase() === 'hearing') {
         const text = perceptText(event.data.content);
@@ -116,7 +112,7 @@ export function buildVigiliaSignalSteps(
             completedAt: event.data.endAt,
             durationMs: Math.max(0, event.data.endAt - event.data.startAt),
             events: [event],
-            id: `asr:${journalIndex}:${event.sequence}`,
+            id: `asr:${journalIndex}:${event.data.sequence}`,
             label: 'ASR Transcription',
             lane: 'asr' as const,
             name: 'asr-transcription',
@@ -127,58 +123,7 @@ export function buildVigiliaSignalSteps(
         }
         continue;
       }
-      if (
-        event.type === 'operation.started' &&
-        event.data.category === 'sensory' &&
-        event.data.name === 'vision'
-      ) {
-        const settlement = journal.find(
-          candidate =>
-            (candidate.type === 'operation.completed' || candidate.type === 'operation.failed') &&
-            candidate.data.operationId === event.data.operationId,
-        );
-        const composition = journal.find(
-          candidate =>
-            candidate.type === 'vision.composed' &&
-            candidate.time >= event.time &&
-            candidate.time <= (settlement?.time ?? Number.POSITIVE_INFINITY),
-        );
-        if (composition?.type === 'vision.composed') capturedCompositions.add(composition.sequence);
-        steps.push({
-          ...(settlement
-            ? {
-                completedAt: settlement.time,
-                durationMs:
-                  settlement.type === 'operation.completed' ||
-                  settlement.type === 'operation.failed'
-                    ? settlement.data.durationMs
-                    : Math.max(0, settlement.time - event.time),
-              }
-            : {}),
-          events: [
-            event,
-            ...(composition ? [composition] : []),
-            ...(settlement ? [settlement] : []),
-          ],
-          id: `vision:${journalIndex}:${event.data.operationId}`,
-          label:
-            composition?.type === 'vision.composed'
-              ? `${composition.data.frameCount}-Frame Mosaic`
-              : 'Vision',
-          lane: 'vision' as const,
-          name: 'vision',
-          ...(composition?.type === 'vision.composed' ? { output: composition.data } : {}),
-          startedAt: event.time,
-          status:
-            settlement?.type === 'operation.failed'
-              ? ('failed' as const)
-              : settlement
-                ? ('completed' as const)
-                : ('running' as const),
-        });
-        continue;
-      }
-      if (event.type === 'vision.composed' && !capturedCompositions.has(event.sequence)) {
+      if (event.type === 'vision.composed') {
         steps.push({
           completedAt: event.time,
           durationMs: 0,
@@ -383,46 +328,54 @@ function operationIdOf(event: AnyVigiliaEvent): string | undefined {
   return 'operationId' in event.data ? event.data.operationId : undefined;
 }
 
-function perceptConversationEntry(
-  runId: string,
-  percept: VigiliaPerceptRecord,
-): VigiliaConversationEntry {
-  const type = percept.perceptType.toLocaleLowerCase();
-  const common = {
-    content: percept.content,
-    id: `percept:${runId}:${percept.sequence}`,
-    metadata: `${percept.perceptType} · ${percept.stimulus} / ${percept.signal}`,
-    time: percept.time,
-  };
-  if (type === 'hearing') return { ...common, kind: 'asr', label: 'ASR' };
-  if (type === 'reading') return { ...common, kind: 'reading', label: '文本' };
-  return { ...common, kind: 'percept', label: '感知' };
-}
-
-function composedVisionConversationEntries(
-  events: readonly AnyVigiliaEvent[],
-  run: VigiliaThoughtRun,
+function sensoryConversationEntries(
+  journalIndex: number,
+  event: AnyVigiliaEvent,
 ): readonly VigiliaConversationEntry[] {
-  const completedAt = run.completedAt ?? Number.POSITIVE_INFINITY;
-  return events.flatMap(event => {
-    if (
-      event.type !== 'vision.composed' ||
-      event.time < run.startedAt ||
-      event.time > completedAt
-    ) {
-      return [];
-    }
+  if (event.type === 'vision.composed') {
     return [
       {
         content: { path: event.data.path, type: 'image' },
-        id: `vision:${run.id}:${event.sequence}`,
+        id: `vision:${journalIndex}:${event.sequence}`,
         kind: 'visual' as const,
         label: 'VISION',
         metadata: `${event.data.frameCount}-Frame Mosaic · ${event.data.stimulus} / ${event.data.signal}`,
         time: event.time,
       },
     ];
-  });
+  }
+  if (event.type !== 'percept.appended') return [];
+  const type = event.data.perceptType.toLocaleLowerCase();
+  if (type === 'sight') return [];
+  if (type === 'hearing' && !perceptText(event.data.content)) return [];
+  const common = {
+    content: event.data.content,
+    metadata: `${event.data.perceptType} #${event.data.sequence} · ${event.data.stimulus} / ${event.data.signal}`,
+    time: type === 'hearing' ? event.data.startAt : event.time,
+  };
+  if (type === 'hearing') {
+    return [
+      { ...common, id: `asr:${journalIndex}:${event.data.sequence}`, kind: 'asr', label: 'ASR' },
+    ];
+  }
+  if (type === 'reading') {
+    return [
+      {
+        ...common,
+        id: `reading:${journalIndex}:${event.data.sequence}`,
+        kind: 'reading',
+        label: '文本',
+      },
+    ];
+  }
+  return [
+    {
+      ...common,
+      id: `percept:${journalIndex}:${event.data.sequence}`,
+      kind: 'percept',
+      label: '感知',
+    },
+  ];
 }
 
 function danmakuConversationEntry(

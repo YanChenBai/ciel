@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 
-import { Echo } from '#signals';
+import { Echo, Photon } from '#signals';
 import { VigiliaChannel } from '#vigilia';
 import type { VigiliaObservation } from '#vigilia';
 
@@ -9,6 +9,11 @@ import { SensusOperations } from './operations.ts';
 class LiveEcho extends Echo.WithMeta({
   description: '测试中文显示名称不参与 operation 分类',
   name: '直播声音',
+}) {}
+
+class LivePhoton extends Photon.WithMeta({
+  description: '测试原始图像摄取与视觉合成分离',
+  name: '直播画面',
 }) {}
 
 describe('SensusOperations', () => {
@@ -29,6 +34,23 @@ describe('SensusOperations', () => {
     expect(started?.type).toBe('operation.started');
     if (started?.type !== 'operation.started') return;
     expect(started.data.name).toBe('audio-ingest');
+  });
+
+  it('把 Photon 标记为原始图像摄取，而不是视觉合成', async () => {
+    const channel = new VigiliaChannel();
+    const observations: VigiliaObservation[] = [];
+    channel.subscribe(observation => observations.push(observation));
+    const operations = new SensusOperations(channel);
+
+    await operations.process(
+      new LivePhoton({ data: Buffer.alloc(0), timestamp: new Date(0) }),
+      async () => Promise.resolve(),
+    );
+
+    const started = observations.find(observation => observation.type === 'operation.started');
+    expect(started?.type).toBe('operation.started');
+    if (started?.type !== 'operation.started') return;
+    expect(started.data.name).toBe('image-ingest');
   });
 
   it('关闭时结算未完成 ASR，并允许创建下一段语音', () => {

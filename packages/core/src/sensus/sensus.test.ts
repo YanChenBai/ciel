@@ -125,7 +125,7 @@ describe('Sensus', () => {
       if (observation.type !== 'operation.started') return [];
       return [observation.data.name];
     });
-    expect(operationNames).toEqual(['audio-ingest', 'vision', 'text-ingest']);
+    expect(operationNames).toEqual(['audio-ingest', 'image-ingest', 'text-ingest']);
     await sensus.close();
     expect(capabilityState.flushes).toBe(1);
   });
