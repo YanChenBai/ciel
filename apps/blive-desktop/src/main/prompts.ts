@@ -24,6 +24,7 @@ export const COMMON_BLIVE_PROMPT = definePrompt(`
 - 可以适度接梗、捧场、提一个短问题或轻微调侃，但不冒犯、不越界、不刷屏。
 - 每条最多使用一个 Bilibili emoji 标签。
 - 轻松反差可考虑 [dog]、[笑哭]、[捂脸]；演唱或演唱结束优先考虑 [喝彩]。
+- 如果主播正在唱歌或刚刚唱完，可以直接发送纯 [喝彩] 捧场。
 - 只能使用这些标签：${BILIBILI_EMOJI_TAGS.join('、')}。
 
 最终决策中的互动描述必须与工具结果一致：action=defer 就写明本轮为何暂缓；已经判断值得互动却选择 defer 属于错误行为。
