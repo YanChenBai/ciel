@@ -1,10 +1,16 @@
 // @env node
 
 import { BrowserWindow, session } from 'electron';
+import type { Cookie } from 'electron';
 
 import type { BilibiliAccount } from '../shared/types.ts';
 
 const LOGIN_URL = 'https://passport.bilibili.com/login';
+const BILIBILI_ORIGINS = [
+  'https://www.bilibili.com',
+  'https://live.bilibili.com',
+  'https://passport.bilibili.com',
+] as const;
 
 interface NavResponse {
   readonly code: number;
@@ -95,6 +101,21 @@ export class BilibiliAccountManager {
       void inspect();
     });
   }
+
+  async logout(): Promise<void> {
+    const currentSession = session.defaultSession;
+    const cookies = await currentSession.cookies.get({});
+    await Promise.all(
+      cookies
+        .filter(cookie => isBilibiliDomain(cookie.domain))
+        .map(cookie => currentSession.cookies.remove(cookieUrl(cookie), cookie.name)),
+    );
+    await Promise.all(
+      BILIBILI_ORIGINS.map(origin =>
+        currentSession.clearStorageData({ origin, storages: ['localstorage'] }),
+      ),
+    );
+  }
 }
 
 async function fetchAvatarDataUrl(url?: string): Promise<string> {
@@ -115,4 +136,16 @@ async function fetchAvatarDataUrl(url?: string): Promise<string> {
   } catch {
     return '';
   }
+}
+
+function isBilibiliDomain(domain?: string): boolean {
+  const normalized = domain?.replace(/^\./u, '').toLowerCase();
+  return normalized === 'bilibili.com' || Boolean(normalized?.endsWith('.bilibili.com'));
+}
+
+function cookieUrl(cookie: Cookie): string {
+  const protocol = cookie.secure ? 'https' : 'http';
+  const domain = cookie.domain?.replace(/^\./u, '') || 'bilibili.com';
+  const path = cookie.path?.startsWith('/') ? cookie.path : `/${cookie.path ?? ''}`;
+  return `${protocol}://${domain}${path}`;
 }

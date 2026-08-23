@@ -105,6 +105,13 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
     this.emitState();
   }
 
+  async logout(): Promise<void> {
+    await this.stop();
+    await this.accountManager.logout();
+    this.account = undefined;
+    this.emitState();
+  }
+
   state(): BliveDesktopState {
     return {
       ...(this.account ? { account: this.account } : {}),
@@ -189,7 +196,7 @@ export class RuntimeController extends EventEmitter<RuntimeControllerEvents> {
 
   private async startRuntime(): Promise<void> {
     assertAurisModels();
-    const ffmpegPath = process.env.BLIVE_FFMPEG_PATH?.trim();
+    const ffmpegPath = process.env.FFMPEG_PATH?.trim();
     const liveSession = new BilibiliLiveSession(ffmpegPath);
     this.liveSession = liveSession;
     const { embedder, model } = createBliveAI();

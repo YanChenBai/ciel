@@ -9,6 +9,7 @@ import type { BliveDesktopApi, BliveDesktopEvent } from '../shared/types.ts';
 const api: BliveDesktopApi = {
   account: {
     login: () => invoke(IPC.accountLogin),
+    logout: () => invoke(IPC.accountLogout),
   },
   areas: {
     list: () => invoke(IPC.areasList),

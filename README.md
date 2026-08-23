@@ -97,25 +97,25 @@ vp install
 vp run asr:install
 ```
 
-运行 Bilibili 直播示例还需要系统能够执行 **ffmpeg**。
+运行 Bilibili 直播桌面端还需要系统能够执行 **ffmpeg**。
 
-### 4.2 运行直播示例
+### 4.2 运行直播桌面端
 
 配置一个同时支持图片输入和 embeddings 的 OpenAI-compatible 模型：
 
 ```powershell
-$env:BLIVE_AI_API_KEY='...'
-$env:BLIVE_AI_MODEL='provider/model'
-$env:BLIVE_AI_BASE_URL='https://openrouter.ai/api/v1'
+$env:AI_API_KEY='...'
+$env:AI_MODEL='provider/model'
+$env:AI_BASE_URL='https://openrouter.ai/api/v1'
 ```
 
-启动 Ciel：
+启动桌面端：
 
 ```powershell
-vp -C apps/blive run start
+vp -C apps/blive-desktop run dev
 ```
 
-示例会连接直播输入，启动 Ciel、Memory 和 Vigilia Bridge。默认 Bridge 地址为 **http://localhost:3000**。
+桌面端会连接直播输入，并在 Main 进程中启动 Ciel、Memory 和 Vigilia Bridge。默认 Bridge 地址为 **http://localhost:3000**。
 
 ### 4.3 打开 DevTools
 

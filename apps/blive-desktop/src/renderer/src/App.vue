@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { CielDevTools } from '@ciels/devtools';
-import { Check, ChevronsUpDown, LogIn, Play, Radio, Square } from '@lucide/vue';
+import {
+  Check,
+  ChevronDown,
+  ChevronsUpDown,
+  LogIn,
+  LogOut,
+  Play,
+  Radio,
+  Square,
+} from '@lucide/vue';
 import {
   ComboboxContent,
   ComboboxEmpty,
@@ -12,6 +21,11 @@ import {
   ComboboxRoot,
   ComboboxTrigger,
   ComboboxViewport,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
 } from 'reka-ui';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 
@@ -160,6 +174,10 @@ function login(): Promise<void> {
   return run(() => window.blive.account.login());
 }
 
+function logout(): Promise<void> {
+  return run(() => window.blive.account.logout());
+}
+
 function updateLiveBounds(): void {
   const rect = liveHost.value?.getBoundingClientRect();
   if (!rect) return;
@@ -208,14 +226,44 @@ function updateLiveBounds(): void {
         停止
       </Button>
       <div class="ml-auto flex items-center gap-1 text-[11px] [-webkit-app-region:no-drag]">
-        <img
-          v-if="state?.account?.face"
-          :src="state.account.face"
-          :alt="state.account.name"
-          referrerpolicy="no-referrer"
-          class="size-6 rounded-full"
-        />
-        <span>{{ state?.account?.name ?? '未登录' }}</span>
+        <DropdownMenuRoot v-if="state?.account">
+          <DropdownMenuTrigger as-child>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              class="h-7 gap-1.5 px-1.5 text-[11px] font-normal text-[#eeeeef] hover:bg-white/10 hover:text-white [&_svg]:size-3"
+              :disabled="pending"
+            >
+              <img
+                v-if="state.account.face"
+                :src="state.account.face"
+                :alt="state.account.name"
+                referrerpolicy="no-referrer"
+                class="size-5 rounded-full"
+              />
+              <span class="max-w-32 truncate">{{ state.account.name }}</span>
+              <ChevronDown class="text-[#8b8d92]" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuContent
+              align="end"
+              :side-offset="6"
+              class="border-border bg-popover text-popover-foreground z-50 min-w-36 rounded-lg border p-1 shadow-xl"
+            >
+              <DropdownMenuItem
+                class="focus:bg-destructive/15 focus:text-destructive text-destructive flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                :disabled="pending"
+                @select="logout"
+              >
+                <LogOut class="size-3.5" />
+                退出账号
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenuPortal>
+        </DropdownMenuRoot>
+        <span v-else>未登录</span>
         <Button
           v-if="!state?.account"
           type="button"

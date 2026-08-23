@@ -110,7 +110,7 @@ function loadEnvironment(): void {
 
 function configureRemoteDebugging(): void {
   if (app.isPackaged || process.env.ELECTRON_VITE_PLUS_SMOKE === '1') return;
-  const port = process.env.BLIVE_REMOTE_DEBUGGING_PORT?.trim() || '9333';
+  const port = process.env.REMOTE_DEBUGGING_PORT?.trim() || '9333';
   app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
   app.commandLine.appendSwitch('remote-debugging-port', port);
 }

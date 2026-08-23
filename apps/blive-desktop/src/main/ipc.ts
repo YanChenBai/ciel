@@ -69,6 +69,10 @@ export function registerBliveDesktopIpc(
     assertSender(event, window);
     return controller.login(window);
   });
+  transport.handle(IPC.accountLogout, event => {
+    assertSender(event, window);
+    return controller.logout();
+  });
   transport.handle(IPC.runtimeStart, (event, value: unknown) => {
     assertSender(event, window);
     return controller.start(startOptionsSchema.parse(value) as BliveStartOptions);
@@ -108,6 +112,7 @@ export function registerBliveDesktopIpc(
     transport.removeHandler(IPC.stateGet);
     transport.removeHandler(IPC.areasList);
     transport.removeHandler(IPC.accountLogin);
+    transport.removeHandler(IPC.accountLogout);
     transport.removeHandler(IPC.runtimeStart);
     transport.removeHandler(IPC.runtimeStop);
     transport.removeHandler(IPC.danmakuSend);

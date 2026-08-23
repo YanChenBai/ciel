@@ -9,6 +9,7 @@ import type {
 
 export const IPC = {
   accountLogin: 'blive:account:login',
+  accountLogout: 'blive:account:logout',
   areasList: 'blive:areas:list',
   danmakuSend: 'blive:danmaku:send',
   liveViewSetBounds: 'blive:live-view:set-bounds',
@@ -21,6 +22,7 @@ export const IPC = {
 
 export interface BliveIpcInvokeContract {
   readonly [IPC.accountLogin]: { readonly request: undefined; readonly response: void };
+  readonly [IPC.accountLogout]: { readonly request: undefined; readonly response: void };
   readonly [IPC.areasList]: {
     readonly request: undefined;
     readonly response: readonly BilibiliLiveAreaGroup[];

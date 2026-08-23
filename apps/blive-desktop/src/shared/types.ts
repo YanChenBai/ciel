@@ -109,6 +109,7 @@ export interface LiveViewBounds {
 export interface BliveDesktopApi {
   readonly account: {
     login(): Promise<void>;
+    logout(): Promise<void>;
   };
   readonly areas: {
     list(): Promise<readonly BilibiliLiveAreaGroup[]>;

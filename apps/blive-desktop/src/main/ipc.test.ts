@@ -47,6 +47,7 @@ describe('registerBliveDesktopIpc', () => {
     const state = { connected: true } as BliveDesktopState;
     const controller = Object.assign(new EventEmitter(), {
       login: vi.fn(() => Promise.resolve()),
+      logout: vi.fn(() => Promise.resolve()),
       sendDanmaku: vi.fn(() => Promise.resolve()),
       start: vi.fn(() => Promise.resolve()),
       state: vi.fn(() => state),
@@ -70,6 +71,7 @@ describe('registerBliveDesktopIpc', () => {
 
     expect(electron.handlers.get(IPC.stateGet)?.(trustedEvent)).toBe(state);
     await electron.handlers.get(IPC.accountLogin)?.(trustedEvent);
+    await electron.handlers.get(IPC.accountLogout)?.(trustedEvent);
     await electron.handlers.get(IPC.runtimeStart)?.(trustedEvent, {
       danmakuDelivery: 'simulate',
       mode: 'standard',
@@ -77,6 +79,7 @@ describe('registerBliveDesktopIpc', () => {
     });
     await electron.handlers.get(IPC.danmakuSend)?.(trustedEvent, '你好');
     expect(controller.login).toHaveBeenCalledWith(window);
+    expect(controller.logout).toHaveBeenCalledOnce();
     expect(controller.start).toHaveBeenCalledWith({
       danmakuDelivery: 'simulate',
       mode: 'standard',
@@ -122,7 +125,7 @@ describe('registerBliveDesktopIpc', () => {
     expect(electron.listeners.size).toBe(0);
     expect(controller.listenerCount('state')).toBe(0);
     expect(controller.listenerCount('vigilia')).toBe(0);
-    expect(electron.ipcMain.removeHandler).toHaveBeenCalledTimes(6);
+    expect(electron.ipcMain.removeHandler).toHaveBeenCalledTimes(7);
     expect(electron.ipcMain.removeListener).toHaveBeenCalledOnce();
   });
 });

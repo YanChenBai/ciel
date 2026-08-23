@@ -6,8 +6,8 @@ describe('resolveBliveAIConfig', () => {
   it('读取显式模型配置并提供 OpenRouter 默认地址', () => {
     expect(
       resolveBliveAIConfig({
-        BLIVE_AI_API_KEY: ' key ',
-        BLIVE_AI_MODEL: ' provider/shared-model ',
+        AI_API_KEY: ' key ',
+        AI_MODEL: ' provider/shared-model ',
       }),
     ).toEqual({
       apiKey: 'key',
@@ -19,14 +19,14 @@ describe('resolveBliveAIConfig', () => {
   it('缺少密钥或模型时快速失败', () => {
     expect(() =>
       resolveBliveAIConfig({
-        BLIVE_AI_MODEL: 'provider/model',
+        AI_MODEL: 'provider/model',
       }),
-    ).toThrow('BLIVE_AI_API_KEY');
+    ).toThrow('AI_API_KEY');
     expect(() =>
       resolveBliveAIConfig({
-        BLIVE_AI_API_KEY: 'key',
+        AI_API_KEY: 'key',
       }),
-    ).toThrow('BLIVE_AI_MODEL');
+    ).toThrow('AI_MODEL');
   });
 
   it('从同一个模型 ID 创建生成和 embedding handle', () => {
