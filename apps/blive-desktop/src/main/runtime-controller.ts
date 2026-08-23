@@ -4,7 +4,6 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createBliveAI } from '@ciels/blive';
 import { Ciel, Memory } from '@ciels/core';
 import type { AnyVigiliaEvent, VigiliaSnapshot } from '@ciels/core';
 import { createBridge } from '@ciels/vigilia-bridge';
@@ -23,7 +22,9 @@ import type {
 } from '../shared/types.ts';
 import { BilibiliAccountManager } from './account.ts';
 import { AreaCatalog } from './area-catalog.ts';
-import { fetchLiveRoomInfo } from './bilibili-api.ts';
+import { createBliveAI } from './blive/ai.ts';
+import { fetchLiveRoomInfo } from './blive/catalog-api.ts';
+import { BilibiliLiveSession } from './blive/live-session.ts';
 import {
   DANMAKU_PROMPT_HISTORY_LIMIT,
   MAX_DANMAKU_LENGTH,
@@ -31,7 +32,6 @@ import {
 } from './constants.ts';
 import { DanmakuHistory } from './danmaku-history.ts';
 import type { LivePage } from './live-page.ts';
-import { BilibiliLiveSession } from './live-session.ts';
 import { createBliveMemoryResourceId } from './memory-scope.ts';
 import {
   AUTONOMOUS_MODE_PROMPT,

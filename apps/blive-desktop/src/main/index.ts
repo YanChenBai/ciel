@@ -3,18 +3,16 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import type { WebContents } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 
-import { IPC } from '../shared/ipc.ts';
-import type { BliveCommand, LiveViewBounds } from '../shared/types.ts';
-import { fetchLiveAreas } from './bilibili-api.ts';
+import { registerBliveDesktopIpc } from './ipc.ts';
 import { LivePage } from './live-page.ts';
 import type { RuntimeController } from './runtime-controller.ts';
 
 let mainWindow: BrowserWindow | undefined;
 let livePage: LivePage | undefined;
 let controller: RuntimeController | undefined;
+let disposeDesktopIpc: (() => void) | undefined;
 
 loadEnvironment();
 configureRemoteDebugging();
@@ -46,34 +44,8 @@ async function createWindow(): Promise<void> {
   window.once('ready-to-show', () => window.show());
   livePage = new LivePage(window, join(import.meta.dirname, '../preload/live.js'));
   controller = new RuntimeController({ livePage, userDataPath: app.getPath('userData') });
-
-  controller.on('state', state => {
-    if (canSend(window)) window.webContents.send(IPC.event, { state, type: 'state' });
-  });
-  controller.on('vigilia', (event, snapshot) => {
-    if (canSend(window)) window.webContents.send(IPC.event, { event, snapshot, type: 'vigilia' });
-  });
-
-  ipcMain.handle(IPC.bootstrap, event => {
-    assertSender(event.sender, window);
-    return controller?.state();
-  });
-  ipcMain.handle(IPC.areas, event => {
-    assertSender(event.sender, window);
-    return fetchLiveAreas();
-  });
-  ipcMain.handle(IPC.command, async (event, command: BliveCommand) => {
-    assertSender(event.sender, window);
-    if (!controller) throw new Error('Blive runtime is unavailable');
-    if (command.type === 'login') await controller.login(window);
-    else if (command.type === 'start') await controller.start(command.options);
-    else if (command.type === 'stop') await controller.stop();
-    else if (command.type === 'send-danmaku') await controller.sendDanmaku(command.content);
-  });
-  ipcMain.on(IPC.liveBounds, (event, bounds: LiveViewBounds) => {
-    if (event.sender !== window.webContents || !isBounds(bounds)) return;
-    livePage?.setBounds(bounds);
-  });
+  const disposeIpc = registerBliveDesktopIpc({ controller, livePage, window });
+  disposeDesktopIpc = disposeIpc;
 
   if (process.env.ELECTRON_RENDERER_URL) {
     await window.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -89,6 +61,8 @@ async function createWindow(): Promise<void> {
   }
   void controller.initialize();
   window.on('closed', () => {
+    disposeIpc();
+    if (disposeDesktopIpc === disposeIpc) disposeDesktopIpc = undefined;
     mainWindow = undefined;
   });
 }
@@ -115,6 +89,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', event => {
   if (!controller) return;
   event.preventDefault();
+  disposeDesktopIpc?.();
+  disposeDesktopIpc = undefined;
   const activeController = controller;
   controller = undefined;
   void activeController.close().finally(() => {
@@ -123,22 +99,6 @@ app.on('before-quit', event => {
     app.exit();
   });
 });
-
-function assertSender(sender: WebContents, window: BrowserWindow): void {
-  if (sender !== window.webContents) throw new Error('Untrusted IPC sender');
-}
-
-function canSend(window: BrowserWindow): boolean {
-  return !window.isDestroyed() && !window.webContents.isDestroyed();
-}
-
-function isBounds(value: unknown): value is LiveViewBounds {
-  if (!value || typeof value !== 'object') return false;
-  const bounds = value as Record<string, unknown>;
-  return ['height', 'width', 'x', 'y'].every(
-    key => typeof bounds[key] === 'number' && Number.isFinite(bounds[key]),
-  );
-}
 
 function loadEnvironment(): void {
   const candidates = [join(process.cwd(), '.env'), join(app.getAppPath(), '.env')];

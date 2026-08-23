@@ -1,3 +1,5 @@
+// @env node
+
 export class BilibiliApiError extends Error {
   constructor(
     readonly code: number,

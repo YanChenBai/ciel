@@ -67,10 +67,10 @@ const areaLabels = computed(() => {
 onMounted(async () => {
   try {
     if (!window.blive) throw new Error('Electron preload 未加载，请完全退出应用后重新启动');
-    state.value = await window.blive.bootstrap();
+    state.value = await window.blive.state.get();
     areasPending.value = true;
-    void window.blive
-      .listAreas()
+    void window.blive.areas
+      .list()
       .then(value => {
         areas.value = value;
       })
@@ -80,7 +80,7 @@ onMounted(async () => {
       .finally(() => {
         areasPending.value = false;
       });
-    stopEvents = window.blive.onEvent(event => {
+    stopEvents = window.blive.state.subscribe(event => {
       if (event.type === 'state') {
         state.value = event.state;
         return;
@@ -140,12 +140,7 @@ function start(): Promise<void> {
           mode: 'standard' as const,
           roomId: Number(roomId.value),
         };
-  return run(() =>
-    window.blive.command({
-      type: 'start',
-      options,
-    }),
-  );
+  return run(() => window.blive.runtime.start(options));
 }
 
 function areaUrlFor(parentAreaId: number, areaId: number): string {
@@ -158,17 +153,17 @@ function areaLabelForUrl(value: unknown): string {
 }
 
 function stop(): Promise<void> {
-  return run(() => window.blive.command({ type: 'stop' }));
+  return run(() => window.blive.runtime.stop());
 }
 
 function login(): Promise<void> {
-  return run(() => window.blive.command({ type: 'login' }));
+  return run(() => window.blive.account.login());
 }
 
 function updateLiveBounds(): void {
   const rect = liveHost.value?.getBoundingClientRect();
   if (!rect) return;
-  window.blive.setLiveBounds({
+  window.blive.liveView.setBounds({
     height: rect.height,
     width: rect.width,
     x: rect.x,

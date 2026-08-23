@@ -1,3 +1,5 @@
+// @env node
+
 import { BilibiliApiError, RoomNotLiveError } from './errors.ts';
 import type { BilibiliApiRequestOptions } from './types.ts';
 

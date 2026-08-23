@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 
-import { createBliveAI, resolveBliveAIConfig } from '../src/ai.ts';
+import { createBliveAI, resolveBliveAIConfig } from './ai.ts';
 
 describe('resolveBliveAIConfig', () => {
   it('读取显式模型配置并提供 OpenRouter 默认地址', () => {

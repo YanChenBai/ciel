@@ -1,6 +1,8 @@
-import { BilibiliLive, bilibiliLiveSignals } from '@ciels/blive';
 import { Stimulus } from '@ciels/core';
 import type { StimulusSignal } from '@ciels/core';
+
+import { BilibiliLive } from './live.ts';
+import { bilibiliLiveSignals } from './signals.ts';
 
 interface LiveSessionCloseEvent {
   readonly code: number | null;

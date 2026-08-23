@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
-import { fetchLiveAreas, fetchLiveRoomsByArea } from './bilibili-api.ts';
+import { fetchLiveAreas, fetchLiveRoomsByArea } from './catalog-api.ts';
 
 afterEach(() => {
   vi.unstubAllGlobals();

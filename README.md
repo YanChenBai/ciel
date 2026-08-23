@@ -133,46 +133,16 @@ DevTools 提供两个视图：
 - **对话**：展示 ASR 结果和模型最终消息；
 - **轨迹**：展示感知、上下文、记忆、模型和工具调用步骤。
 
-### 4.4 在代码中组装 Ciel
+### 4.4 在应用中组装 Ciel
 
-```ts
-import { BilibiliLive } from '@ciels/blive';
-import { Ciel, Memory } from '@ciels/core';
-
-const stimulus = new BilibiliLive({ roomId: 24680 });
-const memory = new Memory({
-  path: '.ciel-data/memory.db',
-  embedder,
-  model,
-  resourceId: 'blive:24680',
-});
-
-const ciel = new Ciel(stimulus, {
-  nucleus: {
-    model,
-    memory,
-  },
-  oculus: {
-    differenceThreshold: 0.03,
-    sampleInterval: 0,
-  },
-});
-
-ciel.on('data', percept => console.log(percept));
-ciel.on('thought', output => console.log(output));
-ciel.on('error', error => console.error(error));
-
-await ciel.start();
-```
-
-应用负责提供 Stimulus、模型、Memory 和业务工具；Ciel 负责感知、上下文组织和认知调度。
+应用负责提供 Stimulus、模型、Memory 和业务工具；Ciel 负责感知、上下文组织和认知调度。Bilibili 直播接入及其 FFmpeg Stimulus 由 `apps/blive-desktop` 在 Main 进程内部组装，不作为独立 Package 发布。
 
 ## 5. 项目结构
 
 ```text
 ciel/
 ├── apps/
-│   └── blive/              # Bilibili 直播场景与可运行入口
+│   └── blive-desktop/      # Bilibili 直播 Electron 客户端
 ├── packages/
 │   ├── core/               # 感知、上下文、记忆、认知和 Vigilia
 │   ├── asr/                # VAD、ASR、时间戳和说话人识别
@@ -208,7 +178,6 @@ packages/core/src/
 | **@ciels/event**          | 运行时内部使用的类型化事件基础设施。 |
 | **@ciels/vigilia-bridge** | 将 Vigilia 暴露为 WebSocket 服务。   |
 | **@ciels/devtools**       | 可嵌入组件和完整可部署检查器。       |
-| **@ciels/blive**          | Bilibili 直播 Stimulus 与示例应用。  |
 
 ## 6. 开发
 

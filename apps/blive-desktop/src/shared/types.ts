@@ -91,12 +91,6 @@ export interface BliveDesktopState {
   readonly snapshot: VigiliaSnapshot;
 }
 
-export type BliveCommand =
-  | { readonly type: 'login' }
-  | { readonly type: 'start'; readonly options: BliveStartOptions }
-  | { readonly type: 'stop' }
-  | { readonly type: 'send-danmaku'; readonly content: string };
-
 export type BliveDesktopEvent =
   | { readonly type: 'state'; readonly state: BliveDesktopState }
   | {
@@ -113,9 +107,24 @@ export interface LiveViewBounds {
 }
 
 export interface BliveDesktopApi {
-  bootstrap(): Promise<BliveDesktopState>;
-  command(command: BliveCommand): Promise<void>;
-  listAreas(): Promise<readonly BilibiliLiveAreaGroup[]>;
-  onEvent(listener: (event: BliveDesktopEvent) => void): () => void;
-  setLiveBounds(bounds: LiveViewBounds): void;
+  readonly account: {
+    login(): Promise<void>;
+  };
+  readonly areas: {
+    list(): Promise<readonly BilibiliLiveAreaGroup[]>;
+  };
+  readonly danmaku: {
+    send(content: string): Promise<void>;
+  };
+  readonly liveView: {
+    setBounds(bounds: LiveViewBounds): void;
+  };
+  readonly runtime: {
+    start(options: BliveStartOptions): Promise<void>;
+    stop(): Promise<void>;
+  };
+  readonly state: {
+    get(): Promise<BliveDesktopState>;
+    subscribe(listener: (event: BliveDesktopEvent) => void): () => void;
+  };
 }

@@ -1,11 +1,13 @@
+// @env node
+
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import type { Readable } from 'node:stream';
 
 import { Stimulus } from '@ciels/core';
 
-import { fetchBilibiliFlvUrl } from './api.ts';
 import { JpegStreamParser } from './jpeg-stream.ts';
+import { fetchBilibiliFlvUrl } from './play-info.ts';
 import { BilibiliAudio, bilibiliLiveSignals, BilibiliVideo } from './signals.ts';
 import type {
   BilibiliLiveCloseListener,

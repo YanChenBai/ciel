@@ -1,3 +1,5 @@
+// @env node
+
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { EmbeddingModel, LanguageModel } from 'ai';
 

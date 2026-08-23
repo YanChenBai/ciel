@@ -1,7 +1,7 @@
 // @env node
 
 import type { LiveRoomCandidate } from '../shared/types.ts';
-import { fetchLiveRoomsByArea } from './bilibili-api.ts';
+import { fetchLiveRoomsByArea } from './blive/catalog-api.ts';
 
 export interface LiveRoomPage {
   readonly candidates: readonly LiveRoomCandidate[];

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
-import { fetchBilibiliFlvUrl, RoomNotLiveError } from '../src/index.ts';
+import { RoomNotLiveError } from './errors.ts';
+import { fetchBilibiliFlvUrl } from './play-info.ts';
 
 afterEach(() => vi.unstubAllGlobals());
 

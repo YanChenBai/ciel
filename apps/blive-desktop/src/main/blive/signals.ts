@@ -1,3 +1,5 @@
+// @env node
+
 import { Echo, Photon } from '@ciels/core';
 
 export class BilibiliAudio extends Echo.WithMeta({

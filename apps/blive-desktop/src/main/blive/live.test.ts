@@ -9,13 +9,14 @@ const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
 }));
 
-vi.mock('../src/api.ts', () => ({
+vi.mock('./play-info.ts', () => ({
   fetchBilibiliFlvUrl: mocks.fetchBilibiliFlvUrl,
 }));
 
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn }));
 
-import { BilibiliAudio, BilibiliLive, BilibiliVideo } from '../src/index.ts';
+import { BilibiliLive } from './live.ts';
+import { BilibiliAudio, BilibiliVideo } from './signals.ts';
 
 interface FakeFFmpeg extends EventEmitter {
   stdout: PassThrough;

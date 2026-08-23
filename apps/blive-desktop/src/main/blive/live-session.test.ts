@@ -11,8 +11,8 @@ const state = vi.hoisted(() => ({
   }>,
 }));
 
-vi.mock('@ciels/blive', async importOriginal => {
-  const actual = await importOriginal<typeof import('@ciels/blive')>();
+vi.mock('./live.ts', async importOriginal => {
+  const actual = await importOriginal<typeof import('./live.ts')>();
   class FakeBilibiliLive {
     readonly roomId: number;
     private readonly closeListeners = new Set<(code: number | null, signal: null) => void>();
@@ -70,7 +70,7 @@ vi.mock('@ciels/blive', async importOriginal => {
   return { ...actual, BilibiliLive: FakeBilibiliLive };
 });
 
-const { BilibiliAudio } = await import('@ciels/blive');
+const { BilibiliAudio } = await import('./signals.ts');
 const { BilibiliLiveSession } = await import('./live-session.ts');
 
 beforeEach(() => {

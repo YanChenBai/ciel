@@ -1,6 +1,6 @@
 // @env node
 
-import type { BilibiliLiveAreaGroup, LiveRoomCandidate, LiveRoomInfo } from '../shared/types.ts';
+import type { BilibiliLiveAreaGroup, LiveRoomCandidate, LiveRoomInfo } from '../../shared/types.ts';
 
 interface BilibiliResponse<T> {
   readonly code: number;
