@@ -62,6 +62,41 @@ export class Ciel<TOutput = string> extends EventHost<CielEventMap<TOutput>> {
     return this.nucleus.think(options);
   }
 
+  /**
+   * 轮换当前 Stimulus 的感官运行时，并建立新的实时感知边界。
+   * Nucleus、Memory 与 Vigilia 保持连续；调用返回时 Stimulus 已重新启动但尚可没有数据源。
+   */
+  async resetPerception(): Promise<void> {
+    if (this.state !== 'running' || !this.runtime) throw new Error('Ciel is not running');
+    const previous = this.runtime;
+    await previous.stopSource();
+    await previous.close();
+    this.disconnectRuntimeObservations?.();
+    this.disconnectRuntimeObservations = undefined;
+    this.runtime = undefined;
+
+    let resetError: unknown;
+    try {
+      await this.nucleus.resetPerception();
+    } catch (error) {
+      resetError = error;
+    }
+
+    const runtime = this.createRuntime();
+    const disconnect = this.observations.add(runtime.observations);
+    try {
+      await runtime.startSource();
+      this.runtime = runtime;
+      this.disconnectRuntimeObservations = disconnect;
+      if (resetError !== undefined) throw resetError;
+    } catch (error) {
+      if (this.runtime === runtime) throw error;
+      disconnect();
+      await runtime.close().catch(() => undefined);
+      throw error;
+    }
+  }
+
   async start(): Promise<void> {
     if (this.state !== 'idle') throw new Error('Ciel has already started');
     this.setState('starting');

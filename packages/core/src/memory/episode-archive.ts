@@ -76,6 +76,15 @@ export class EpisodeArchive extends EventHost<EpisodeArchiveEventMap> {
     }
   }
 
+  /** 立即归档当前场景尚未提交的感知；用于切换场景前固定记忆归属。 */
+  async flush(): Promise<void> {
+    this.clearTimer();
+    await this.inFlight;
+    if (this.options.perceptStore.hasUnread(this.consumerId)) {
+      await this.archiveObserved();
+    }
+  }
+
   request(): void {
     if (
       this.options.isBlocked() ||

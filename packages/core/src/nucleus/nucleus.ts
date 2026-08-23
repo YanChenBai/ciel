@@ -61,6 +61,7 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private startedAt = 0;
   private lastThinkAt?: number;
   private lastInputTokens = 0;
+  private perceptionFloorSequence = 0;
   private speechEndPending = false;
   private timer?: ReturnType<typeof setTimeout>;
   private inFlight?: Promise<unknown>;
@@ -176,15 +177,30 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   }
 
   async getContext(createdAt: Date = new Date()): Promise<ContextSnapshot> {
-    const records = this.perceptStore.snapshot(
-      createdAt,
-      this.options.context.perceptWindow,
-    ).records;
+    const records = this.perceptStore
+      .snapshot(createdAt, this.options.context.perceptWindow)
+      .records.filter(record => record.sequence >= this.perceptionFloorSequence);
     return {
       createdAt,
       data: this.context.selectSnapshotData(records),
       definitions: this.context.definitions,
     };
+  }
+
+  /** 在外部场景切换前归档旧感知，并让后续思考从新的感知边界开始。 */
+  async resetPerception(): Promise<void> {
+    if (this.state !== 'running') throw new Error('Nucleus is not running');
+    this.clearTimer();
+    await this.episodeArchive.flush();
+    const checkout = this.perceptStore.checkout(this.nucleusConsumer);
+    this.perceptStore.commit(checkout);
+    this.perceptionFloorSequence = checkout.throughSequence + 1;
+    this.startedAt = Date.now();
+    this.lastThinkAt = undefined;
+    this.lastInputTokens = 0;
+    this.speechEndPending = false;
+    this.compactPerceptStore();
+    this.schedule();
   }
 
   private requestThink(trigger: ContextTrigger): Promise<TOutput> {
@@ -252,7 +268,13 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
   private async executeIndependent<TRequestedOutput>(
     options: NucleusThinkOptions<TRequestedOutput>,
   ): Promise<TRequestedOutput> {
-    const snapshot = this.perceptStore.snapshot(new Date(), this.options.context.perceptWindow);
+    const rawSnapshot = this.perceptStore.snapshot(new Date(), this.options.context.perceptWindow);
+    const snapshot: PerceptSnapshot = {
+      ...rawSnapshot,
+      records: rawSnapshot.records.filter(
+        record => record.sequence >= this.perceptionFloorSequence,
+      ),
+    };
     const firstSequence = snapshot.records.at(0)?.sequence;
     const throughSequence = snapshot.records.at(-1)?.sequence ?? 0;
     let fromSequence = throughSequence;
@@ -403,7 +425,10 @@ export class Nucleus<TOutput = string> extends EventHost<NucleusEventMap<TOutput
     const recent = this.perceptStore
       .snapshot(checkout.createdAt, this.options.context.perceptWindow)
       .records.filter(
-        record => record.sequence <= checkout.throughSequence && record.content.type === 'text',
+        record =>
+          record.sequence >= this.perceptionFloorSequence &&
+          record.sequence <= checkout.throughSequence &&
+          record.content.type === 'text',
       );
     return this.resolvePercepts(checkout.createdAt, checkout.records, recent, context);
   }

@@ -180,10 +180,13 @@ class TestStimulus extends Stimulus<typeof testSignals> {
   };
 
   readonly signals = testSignals;
+  starts = 0;
+  stops = 0;
   started = false;
   stopped = false;
 
   async start(): Promise<void> {
+    this.starts += 1;
     this.started = true;
     await this.send(
       new TestEcho({
@@ -193,10 +196,16 @@ class TestStimulus extends Stimulus<typeof testSignals> {
       }),
     );
     await this.send(new TestPhoton({ data: Buffer.alloc(0), timestamp: new Date(0) }));
-    await this.send(new TestScript({ content: 'hello', timestamp: new Date(0) }));
+    await this.send(
+      new TestScript({
+        content: this.starts === 1 ? 'hello' : `hello-${this.starts}`,
+        timestamp: new Date(this.starts - 1),
+      }),
+    );
   }
 
   stop(): void {
+    this.stops += 1;
     this.stopped = true;
   }
 }
@@ -281,6 +290,23 @@ describe('Ciel', () => {
     await ciel.stop();
     expect(stimulus.stopped).toBe(true);
     expect(processorState.closes).toBe(1);
+  });
+
+  it('轮换感官运行时并让新场景上下文排除旧感知', async () => {
+    const stimulus = new TestStimulus();
+    const ciel = await createCiel(stimulus);
+
+    await ciel.start();
+    await ciel.resetPerception();
+
+    expect(stimulus.starts).toBe(2);
+    expect(stimulus.stops).toBe(1);
+    expect(processorState.closes).toBe(1);
+    expect((await ciel.getContext()).data.map(record => record.content)).toEqual([
+      { type: 'text', text: 'hello-2' },
+    ]);
+
+    await ciel.stop();
   });
 
   it('records replayable runtime facts through Vigilia', async () => {
