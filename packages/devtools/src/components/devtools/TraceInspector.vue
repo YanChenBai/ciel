@@ -46,7 +46,7 @@ function formatDuration(duration?: number): string {
 <template>
   <aside class="cl:flex cl:h-full cl:min-h-0 cl:flex-col cl:overflow-hidden cl:bg-[#222324]">
     <header
-      class="cl:flex cl:h-[51px] cl:shrink-0 cl:items-center cl:border-b cl:border-white/10 cl:px-4"
+      class="cl:flex cl:h-11 cl:shrink-0 cl:items-center cl:border-b cl:border-white/10 cl:px-4"
     >
       <span
         class="cl:mr-3 cl:font-mono cl:text-[11px] cl:font-semibold cl:tracking-wide cl:uppercase"
@@ -70,7 +70,7 @@ function formatDuration(duration?: number): string {
 
     <Tabs v-model="tab" class="cl:min-h-0 cl:flex-1 cl:gap-0">
       <TabsList
-        class="cl:h-[43px] cl:w-full cl:shrink-0 cl:justify-start cl:gap-0 cl:rounded-none cl:border-b cl:border-white/10 cl:bg-transparent cl:p-0"
+        class="cl:h-9 cl:w-full cl:shrink-0 cl:justify-start cl:gap-0 cl:rounded-none cl:border-b cl:border-white/10 cl:bg-transparent cl:px-0 cl:py-0"
       >
         <TabsTrigger
           v-for="value in ['summary', 'payload', 'result', 'events'] as const"
