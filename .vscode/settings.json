@@ -27,6 +27,7 @@
     "ciel",
     "ciels",
     "cile",
+    "devtools",
     "dotenv",
     "elysia",
     "Lectio",
@@ -37,6 +38,7 @@
     "onnx",
     "oxlint",
     "oxnode",
+    "recongition",
     "sensus",
     "silero",
     "typebox",
@@ -44,7 +46,6 @@
     "Vestigium",
     "vigilia",
     "voidzero",
-    "devtools",
     "worktrees"
   ],
   "explorer.fileNesting.enabled": true,
