@@ -4,7 +4,7 @@ import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { createSerializer } from './serializer.ts';
 import type { TelemetryOptions, Transformer } from './types.ts';
 
-export function defineTem(options: TelemetryOptions) {
+export function defineTelemetry(options: TelemetryOptions) {
   const tracer = trace.getTracer(options.name, options.version);
   const serializer = createSerializer({
     transformers: options.transformers,

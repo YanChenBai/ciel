@@ -1,6 +1,6 @@
-import { PERCEPT_DEFINITION_SYMBOL, PERCEPT_SYMBOL } from '#identity';
-import type { Signal } from '#signal';
-import type { Temporal } from '#temporal';
+import { PERCEPT_DEFINITION_SYMBOL, PERCEPT_SYMBOL } from '../identity.ts';
+import type { Signal } from '../signal/index.ts';
+import type { Temporal } from '../temporal/index.ts';
 
 export interface TextPerceptContent {
   type: 'text';
@@ -29,38 +29,38 @@ export type PerceptContent = TextPerceptContent | ImagePerceptContent | AudioPer
 export interface PerceptDefinition {
   readonly [PERCEPT_DEFINITION_SYMBOL]: true;
 
+  readonly symbol: symbol;
+
   readonly name: string;
 
   readonly description: string;
 
-  create(options: CreatePerceptOptions): Percept;
+  create<TSource extends Signal<any>>(options: CreatePerceptOptions<TSource>): Percept<TSource>;
 }
 
-export interface CreatePerceptOptions {
+export interface CreatePerceptOptions<TSource extends Signal<any> = Signal<any>> {
   /**
-   * 产生该感知的原始 Signal。
+   * 产生该感知的原始 Signal
    */
-  source: Signal;
+  source: TSource;
 
   /**
-   * 供 LLM 直接消费的多模态内容。
+   * 供 LLM 直接消费的多模态内容
    */
   contents: PerceptContent[];
 
   /**
-   * 感知所对应的时间范围。
-   *
-   * 默认可继承 source.temporal。
+   * 感知所对应的时间范围
    */
   temporal: Temporal;
 
   /**
-   * 可选的感知置信度。
+   * 可选的感知置信度
    */
   confidence?: number;
 }
 
-export interface Percept<TSource extends Signal = Signal> {
+export interface Percept<TSource extends Signal<any> = Signal<any>> {
   readonly [PERCEPT_SYMBOL]: true;
 
   readonly definition: PerceptDefinition;
@@ -86,18 +86,15 @@ export function definePercept(options: DefinePerceptOptions): PerceptDefinition 
 
     ...options,
 
-    create(options: CreatePerceptOptions): Percept {
+    symbol: Symbol(options.name),
+
+    create<TSource extends Signal<any>>(options: CreatePerceptOptions<TSource>): Percept<TSource> {
       return {
         [PERCEPT_SYMBOL]: true,
-
         definition,
-
         contents: options.contents,
-
         source: options.source,
-
         temporal: options.temporal,
-
         confidence: options.confidence,
       };
     },

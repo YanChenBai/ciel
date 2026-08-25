@@ -30,15 +30,17 @@
     "check": "vp check",
     "prepublishOnly": "vp run build"
   },
+  "dependencies": {
+    "@ciels/event": "workspace:*",
+    "@opentelemetry/api": "^1.9.1",
+    "uuid": "^14.0.2"
+  },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "bumpp": "^11.1.0",
     "typescript": "^7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
-  },
-  "dependencies": {
-    "@opentelemetry/api": "^1.9.1",
-    "uuid": "^14.0.2"
   }
 }

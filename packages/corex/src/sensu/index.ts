@@ -1,38 +1,74 @@
-import { SENSU_SYMBOL } from '#identity';
-import type { Percept } from '#percept';
-import type { Signal } from '#signal';
+import { SENSU_DEFINITION_SYMBOL, SENSU_SYMBOL } from '../identity.ts';
+import type { Percept } from '../percept/index.ts';
+import type { AnySignalDefinition, SignalDefinition, SignalOf } from '../signal/index.ts';
+import type { Dispose, MaybePromise } from '../types.ts';
 
-export interface Sensu<
-  TSignal extends Signal = Signal,
-  TPercept extends Percept<TSignal> = Percept<TSignal>,
+export type SensuOutput = Percept | readonly Percept[] | void;
+
+export interface SensuSetupContext<
+  TSignals extends readonly AnySignalDefinition[] = readonly AnySignalDefinition[],
 > {
-  readonly [SENSU_SYMBOL]: true;
+  readonly signals: TSignals;
 
+  onSignal<TDefinition extends TSignals[number]>(
+    definition: TDefinition,
+    handler: (signal: SignalOf<TDefinition>) => MaybePromise<SensuOutput>,
+  ): Dispose;
+
+  onDispose(dispose: Dispose): void;
+}
+
+export interface DefineSensuOptions<
+  TSignals extends readonly AnySignalDefinition[] = readonly AnySignalDefinition[],
+> {
   readonly name: string;
 
   readonly description: string;
 
-  process(signal: TSignal): Promise<TPercept>;
+  setup(ctx: SensuSetupContext<TSignals>): MaybePromise<void>;
 }
 
-export interface DefineSensuOptions<
-  TSignal extends Signal = Signal,
-  TPercept extends Percept<TSignal> = Percept<TSignal>,
-> {
-  name: string;
+export interface Sensu<
+  TSignals extends readonly AnySignalDefinition[] = readonly AnySignalDefinition[],
+> extends DefineSensuOptions<TSignals> {
+  readonly [SENSU_SYMBOL]: true;
 
-  description: string;
+  readonly symbol: symbol;
 
-  process(signal: TSignal): Promise<TPercept>;
+  readonly signals: TSignals;
 }
 
-export function defineSensu<
-  TSignal extends Signal = Signal,
-  TPercept extends Percept<TSignal> = Percept<TSignal>,
->(options: DefineSensuOptions<TSignal, TPercept>): Sensu<TSignal, TPercept> {
-  return {
-    [SENSU_SYMBOL]: true,
+export interface SensuDefinition<TPayload = unknown> {
+  readonly [SENSU_DEFINITION_SYMBOL]: true;
 
-    ...options,
-  };
+  <const TSignals extends readonly SignalDefinition<TPayload>[]>(
+    ...signals: TSignals
+  ): Sensu<TSignals>;
+}
+
+export function defineSensu<TPayload = unknown>(
+  factory: (
+    ...signals: readonly SignalDefinition<TPayload>[]
+  ) => DefineSensuOptions<readonly SignalDefinition<TPayload>[]>,
+): SensuDefinition<TPayload> {
+  const definition = (<const TSignals extends readonly SignalDefinition<TPayload>[]>(
+    ...signals: TSignals
+  ): Sensu<TSignals> => {
+    const options = factory(...signals);
+
+    return {
+      [SENSU_SYMBOL]: true,
+      name: options.name,
+      description: options.description,
+      symbol: Symbol(options.name),
+      signals,
+      setup: ctx => options.setup(ctx),
+    };
+  }) as SensuDefinition<TPayload>;
+
+  Object.defineProperty(definition, SENSU_DEFINITION_SYMBOL, {
+    value: true,
+  });
+
+  return definition;
 }
