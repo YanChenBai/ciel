@@ -141,6 +141,24 @@ importers:
         specifier: ^3.3.10
         version: 3.3.10(typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2)
 
+  packages/ai:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.2.0
+      bumpp:
+        specifier: ^11.1.0
+        version: 11.1.0
+      typescript:
+        specifier: npm:typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2
+        version: typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2
+      vite:
+        specifier: npm:@voidzero-dev/vite-plus-core@0.2.9
+        version: '@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.2.0)(@vitejs/devtools@0.4.12)(jiti@2.7.0)(typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2)(unrun@0.2.39)(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.9(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitejs/devtools@0.4.12)(@voidzero-dev/vite-plus-core@0.2.9)(jiti@2.7.0)(typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2)(unrun@0.2.39)(yaml@2.9.0)
+
   packages/asr:
     dependencies:
       '@ciels/event':
@@ -389,24 +407,6 @@ importers:
       superjson:
         specifier: ^2.2.6
         version: 2.2.6
-    devDependencies:
-      '@types/node':
-        specifier: ^26.1.1
-        version: 26.2.0
-      bumpp:
-        specifier: ^11.1.0
-        version: 11.1.0
-      typescript:
-        specifier: npm:typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2
-        version: typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2
-      vite:
-        specifier: npm:@voidzero-dev/vite-plus-core@0.2.9
-        version: '@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.2.0)(@vitejs/devtools@0.4.12)(jiti@2.7.0)(typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2)(unrun@0.2.39)(yaml@2.9.0)'
-      vite-plus:
-        specifier: 'catalog:'
-        version: 0.2.9(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitejs/devtools@0.4.12)(@voidzero-dev/vite-plus-core@0.2.9)(jiti@2.7.0)(typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2)(unrun@0.2.39)(yaml@2.9.0)
-
-  packages/vestige:
     devDependencies:
       '@types/node':
         specifier: ^26.1.1
