@@ -1,9 +1,12 @@
 import type { AnyCue } from '../cue/index.ts';
 import { createEngram } from '../engram/index.ts';
 import type { AnyNoesis, NoesisSetupContext } from '../noesis/index.ts';
+import { observe } from '../observe/index.ts';
+import type { Percept } from '../percept/index.ts';
 import type { Sensu, SensuSetupContext } from '../sensu/index.ts';
+import type { AnySignal } from '../signal/index.ts';
 import type { AnyStimulus, StimulusSetupContext } from '../stimulus/index.ts';
-import { ModuleType } from '../types/index.ts';
+import { type MaybePromise, ModuleType } from '../types/index.ts';
 import { createCueBus, createPerceptBus, createSignalBus } from './event-bus/index.ts';
 import {
   createLifecycle,
@@ -47,6 +50,14 @@ async function installModules<T>(modules: T[], install: (module: T) => Promise<v
   }
 }
 
+function setupModule<TContext>(
+  module: { setup(ctx: TContext): MaybePromise<void> },
+  ctx: TContext,
+): MaybePromise<void> {
+  // oxlint-disable-next-line typescript/unbound-method -- observe 会在调用时恢复 module 的 this
+  return observe(module.setup).call(module, ctx);
+}
+
 export function defineCiel(options: DefineCielOptions): Ciel {
   const { stimulusModules, sensuModules, noesisModules } = collectModules(options.modules);
 
@@ -56,7 +67,9 @@ export function defineCiel(options: DefineCielOptions): Ciel {
   const signalBus = createSignalBus();
   const scopes: LifecycleScope[] = [];
 
-  const emitCue = (cue: AnyCue): Promise<void> => cueBus.emitCue(cue);
+  const emitCue = observe(function emitCue(cue: AnyCue): Promise<void> {
+    return cueBus.emitCue(cue);
+  });
 
   const installEngram = (): void => {
     const scope = createLifecycleScope();
@@ -70,11 +83,14 @@ export function defineCiel(options: DefineCielOptions): Ciel {
 
   const installSensu = async (module: Sensu): Promise<void> => {
     const scope = createLifecycleScope();
+    const emitPercept = observe(function emitPercept(percept: Percept) {
+      return perceptBus.emitPercept(percept);
+    });
     const ctx: SensuSetupContext = {
       emitCue,
-      emitPercept: percept => perceptBus.emitPercept(percept),
+      emitPercept,
       onSignal(signal, handler) {
-        const dispose = signalBus.onSignal(signal, handler);
+        const dispose = signalBus.onSignal(signal, observe(handler));
         scope.onDispose(dispose);
         return dispose;
       },
@@ -82,20 +98,21 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     };
 
     scopes.push(scope);
-    await module.setup(ctx);
+    await setupModule(module, ctx);
   };
 
   const installStimulus = async (module: AnyStimulus): Promise<void> => {
     const scope = createLifecycleScope();
+    const emitSignal = observe(function emitSignal(signal: AnySignal) {
+      return signalBus.emitSignal(signal);
+    });
     const ctx: StimulusSetupContext = {
-      async emitSignal(signal) {
-        await signalBus.emitSignal(signal);
-      },
+      emitSignal,
       onDispose: dispose => scope.onDispose(dispose),
     };
 
     scopes.push(scope);
-    await module.setup(ctx);
+    await setupModule(module, ctx);
   };
 
   const installNoesis = async (module: AnyNoesis): Promise<void> => {
@@ -103,7 +120,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     const ctx: NoesisSetupContext = {
       engram,
       onCue(cue, handler) {
-        const dispose = cueBus.onCue(cue, handler);
+        const dispose = cueBus.onCue(cue, observe(handler));
         scope.onDispose(dispose);
         return dispose;
       },
@@ -111,7 +128,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     };
 
     scopes.push(scope);
-    await module.setup(ctx);
+    await setupModule(module, ctx);
   };
 
   const lifecycle = createLifecycle({
