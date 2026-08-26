@@ -1,7 +1,7 @@
 import type { AnyCue } from '../cue/index.ts';
 import { createEngram } from '../engram/index.ts';
+import { instrument } from '../interceptor/index.ts';
 import type { AnyNoesis, NoesisSetupContext } from '../noesis/index.ts';
-import { observe } from '../observe/index.ts';
 import type { Percept } from '../percept/index.ts';
 import type { Sensu, SensuSetupContext } from '../sensu/index.ts';
 import type { AnySignal } from '../signal/index.ts';
@@ -59,7 +59,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
   const signalBus = createSignalBus();
   const scopes: LifecycleScope[] = [];
 
-  const emitCue = observe(function emitCue(cue: AnyCue): Promise<void> {
+  const emitCue = instrument(function emitCue(cue: AnyCue): Promise<void> {
     return cueBus.emitCue(cue);
   });
 
@@ -75,14 +75,14 @@ export function defineCiel(options: DefineCielOptions): Ciel {
 
   const installSensu = async (module: Sensu): Promise<void> => {
     const scope = createLifecycleScope();
-    const emitPercept = observe(function emitPercept(percept: Percept) {
+    const emitPercept = instrument(function emitPercept(percept: Percept) {
       return perceptBus.emitPercept(percept);
     });
     const ctx: SensuSetupContext = {
       emitCue,
       emitPercept,
       onSignal(signal, handler) {
-        const dispose = signalBus.onSignal(signal, observe(handler));
+        const dispose = signalBus.onSignal(signal, instrument(handler));
         scope.onDispose(dispose);
         return dispose;
       },
@@ -90,12 +90,12 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     };
 
     scopes.push(scope);
-    await observe(module.setup)(ctx);
+    await instrument(module.setup)(ctx);
   };
 
   const installStimulus = async (module: AnyStimulus): Promise<void> => {
     const scope = createLifecycleScope();
-    const emitSignal = observe(function emitSignal(signal: AnySignal) {
+    const emitSignal = instrument(function emitSignal(signal: AnySignal) {
       return signalBus.emitSignal(signal);
     });
     const ctx: StimulusSetupContext = {
@@ -104,7 +104,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     };
 
     scopes.push(scope);
-    await observe(module.setup)(ctx);
+    await instrument(module.setup)(ctx);
   };
 
   const installNoesis = async (module: AnyNoesis): Promise<void> => {
@@ -112,7 +112,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     const ctx: NoesisSetupContext = {
       engram,
       onCue(cue, handler) {
-        const dispose = cueBus.onCue(cue, observe(handler));
+        const dispose = cueBus.onCue(cue, instrument(handler));
         scope.onDispose(dispose);
         return dispose;
       },
@@ -120,7 +120,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     };
 
     scopes.push(scope);
-    await observe(module.setup)(ctx);
+    await instrument(module.setup)(ctx);
   };
 
   const lifecycle = createLifecycle({

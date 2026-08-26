@@ -1,27 +1,27 @@
 import type { Dispose } from '../types/index.ts';
-import type { AnyFunction, ObserveDefinition, ObserveWrapper } from './types.ts';
+import type { AnyFunction, Interceptor, InterceptorWrapper } from './types.ts';
 
 export type * from './types.ts';
 
-const definitions = new Map<ObserveDefinition, number>();
+const interceptors = new Map<Interceptor, number>();
 
 // Registry 变化后递增版本,让已有包装函数按需刷新匹配结果
 let version = 0;
 
 /**
- * 定义观测拦截器,并保留传入对象的精确类型
+ * 定义拦截器,并保留传入对象的精确类型
  */
-export function defineObserve<T extends ObserveDefinition>(definition: T): T {
-  return definition;
+export function defineInterceptor<T extends Interceptor>(interceptor: T): T {
+  return interceptor;
 }
 
 /**
- * 安装观测定义,返回对应的卸载函数
+ * 安装拦截器,返回对应的卸载函数
  */
-export function useObserve(definition: ObserveDefinition): Dispose {
-  const references = definitions.get(definition) ?? 0;
+export function useInterceptor(interceptor: Interceptor): Dispose {
+  const references = interceptors.get(interceptor) ?? 0;
 
-  definitions.set(definition, references + 1);
+  interceptors.set(interceptor, references + 1);
 
   if (references === 0) {
     version++;
@@ -36,23 +36,23 @@ export function useObserve(definition: ObserveDefinition): Dispose {
 
     active = false;
 
-    const currentReferences = definitions.get(definition);
+    const currentReferences = interceptors.get(interceptor);
 
     if (currentReferences === 1) {
-      definitions.delete(definition);
+      interceptors.delete(interceptor);
       version++;
     } else if (currentReferences) {
-      definitions.set(definition, currentReferences - 1);
+      interceptors.set(interceptor, currentReferences - 1);
     }
   };
 }
 
 /**
- * 包装目标函数,并在调用时应用当前已安装的观测定义
+ * 将目标函数接入拦截器,并在调用时应用当前已安装的拦截器
  */
-export function observe<T extends AnyFunction>(target: T): T {
+export function instrument<T extends AnyFunction>(target: T): T {
   let cachedVersion = -1;
-  let wrappers: ObserveWrapper<T>[] = [];
+  let wrappers: InterceptorWrapper<T>[] = [];
 
   const update = (): void => {
     if (cachedVersion === version) {
@@ -61,8 +61,8 @@ export function observe<T extends AnyFunction>(target: T): T {
 
     wrappers = [];
 
-    for (const definition of definitions.keys()) {
-      const wrapper = definition.intercept(target);
+    for (const interceptor of interceptors.keys()) {
+      const wrapper = interceptor.intercept(target);
 
       if (wrapper) {
         wrappers.push(wrapper);

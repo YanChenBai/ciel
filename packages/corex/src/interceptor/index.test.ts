@@ -1,20 +1,20 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 
-import { defineObserve, observe, useObserve } from './index.ts';
+import { defineInterceptor, instrument, useInterceptor } from './index.ts';
 import type { AnyFunction } from './types.ts';
 
-describe('observe', () => {
-  it('未安装观测定义时保持原函数行为', () => {
+describe('interceptor', () => {
+  it('未安装拦截器时保持原函数行为', () => {
     const target = vi.fn((value: number) => value * 2);
-    const observed = observe(target);
+    const instrumented = instrument(target);
 
-    expect(observed(3)).toBe(6);
+    expect(instrumented(3)).toBe(6);
     expect(target).toHaveBeenCalledWith(3);
   });
 
   it('按注册顺序组合匹配的包装器', () => {
     const calls: string[] = [];
-    const first = defineObserve({
+    const first = defineInterceptor({
       intercept<T extends AnyFunction>() {
         return next =>
           ((...args: Parameters<T>) => {
@@ -25,12 +25,12 @@ describe('observe', () => {
           }) as T;
       },
     });
-    const skipped = defineObserve({
+    const skipped = defineInterceptor({
       intercept() {
         return undefined;
       },
     });
-    const second = defineObserve({
+    const second = defineInterceptor({
       intercept<T extends AnyFunction>() {
         return next =>
           ((...args: Parameters<T>) => {
@@ -41,17 +41,17 @@ describe('observe', () => {
           }) as T;
       },
     });
-    const disposeFirst = useObserve(first);
-    const disposeSkipped = useObserve(skipped);
-    const disposeSecond = useObserve(second);
+    const disposeFirst = useInterceptor(first);
+    const disposeSkipped = useInterceptor(skipped);
+    const disposeSecond = useInterceptor(second);
 
     try {
-      const observed = observe(() => {
+      const instrumented = instrument(() => {
         calls.push('target');
         return 'result';
       });
 
-      expect(observed()).toBe('result');
+      expect(instrumented()).toBe('result');
       expect(calls).toEqual([
         'first:before',
         'second:before',
@@ -66,71 +66,71 @@ describe('observe', () => {
     }
   });
 
-  it('对已经 observe 的函数动态安装和卸载定义', () => {
+  it('对已经 instrument 的函数动态安装和卸载拦截器', () => {
     const calls: string[] = [];
-    const definition = defineObserve({
+    const interceptor = defineInterceptor({
       intercept<T extends AnyFunction>() {
         return next =>
           ((...args: Parameters<T>) => {
-            calls.push('observe');
+            calls.push('interceptor');
             return next(...args);
           }) as T;
       },
     });
-    const observed = observe(() => calls.push('target'));
+    const instrumented = instrument(() => calls.push('target'));
 
-    observed();
-    const dispose = useObserve(definition);
+    instrumented();
+    const dispose = useInterceptor(interceptor);
 
     try {
-      observed();
+      instrumented();
     } finally {
       void dispose();
     }
 
-    observed();
+    instrumented();
 
-    expect(calls).toEqual(['target', 'observe', 'target', 'target']);
+    expect(calls).toEqual(['target', 'interceptor', 'target', 'target']);
   });
 
   it('重复安装同一个定义时等待全部注销后再移除', () => {
     const calls: string[] = [];
-    const definition = defineObserve({
+    const interceptor = defineInterceptor({
       intercept<T extends AnyFunction>() {
         return next =>
           ((...args: Parameters<T>) => {
-            calls.push('observe');
+            calls.push('interceptor');
             return next(...args);
           }) as T;
       },
     });
-    const observed = observe(() => calls.push('target'));
-    const disposeFirst = useObserve(definition);
-    const disposeSecond = useObserve(definition);
+    const instrumented = instrument(() => calls.push('target'));
+    const disposeFirst = useInterceptor(interceptor);
+    const disposeSecond = useInterceptor(interceptor);
 
-    observed();
+    instrumented();
     void disposeFirst();
-    observed();
+    instrumented();
     void disposeSecond();
-    observed();
+    instrumented();
 
-    expect(calls).toEqual(['observe', 'target', 'observe', 'target', 'target']);
+    expect(calls).toEqual(['interceptor', 'target', 'interceptor', 'target', 'target']);
   });
 
   it('只在 registry 变化后重新执行拦截判断', () => {
     let interceptCalls = 0;
-    const definition = defineObserve({
+    const interceptor = defineInterceptor({
       intercept<T extends AnyFunction>() {
         interceptCalls++;
         return (next: T): T => next;
       },
     });
-    const observed = observe((value: number) => value);
-    const dispose = useObserve(definition);
+    const instrumented = instrument((value: number) => value);
+    const dispose = useInterceptor(interceptor);
 
     try {
-      expect(observed(1)).toBe(1);
-      expect(observed(2)).toBe(2);
+      expect(instrumented(1)).toBe(1);
+      expect(instrumented(2)).toBe(2);
       expect(interceptCalls).toBe(1);
     } finally {
       void dispose();
@@ -138,13 +138,13 @@ describe('observe', () => {
   });
 
   it('保留原函数的 this 语义', () => {
-    const definition = defineObserve({
+    const interceptor = defineInterceptor({
       intercept<T extends AnyFunction>() {
         return next => ((...args: Parameters<T>) => next(...args)) as T;
       },
     });
-    const dispose = useObserve(definition);
-    const calculate = observe(function (this: { base: number }, delta: number) {
+    const dispose = useInterceptor(interceptor);
+    const calculate = instrument(function (this: { base: number }, delta: number) {
       return this.base + delta;
     });
 
@@ -156,13 +156,13 @@ describe('observe', () => {
   });
 
   it('保持异步返回值和异常语义', async () => {
-    const observedAsync = observe(async () => 42);
+    const instrumentedAsync = instrument(async () => 42);
     const error = new Error('failed');
-    const observedError = observe(() => {
+    const instrumentedError = instrument(() => {
       throw error;
     });
 
-    await expect(observedAsync()).resolves.toBe(42);
-    expect(() => observedError()).toThrow(error);
+    await expect(instrumentedAsync()).resolves.toBe(42);
+    expect(() => instrumentedError()).toThrow(error);
   });
 });

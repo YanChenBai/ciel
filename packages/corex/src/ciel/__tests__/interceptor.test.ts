@@ -5,18 +5,18 @@ import {
   defineCue,
   defineCiel,
   defineNoesis,
-  defineObserve,
+  defineInterceptor,
   definePercept,
   defineSensu,
   defineSignal,
   defineStimulus,
-  useObserve,
+  useInterceptor,
 } from '../../index.ts';
 
-describe('Ciel observe 集成', () => {
-  it('观测 setup,emit 和事件处理边界,并在注销后停止观测', async () => {
+describe('Ciel interceptor 集成', () => {
+  it('拦截 setup,emit 和事件处理边界,并在注销后停止拦截', async () => {
     const calls: string[] = [];
-    const definition = defineObserve({
+    const interceptor = defineInterceptor({
       intercept<T extends AnyFunction>(target: T) {
         return next =>
           ((...args: Parameters<T>) => {
@@ -25,7 +25,7 @@ describe('Ciel observe 集成', () => {
           }) as T;
       },
     });
-    const disposeObserve = useObserve(definition);
+    const disposeInterceptor = useInterceptor(interceptor);
     const signal = defineSignal<string>({ name: 'message', description: 'Message signal' });
     const percept = definePercept({ name: 'message', description: 'Message percept' });
     const cue = defineCue<string>({ name: 'message', description: 'Message cue' });
@@ -81,20 +81,20 @@ describe('Ciel observe 集成', () => {
         'handleCue',
       ]);
 
-      await disposeObserve();
+      await disposeInterceptor();
       await ciel.start();
       await ciel.stop();
 
       expect(calls).toHaveLength(8);
     } finally {
       await ciel.stop();
-      await disposeObserve();
+      await disposeInterceptor();
     }
   });
 
-  it('观测 Ciel 外部派发的 Cue', async () => {
+  it('拦截 Ciel 外部派发的 Cue', async () => {
     const calls: string[] = [];
-    const definition = defineObserve({
+    const interceptor = defineInterceptor({
       intercept<T extends AnyFunction>(target: T) {
         return next =>
           ((...args: Parameters<T>) => {
@@ -103,7 +103,7 @@ describe('Ciel observe 集成', () => {
           }) as T;
       },
     });
-    const disposeObserve = useObserve(definition);
+    const disposeInterceptor = useInterceptor(interceptor);
     const cue = defineCue<string>({ name: 'manual', description: 'Manual cue' });
     const ciel = defineCiel({ modules: [] });
 
@@ -114,7 +114,7 @@ describe('Ciel observe 集成', () => {
       expect(calls).toEqual(['emitCue']);
     } finally {
       await ciel.stop();
-      await disposeObserve();
+      await disposeInterceptor();
     }
   });
 });
