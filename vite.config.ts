@@ -30,6 +30,7 @@ export default defineConfig({
     ],
     rules: {
       'vite-plus/prefer-vite-plus-imports': 'error',
+      'typescript/unbound-method': 'error',
     },
     options: {
       typeAware: true,
