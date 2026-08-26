@@ -13,7 +13,7 @@ export interface DefineStimulusOptions {
 
   readonly description: string;
 
-  setup(ctx: StimulusSetupContext): MaybePromise<void>;
+  setup(this: void, ctx: StimulusSetupContext): MaybePromise<void>;
 }
 
 export interface Stimulus extends DefineStimulusOptions, CielModule<typeof ModuleType.Stimulus> {}

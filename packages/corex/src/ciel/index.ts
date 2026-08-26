@@ -6,7 +6,7 @@ import type { Percept } from '../percept/index.ts';
 import type { Sensu, SensuSetupContext } from '../sensu/index.ts';
 import type { AnySignal } from '../signal/index.ts';
 import type { AnyStimulus, StimulusSetupContext } from '../stimulus/index.ts';
-import { type MaybePromise, ModuleType } from '../types/index.ts';
+import { ModuleType } from '../types/index.ts';
 import { createCueBus, createPerceptBus, createSignalBus } from './event-bus/index.ts';
 import {
   createLifecycle,
@@ -50,14 +50,6 @@ async function installModules<T>(modules: T[], install: (module: T) => Promise<v
   }
 }
 
-function setupModule<TContext>(
-  module: { setup(ctx: TContext): MaybePromise<void> },
-  ctx: TContext,
-): MaybePromise<void> {
-  // oxlint-disable-next-line typescript/unbound-method -- observe 会在调用时恢复 module 的 this
-  return observe(module.setup).call(module, ctx);
-}
-
 export function defineCiel(options: DefineCielOptions): Ciel {
   const { stimulusModules, sensuModules, noesisModules } = collectModules(options.modules);
 
@@ -98,7 +90,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     };
 
     scopes.push(scope);
-    await setupModule(module, ctx);
+    await observe(module.setup)(ctx);
   };
 
   const installStimulus = async (module: AnyStimulus): Promise<void> => {
@@ -112,7 +104,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     };
 
     scopes.push(scope);
-    await setupModule(module, ctx);
+    await observe(module.setup)(ctx);
   };
 
   const installNoesis = async (module: AnyNoesis): Promise<void> => {
@@ -128,7 +120,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     };
 
     scopes.push(scope);
-    await setupModule(module, ctx);
+    await observe(module.setup)(ctx);
   };
 
   const lifecycle = createLifecycle({

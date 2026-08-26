@@ -28,7 +28,7 @@ export interface DefineSensuOptions {
 
   readonly description: string;
 
-  setup(ctx: SensuSetupContext): MaybePromise<void>;
+  setup(this: void, ctx: SensuSetupContext): MaybePromise<void>;
 }
 
 export interface Sensu extends DefineSensuOptions, CielModule<typeof ModuleType.Sensu> {}

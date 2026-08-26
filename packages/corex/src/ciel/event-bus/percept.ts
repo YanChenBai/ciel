@@ -37,8 +37,26 @@ export function createPerceptBus(): PerceptBus {
   }
 
   async function emitPercept(percept: Percept): Promise<void> {
-    await emitter.emitAsync(ANY_PERCEPT_EVENT, percept);
-    await emitter.emitAsync(perceptEvent(percept.definition), percept);
+    const errors: unknown[] = [];
+
+    try {
+      await emitter.emitAsync(ANY_PERCEPT_EVENT, percept);
+    } catch (error) {
+      errors.push(error);
+    }
+
+    try {
+      await emitter.emitAsync(perceptEvent(percept.definition), percept);
+    } catch (error) {
+      errors.push(error);
+    }
+
+    if (errors.length === 1) {
+      throw errors[0];
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Failed to emit Percept');
+    }
   }
 
   return {

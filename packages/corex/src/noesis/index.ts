@@ -17,7 +17,7 @@ export interface DefineNoesisOptions {
 
   readonly description: string;
 
-  setup(ctx: NoesisSetupContext): MaybePromise<void>;
+  setup(this: void, ctx: NoesisSetupContext): MaybePromise<void>;
 }
 
 export interface Noesis extends DefineNoesisOptions, CielModule<typeof ModuleType.Noesis> {}
