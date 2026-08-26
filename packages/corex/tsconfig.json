@@ -22,8 +22,7 @@
       "#stimulus": ["./src/stimulus/index.ts"],
       "#ciel": ["./src/ciel/index.ts"],
       "#percept": ["./src/percept/index.ts"],
-      "#temporal": ["./src/temporal/index.ts"],
-      "#identity": ["./src/identity.ts"]
+      "#temporal": ["./src/temporal/index.ts"]
     }
   }
 }

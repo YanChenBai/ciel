@@ -1,74 +1,42 @@
-import { SENSU_DEFINITION_SYMBOL, SENSU_SYMBOL } from '../identity.ts';
+import type { AnyCue } from '../cue/index.ts';
 import type { Percept } from '../percept/index.ts';
-import type { AnySignalDefinition, SignalDefinition, SignalOf } from '../signal/index.ts';
-import type { Dispose, MaybePromise } from '../types.ts';
+import type { AnySignalDefinition, SignalOf } from '../signal/index.ts';
+import { type CielModule, type Dispose, type MaybePromise, ModuleType } from '../types/index.ts';
+import { createId } from '../utils/index.ts';
 
-export type SensuOutput = Percept | readonly Percept[] | void;
-
-export interface SensuSetupContext<
-  TSignals extends readonly AnySignalDefinition[] = readonly AnySignalDefinition[],
-> {
-  readonly signals: TSignals;
-
-  onSignal<TDefinition extends TSignals[number]>(
+export interface SensuSetupContext {
+  onSignal<TDefinition extends AnySignalDefinition>(
     definition: TDefinition,
-    handler: (signal: SignalOf<TDefinition>) => MaybePromise<SensuOutput>,
+    handler: (signal: SignalOf<TDefinition>) => MaybePromise<void>,
   ): Dispose;
+
+  /**
+   * 将已经形成的感知写入 Engram，并在写入成功后派发给观察者
+   */
+  emitPercept(percept: Percept): Promise<void>;
+
+  /**
+   * 派发在感知处理完成后形成的认知线索
+   */
+  emitCue(cue: AnyCue): Promise<void>;
 
   onDispose(dispose: Dispose): void;
 }
 
-export interface DefineSensuOptions<
-  TSignals extends readonly AnySignalDefinition[] = readonly AnySignalDefinition[],
-> {
+export interface DefineSensuOptions {
   readonly name: string;
 
   readonly description: string;
 
-  setup(ctx: SensuSetupContext<TSignals>): MaybePromise<void>;
+  setup(ctx: SensuSetupContext): MaybePromise<void>;
 }
 
-export interface Sensu<
-  TSignals extends readonly AnySignalDefinition[] = readonly AnySignalDefinition[],
-> extends DefineSensuOptions<TSignals> {
-  readonly [SENSU_SYMBOL]: true;
+export interface Sensu extends DefineSensuOptions, CielModule<typeof ModuleType.Sensu> {}
 
-  readonly symbol: symbol;
-
-  readonly signals: TSignals;
-}
-
-export interface SensuDefinition<TPayload = unknown> {
-  readonly [SENSU_DEFINITION_SYMBOL]: true;
-
-  <const TSignals extends readonly SignalDefinition<TPayload>[]>(
-    ...signals: TSignals
-  ): Sensu<TSignals>;
-}
-
-export function defineSensu<TPayload = unknown>(
-  factory: (
-    ...signals: readonly SignalDefinition<TPayload>[]
-  ) => DefineSensuOptions<readonly SignalDefinition<TPayload>[]>,
-): SensuDefinition<TPayload> {
-  const definition = (<const TSignals extends readonly SignalDefinition<TPayload>[]>(
-    ...signals: TSignals
-  ): Sensu<TSignals> => {
-    const options = factory(...signals);
-
-    return {
-      [SENSU_SYMBOL]: true,
-      name: options.name,
-      description: options.description,
-      symbol: Symbol(options.name),
-      signals,
-      setup: ctx => options.setup(ctx),
-    };
-  }) as SensuDefinition<TPayload>;
-
-  Object.defineProperty(definition, SENSU_DEFINITION_SYMBOL, {
-    value: true,
-  });
-
-  return definition;
+export function defineSensu(options: DefineSensuOptions): Sensu {
+  return {
+    ...options,
+    type: ModuleType.Sensu,
+    id: createId(),
+  };
 }

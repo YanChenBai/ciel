@@ -1,5 +1,6 @@
-import { SIGNAL_DEFINITION_SYMBOL, SIGNAL_SYMBOL } from '../identity.ts';
 import type { Temporal } from '../temporal/index.ts';
+import { type CielData, type CielDefinition, DataType, DefinitionType } from '../types/index.ts';
+import { createId } from '../utils/index.ts';
 
 export interface DefineSignalOptions {
   readonly name: string;
@@ -7,21 +8,13 @@ export interface DefineSignalOptions {
   readonly description: string;
 }
 
-export interface SignalDefinition<TPayload = unknown> {
-  readonly [SIGNAL_DEFINITION_SYMBOL]: true;
-
-  readonly symbol: symbol;
-
-  readonly name: string;
-
-  readonly description: string;
-
+export interface SignalDefinition<TPayload = unknown> extends CielDefinition<
+  typeof DefinitionType.Signal
+> {
   readonly create: (payload: TPayload, temporal: Temporal) => Signal<TPayload>;
 }
 
-export interface Signal<TPayload = unknown> {
-  readonly [SIGNAL_SYMBOL]: true;
-
+export interface Signal<TPayload = unknown> extends CielData<typeof DataType.Signal> {
   readonly definition: SignalDefinition<TPayload>;
 
   readonly payload: TPayload;
@@ -42,13 +35,13 @@ export function defineSignal<TPayload = unknown>(
   const definition: SignalDefinition<TPayload> = {
     ...options,
 
-    [SIGNAL_DEFINITION_SYMBOL]: true,
+    type: DefinitionType.Signal,
 
-    symbol: Symbol(options.name),
+    id: createId(),
 
     create(payload: TPayload, temporal: Temporal) {
       return {
-        [SIGNAL_SYMBOL]: true,
+        type: DataType.Signal,
         definition,
         payload,
         temporal,

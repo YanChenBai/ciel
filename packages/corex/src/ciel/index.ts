@@ -1,60 +1,80 @@
-import { CIEL_SYMBOL } from '../identity.ts';
-import type { Percept } from '../percept/index.ts';
-import type { SensuOutput, SensuSetupContext } from '../sensu/index.ts';
-import type { AnySignalDefinition } from '../signal/index.ts';
-import type { SignalDefinitions, StimulusSetupContext } from '../stimulus/index.ts';
+import type { AnyCue } from '../cue/index.ts';
+import { createEngram } from '../engram/index.ts';
+import type { AnyNoesis, NoesisSetupContext } from '../noesis/index.ts';
+import type { Sensu, SensuSetupContext } from '../sensu/index.ts';
+import type { AnyStimulus, StimulusSetupContext } from '../stimulus/index.ts';
+import { ModuleType } from '../types/index.ts';
+import { createCueBus, createPerceptBus, createSignalBus } from './event-bus/index.ts';
 import {
   createLifecycle,
   createLifecycleScope,
   disposeScopes,
   type LifecycleScope,
 } from './lifecycle.ts';
-import { createSignalBus } from './signal-bus.ts';
-import type { AnySensu, AnyStimulus, Ciel, DefineCielOptions, SignalsOfStimuli } from './types.ts';
+import type { Ciel, DefineCielOptions, InstallableCielModule } from './types.ts';
 
-export type { Ciel, CielStatus, DefineCielOptions, SensuResolver } from './types.ts';
+export type { Ciel, CielStatus, DefineCielOptions, InstallableCielModule } from './types.ts';
 
-function signalDefinitionsOf(signals: SignalDefinitions): readonly AnySignalDefinition[] {
-  return Array.isArray(signals) ? signals : Object.values(signals);
+interface ResolvedModules {
+  readonly stimulusModules: AnyStimulus[];
+
+  readonly sensuModules: Sensu[];
+
+  readonly noesisModules: AnyNoesis[];
 }
 
-function acceptPercepts(percepts: Percept[], output: SensuOutput): void {
-  if (output === undefined) {
-    return;
+function collectModules(modules: readonly InstallableCielModule[]): ResolvedModules {
+  const stimulusModules: AnyStimulus[] = [];
+  const sensuModules: Sensu[] = [];
+  const noesisModules: AnyNoesis[] = [];
+
+  for (const module of modules) {
+    if (module.type === ModuleType.Sensu) {
+      sensuModules.push(module);
+    } else if (module.type === ModuleType.Noesis) {
+      noesisModules.push(module);
+    } else if (module.type === ModuleType.Stimulus) {
+      stimulusModules.push(module);
+    }
   }
 
-  if (Array.isArray(output)) {
-    percepts.push(...output);
-    return;
-  }
-
-  percepts.push(output as Percept);
+  return { stimulusModules, sensuModules, noesisModules };
 }
 
-export function defineCiel<
-  const TStimuli extends readonly AnyStimulus[],
-  const TSensus extends readonly AnySensu[],
-  TNucleus = unknown,
->(options: DefineCielOptions<TStimuli, TSensus, TNucleus>): Ciel<TNucleus> {
-  const stimulusSignals = options.stimulus.map(
-    stimulus => stimulus.signals,
-  ) as SignalsOfStimuli<TStimuli>;
-  const sensus = options.sensus(stimulusSignals);
-  const percepts: Percept[] = [];
-  const bus = createSignalBus(output => acceptPercepts(percepts, output));
+async function installModules<T>(modules: T[], install: (module: T) => Promise<void>) {
+  for (const module of modules) {
+    await install(module);
+  }
+}
+
+export function defineCiel(options: DefineCielOptions): Ciel {
+  const { stimulusModules, sensuModules, noesisModules } = collectModules(options.modules);
+
+  const engram = createEngram({ windowMs: 1000 * 60 * 5 });
+  const cueBus = createCueBus();
+  const perceptBus = createPerceptBus();
+  const signalBus = createSignalBus();
   const scopes: LifecycleScope[] = [];
 
-  const installSensu = async (definition: AnySensu): Promise<void> => {
-    const scope = createLifecycleScope();
-    const allowedSignals = new Set<AnySignalDefinition>(definition.signals);
-    const ctx: SensuSetupContext<any> = {
-      signals: definition.signals,
-      onSignal(signal, handler) {
-        if (!allowedSignals.has(signal)) {
-          throw new Error('Sensu cannot subscribe to an undeclared Signal definition');
-        }
+  const emitCue = (cue: AnyCue): Promise<void> => cueBus.emitCue(cue);
 
-        const dispose = bus.on(signal, handler);
+  const installEngram = (): void => {
+    const scope = createLifecycleScope();
+    scope.onDispose(
+      perceptBus.onAnyPercept(percept => {
+        engram.append(percept);
+      }),
+    );
+    scopes.push(scope);
+  };
+
+  const installSensu = async (module: Sensu): Promise<void> => {
+    const scope = createLifecycleScope();
+    const ctx: SensuSetupContext = {
+      emitCue,
+      emitPercept: percept => perceptBus.emitPercept(percept),
+      onSignal(signal, handler) {
+        const dispose = signalBus.onSignal(signal, handler);
         scope.onDispose(dispose);
         return dispose;
       },
@@ -62,52 +82,56 @@ export function defineCiel<
     };
 
     scopes.push(scope);
-    await definition.setup(ctx);
+    await module.setup(ctx);
   };
 
-  const installStimulus = async (definition: AnyStimulus): Promise<void> => {
+  const installStimulus = async (module: AnyStimulus): Promise<void> => {
     const scope = createLifecycleScope();
-    const allowedSignals = new Set(signalDefinitionsOf(definition.signals));
-    const ctx: StimulusSetupContext<any> = {
-      signals: definition.signals,
+    const ctx: StimulusSetupContext = {
       async emitSignal(signal) {
-        if (!allowedSignals.has(signal.definition)) {
-          throw new Error('Stimulus cannot emit an undeclared Signal definition');
-        }
-        await bus.emit(signal);
+        await signalBus.emitSignal(signal);
       },
       onDispose: dispose => scope.onDispose(dispose),
     };
 
     scopes.push(scope);
-    await definition.setup(ctx);
+    await module.setup(ctx);
+  };
+
+  const installNoesis = async (module: AnyNoesis): Promise<void> => {
+    const scope = createLifecycleScope();
+    const ctx: NoesisSetupContext = {
+      engram,
+      onCue(cue, handler) {
+        const dispose = cueBus.onCue(cue, handler);
+        scope.onDispose(dispose);
+        return dispose;
+      },
+      onDispose: dispose => scope.onDispose(dispose),
+    };
+
+    scopes.push(scope);
+    await module.setup(ctx);
   };
 
   const lifecycle = createLifecycle({
     name: 'Ciel',
     async setup() {
-      for (const definition of sensus) {
-        await installSensu(definition);
-      }
-      for (const definition of options.stimulus) {
-        await installStimulus(definition);
-      }
+      // Engram 必须最先订阅, 确保其他 Percept 监听器运行前已经完成记录
+      installEngram();
+      await installModules(sensuModules, installSensu);
+      await installModules(noesisModules, installNoesis);
+      await installModules(stimulusModules, installStimulus);
     },
     dispose: () => disposeScopes(scopes),
   });
 
   return {
-    [CIEL_SYMBOL]: true,
-    nucleus: options.nucleus,
-
-    get percepts() {
-      return percepts;
-    },
-
     get status() {
       return lifecycle.status;
     },
-
+    engram,
+    emitCue,
     start: () => lifecycle.start(),
     stop: () => lifecycle.stop(),
   };

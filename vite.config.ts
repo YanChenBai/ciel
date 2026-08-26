@@ -12,6 +12,10 @@ export default defineConfig({
     sortPackageJson: true,
     arrowParens: 'avoid',
     embeddedLanguageFormatting: 'auto',
+    jsdoc: {
+      commentLineStrategy: 'multiline',
+      descriptionWithDot: false,
+    },
   },
   test: {
     projects: ['./apps/*', './packages/*'],

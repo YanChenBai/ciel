@@ -1,46 +1,27 @@
-import { CIEL_SYMBOL } from '../identity.ts';
-import type { Percept } from '../percept/index.ts';
+import type { AnyCue } from '../cue/index.ts';
+import type { Engram } from '../engram/index.ts';
+import type { AnyNoesis } from '../noesis/index.ts';
 import type { Sensu } from '../sensu/index.ts';
-import type { Stimulus } from '../stimulus/index.ts';
+import type { AnyStimulus } from '../stimulus/index.ts';
 import type { LifecycleStatus } from './lifecycle.ts';
 
-export type AnyStimulus = Stimulus<any>;
+export type InstallableCielModule = AnyStimulus | Sensu | AnyNoesis;
 
-export type AnySensu = Sensu<any>;
-
-export type SignalsOfStimuli<TStimuli extends readonly AnyStimulus[]> = {
-  readonly [TIndex in keyof TStimuli]: TStimuli[TIndex] extends Stimulus<infer TSignals>
-    ? TSignals
-    : never;
-};
-
-export type SensuResolver<
-  TStimuli extends readonly AnyStimulus[],
-  TSensus extends readonly AnySensu[],
-> = (signals: SignalsOfStimuli<TStimuli>) => TSensus;
-
-export interface DefineCielOptions<
-  TStimuli extends readonly AnyStimulus[],
-  TSensus extends readonly AnySensu[],
-  TNucleus = unknown,
-> {
-  readonly stimulus: TStimuli;
-
-  readonly sensus: SensuResolver<TStimuli, TSensus>;
-
-  readonly nucleus?: TNucleus;
+export interface DefineCielOptions {
+  readonly modules: readonly InstallableCielModule[];
 }
 
 export type CielStatus = LifecycleStatus;
 
-export interface Ciel<TNucleus = unknown> {
-  readonly [CIEL_SYMBOL]: true;
-
-  readonly nucleus: TNucleus | undefined;
-
-  readonly percepts: readonly Percept[];
+export interface Ciel {
+  readonly engram: Engram;
 
   readonly status: CielStatus;
+
+  /**
+   * 从 Ciel 外部手动派发认知线索
+   */
+  emitCue(cue: AnyCue): Promise<void>;
 
   start(): Promise<void>;
 

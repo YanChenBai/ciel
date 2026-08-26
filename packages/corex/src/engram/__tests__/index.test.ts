@@ -1,6 +1,8 @@
 import { expect, test } from 'vite-plus/test';
 
-import { createEngram, definePercept, defineSignal, type Percept } from '../src/index.ts';
+import { createEngram, type Percept } from '../../index.ts';
+import { definePercept } from '../../percept/index.ts';
+import { defineSignal } from '../../signal/index.ts';
 
 const signalDefinition = defineSignal<string>({
   name: 'test-signal',
@@ -36,6 +38,7 @@ test('将多个 Percept 作为同一时间戳批次追加', () => {
     { sequence: 0, recordedAt: 10_000, value: first },
     { sequence: 1, recordedAt: 10_000, value: second },
   ]);
+  expect(engram.all()).toEqual(entries);
   expect(engram.size).toBe(2);
   expect(engram.append()).toEqual([]);
 });
@@ -101,8 +104,10 @@ test('清理超过保留期限的条目', () => {
 
   expect(engram.prune()).toBe(1);
   expect(engram.size).toBe(1);
+  expect(engram.all().map(entry => entry.value)).toEqual([createTestPercept('boundary', 2)]);
 
   engram.clear();
+  expect(engram.all()).toEqual([]);
   expect(engram.size).toBe(0);
 });
 

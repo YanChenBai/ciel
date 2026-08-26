@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { createLifecycle, createLifecycleScope, disposeScopes } from '../src/ciel/lifecycle.ts';
+import { createLifecycle, createLifecycleScope, disposeScopes } from '../lifecycle.ts';
 
 function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolve!: () => void;

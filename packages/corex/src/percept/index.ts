@@ -1,6 +1,7 @@
-import { PERCEPT_DEFINITION_SYMBOL, PERCEPT_SYMBOL } from '../identity.ts';
 import type { Signal } from '../signal/index.ts';
 import type { Temporal } from '../temporal/index.ts';
+import { type CielData, type CielDefinition, DataType, DefinitionType } from '../types/index.ts';
+import { createId } from '../utils/index.ts';
 
 export interface TextPerceptContent {
   type: 'text';
@@ -26,15 +27,7 @@ export interface AudioPerceptContent {
 
 export type PerceptContent = TextPerceptContent | ImagePerceptContent | AudioPerceptContent;
 
-export interface PerceptDefinition {
-  readonly [PERCEPT_DEFINITION_SYMBOL]: true;
-
-  readonly symbol: symbol;
-
-  readonly name: string;
-
-  readonly description: string;
-
+export interface PerceptDefinition extends CielDefinition<typeof DefinitionType.Percept> {
   create<TSource extends Signal<any>>(options: CreatePerceptOptions<TSource>): Percept<TSource>;
 }
 
@@ -60,9 +53,9 @@ export interface CreatePerceptOptions<TSource extends Signal<any> = Signal<any>>
   confidence?: number;
 }
 
-export interface Percept<TSource extends Signal<any> = Signal<any>> {
-  readonly [PERCEPT_SYMBOL]: true;
-
+export interface Percept<TSource extends Signal<any> = Signal<any>> extends CielData<
+  typeof DataType.Percept
+> {
   readonly definition: PerceptDefinition;
 
   readonly source: TSource;
@@ -82,15 +75,15 @@ export interface DefinePerceptOptions {
 
 export function definePercept(options: DefinePerceptOptions): PerceptDefinition {
   const definition: PerceptDefinition = {
-    [PERCEPT_DEFINITION_SYMBOL]: true,
-
     ...options,
 
-    symbol: Symbol(options.name),
+    type: DefinitionType.Percept,
+
+    id: createId(),
 
     create<TSource extends Signal<any>>(options: CreatePerceptOptions<TSource>): Percept<TSource> {
       return {
-        [PERCEPT_SYMBOL]: true,
+        type: DataType.Percept,
         definition,
         contents: options.contents,
         source: options.source,

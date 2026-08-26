@@ -1,4 +1,4 @@
-import type { Dispose, MaybePromise } from '../types.ts';
+import type { Dispose, MaybePromise } from '../types/index.ts';
 
 export type LifecycleStatus = 'idle' | 'starting' | 'running' | 'stopping';
 
