@@ -11,7 +11,7 @@ export interface StimulusSetupContext {
 export interface DefineStimulusOptions {
   readonly name: string;
 
-  readonly description: string;
+  readonly description?: string;
 
   setup(this: void, ctx: StimulusSetupContext): MaybePromise<void>;
 }

@@ -15,7 +15,7 @@ export interface NoesisSetupContext extends CueListener {
 export interface DefineNoesisOptions {
   readonly name: string;
 
-  readonly description: string;
+  readonly description?: string;
 
   setup(this: void, ctx: NoesisSetupContext): MaybePromise<void>;
 }

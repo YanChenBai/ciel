@@ -1,6 +1,11 @@
 import type { Signal } from '../signal/index.ts';
-import type { Temporal } from '../temporal/index.ts';
-import { type CielData, type CielDefinition, DataType, DefinitionType } from '../types/index.ts';
+import {
+  type CielData,
+  type CielDefinition,
+  DataType,
+  DefinitionType,
+  type Temporal,
+} from '../types/index.ts';
 import { createId } from '../utils/index.ts';
 
 export interface TextPerceptContent {
@@ -70,7 +75,7 @@ export interface Percept<TSource extends Signal<any> = Signal<any>> extends Ciel
 export interface DefinePerceptOptions {
   name: string;
 
-  description: string;
+  description?: string;
 }
 
 export function definePercept(options: DefinePerceptOptions): PerceptDefinition {

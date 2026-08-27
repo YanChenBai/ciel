@@ -25,5 +25,5 @@ export interface CielDefinition<TType extends DefinitionType = DefinitionType> {
   /**
    * 定义的语义和用途说明
    */
-  readonly description: string;
+  readonly description?: string;
 }

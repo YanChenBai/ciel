@@ -12,7 +12,7 @@ export type InterceptorWrapper<T extends AnyFunction = AnyFunction> = (next: T) 
 export interface DefineInterceptorOptions {
   readonly name: string;
 
-  readonly description: string;
+  readonly description?: string;
 
   /**
    * 判断是否拦截目标函数,未命中时返回 undefined

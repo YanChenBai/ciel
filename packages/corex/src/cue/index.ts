@@ -1,11 +1,16 @@
-import type { Temporal } from '../temporal/index.ts';
-import { type CielData, type CielDefinition, DataType, DefinitionType } from '../types/index.ts';
+import {
+  type CielData,
+  type CielDefinition,
+  DataType,
+  DefinitionType,
+  type Temporal,
+} from '../types/index.ts';
 import { createId } from '../utils/index.ts';
 
 export interface DefineCueOptions {
   readonly name: string;
 
-  readonly description: string;
+  readonly description?: string;
 }
 
 export interface CueDefinition<TPayload = unknown> extends CielDefinition<

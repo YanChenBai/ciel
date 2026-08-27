@@ -26,7 +26,7 @@ export interface SensuSetupContext {
 export interface DefineSensuOptions {
   readonly name: string;
 
-  readonly description: string;
+  readonly description?: string;
 
   setup(this: void, ctx: SensuSetupContext): MaybePromise<void>;
 }

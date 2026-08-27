@@ -7,6 +7,5 @@ export * from './percept/index.ts';
 export * from './sensu/index.ts';
 export * from './signal/index.ts';
 export * from './stimulus/index.ts';
-export * from './temporal/index.ts';
 export * from './types/index.ts';
 export * from './utils/index.ts';

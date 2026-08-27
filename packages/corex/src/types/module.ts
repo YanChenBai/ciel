@@ -26,5 +26,5 @@ export interface CielModule<TType extends ModuleType = ModuleType> {
   /**
    * 模块职责和用途的说明
    */
-  readonly description: string;
+  readonly description?: string;
 }
