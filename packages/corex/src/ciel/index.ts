@@ -14,9 +14,20 @@ import {
   disposeScopes,
   type LifecycleScope,
 } from './lifecycle.ts';
-import type { Ciel, DefineCielOptions, InstallableCielModule } from './types.ts';
+import type {
+  Ciel,
+  DefineCielOptions,
+  InstallableCielModule,
+  InstallableCielModuleEntry,
+} from './types.ts';
 
-export type { Ciel, CielStatus, DefineCielOptions, InstallableCielModule } from './types.ts';
+export type {
+  Ciel,
+  CielStatus,
+  DefineCielOptions,
+  InstallableCielModule,
+  InstallableCielModuleEntry,
+} from './types.ts';
 
 interface ResolvedModules {
   readonly interceptorModules: Interceptor[];
@@ -28,26 +39,36 @@ interface ResolvedModules {
   readonly noesisModules: AnyNoesis[];
 }
 
-function collectModules(modules: readonly InstallableCielModule[]): ResolvedModules {
+function isModuleGroup(
+  entry: InstallableCielModuleEntry,
+): entry is readonly InstallableCielModule[] {
+  return Array.isArray(entry);
+}
+
+function collectModules(entries: readonly InstallableCielModuleEntry[]): ResolvedModules {
   const interceptorModules: Interceptor[] = [];
   const stimulusModules: AnyStimulus[] = [];
   const sensuModules: Sensu[] = [];
   const noesisModules: AnyNoesis[] = [];
 
-  for (const module of modules) {
-    switch (module.type) {
-      case ModuleType.Interceptor:
-        interceptorModules.push(module);
-        break;
-      case ModuleType.Sensu:
-        sensuModules.push(module);
-        break;
-      case ModuleType.Noesis:
-        noesisModules.push(module);
-        break;
-      case ModuleType.Stimulus:
-        stimulusModules.push(module);
-        break;
+  for (const entry of entries) {
+    const modules = isModuleGroup(entry) ? entry : [entry];
+
+    for (const module of modules) {
+      switch (module.type) {
+        case ModuleType.Interceptor:
+          interceptorModules.push(module);
+          break;
+        case ModuleType.Sensu:
+          sensuModules.push(module);
+          break;
+        case ModuleType.Noesis:
+          noesisModules.push(module);
+          break;
+        case ModuleType.Stimulus:
+          stimulusModules.push(module);
+          break;
+      }
     }
   }
 

@@ -9,7 +9,7 @@ import {
   defineStimulus,
 } from '../../index.ts';
 
-test('按 Sensu、Noesis、Stimulus 顺序启动并逆序停止', async () => {
+test('展开组合模块，按 Sensu、Noesis、Stimulus 顺序启动并逆序停止', async () => {
   const calls: string[] = [];
   let noesisEngram: unknown;
 
@@ -44,7 +44,7 @@ test('按 Sensu、Noesis、Stimulus 顺序启动并逆序停止', async () => {
       });
     },
   });
-  const ciel = defineCiel({ modules: [stimulus, noesis, sensu] });
+  const ciel = defineCiel({ modules: [[stimulus, noesis], sensu] });
 
   await ciel.start();
 

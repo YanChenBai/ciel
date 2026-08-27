@@ -8,8 +8,10 @@ import type { LifecycleStatus } from './lifecycle.ts';
 
 export type InstallableCielModule = AnyStimulus | Sensu | AnyNoesis | Interceptor;
 
+export type InstallableCielModuleEntry = InstallableCielModule | readonly InstallableCielModule[];
+
 export interface DefineCielOptions {
-  readonly modules: readonly InstallableCielModule[];
+  readonly modules: readonly InstallableCielModuleEntry[];
 }
 
 export type CielStatus = LifecycleStatus;
