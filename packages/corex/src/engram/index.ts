@@ -1,4 +1,4 @@
-import type { Percept } from '../percept/index.ts';
+import type { Percept, PerceptDefinition, PerceptOf } from '../percept/index.ts';
 
 export interface CreateEngramOptions {
   /**
@@ -97,6 +97,13 @@ export interface EngramReader {
   all(): readonly EngramEntry[];
 
   /**
+   * 获取由指定 Percept 定义形成的全部条目
+   */
+  entries<TDefinition extends PerceptDefinition>(
+    percept: TDefinition,
+  ): readonly EngramEntry<PerceptOf<TDefinition>>[];
+
+  /**
    * 读取最近一段时间内的条目
    */
   recent(durationMs?: number): readonly EngramEntry[];
@@ -110,6 +117,25 @@ export interface EngramReader {
    * 创建按固定时间窗口读取条目的游标
    */
   createCursor(options?: CreateEngramCursorOptions): EngramCursor;
+}
+
+export interface EngramView {
+  /**
+   * 当前快照中的条目数量
+   */
+  readonly size: number;
+
+  /**
+   * 获取当前快照中的全部条目
+   */
+  all(): readonly EngramEntry[];
+
+  /**
+   * 获取当前快照中由指定 Percept 定义形成的条目
+   */
+  entries<TDefinition extends PerceptDefinition>(
+    percept: TDefinition,
+  ): readonly EngramEntry<PerceptOf<TDefinition>>[];
 }
 
 export interface Engram extends EngramReader {
@@ -141,6 +167,37 @@ function assertTimestamp(value: number, name: string): void {
   if (!Number.isFinite(value)) {
     throw new RangeError(`${name} must be a finite number`);
   }
+}
+
+function selectPerceptEntries<TDefinition extends PerceptDefinition>(
+  entries: readonly EngramEntry[],
+  percept: TDefinition,
+): readonly EngramEntry<PerceptOf<TDefinition>>[] {
+  return entries.filter(
+    (entry): entry is EngramEntry<PerceptOf<TDefinition>> =>
+      entry.value.definition.id === percept.id,
+  );
+}
+
+/**
+ * 从一组固定条目创建只读 Engram 快照
+ */
+export function createEngramView(source: readonly EngramEntry[]): EngramView {
+  const entries = [...source];
+
+  return {
+    get size() {
+      return entries.length;
+    },
+
+    all() {
+      return [...entries];
+    },
+
+    entries(percept) {
+      return selectPerceptEntries(entries, percept);
+    },
+  };
 }
 
 /**
@@ -197,6 +254,11 @@ export function createEngram(options: CreateEngramOptions): Engram {
     all() {
       pruneAt(readNow());
       return [...entries];
+    },
+
+    entries(percept) {
+      pruneAt(readNow());
+      return selectPerceptEntries(entries, percept);
     },
 
     append(...percepts) {

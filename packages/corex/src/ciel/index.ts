@@ -1,8 +1,10 @@
 import type { AnyCue } from '../cue/index.ts';
-import { createEngram } from '../engram/index.ts';
-import { createInstrumenter, type Interceptor } from '../interceptor/index.ts';
+import { createEngram, createEngramView, type EngramEntry } from '../engram/index.ts';
+import { createInstrumenter, type Instrument, type Interceptor } from '../interceptor/index.ts';
 import type { AnyNoesis, NoesisSetupContext } from '../noesis/index.ts';
 import type { Percept } from '../percept/index.ts';
+import type { AnyProjection } from '../projection/index.ts';
+import type { AnyProjector, ProjectorContext } from '../projector/index.ts';
 import type { Sensu, SensuSetupContext } from '../sensu/index.ts';
 import type { AnySignal } from '../signal/index.ts';
 import type { AnyStimulus, StimulusSetupContext } from '../stimulus/index.ts';
@@ -37,6 +39,8 @@ interface ResolvedModules {
   readonly sensuModules: Sensu[];
 
   readonly noesisModules: AnyNoesis[];
+
+  readonly projectionModules: AnyProjection[];
 }
 
 function isModuleGroup(
@@ -50,6 +54,7 @@ function collectModules(entries: readonly InstallableCielModuleEntry[]): Resolve
   const stimulusModules: AnyStimulus[] = [];
   const sensuModules: Sensu[] = [];
   const noesisModules: AnyNoesis[] = [];
+  const projectionModules: AnyProjection[] = [];
 
   for (const entry of entries) {
     const modules = isModuleGroup(entry) ? entry : [entry];
@@ -65,6 +70,9 @@ function collectModules(entries: readonly InstallableCielModuleEntry[]): Resolve
         case ModuleType.Noesis:
           noesisModules.push(module);
           break;
+        case ModuleType.Projection:
+          projectionModules.push(module);
+          break;
         case ModuleType.Stimulus:
           stimulusModules.push(module);
           break;
@@ -72,7 +80,13 @@ function collectModules(entries: readonly InstallableCielModuleEntry[]): Resolve
     }
   }
 
-  return { interceptorModules, stimulusModules, sensuModules, noesisModules };
+  return {
+    interceptorModules,
+    stimulusModules,
+    sensuModules,
+    noesisModules,
+    projectionModules,
+  };
 }
 
 async function installModules<T>(modules: T[], install: (module: T) => Promise<void>) {
@@ -81,12 +95,40 @@ async function installModules<T>(modules: T[], install: (module: T) => Promise<v
   }
 }
 
+type ProjectionRunner = (
+  entries: readonly EngramEntry[],
+) => Promise<Readonly<Record<string, unknown>>>;
+
+function createProjectionRunner(
+  projection: AnyProjection | undefined,
+  instrument: Instrument,
+): ProjectionRunner {
+  const projectors = projection
+    ? (Object.entries(projection.projectors) as [string, AnyProjector][]).map(
+        ([name, projector]) => [name, instrument(projector.project)] as const,
+      )
+    : [];
+
+  return async entries => {
+    const ctx: ProjectorContext = {
+      engram: createEngramView(entries),
+    };
+    const results = await Promise.all(
+      projectors.map(async ([name, project]) => [name, await project(ctx)] as const),
+    );
+
+    return Object.fromEntries(results);
+  };
+}
+
 export function defineCiel(options: DefineCielOptions): Ciel {
-  const { interceptorModules, stimulusModules, sensuModules, noesisModules } = collectModules(
-    options.modules,
-  );
+  const { interceptorModules, stimulusModules, sensuModules, noesisModules, projectionModules } =
+    collectModules(options.modules);
 
   const instrument = createInstrumenter(interceptorModules);
+  const projectionRegistry = new Map(
+    projectionModules.map(projection => [projection.id, projection] as const),
+  );
   const engram = createEngram({ windowMs: 1000 * 60 * 5 });
   const cueBus = createCueBus();
   const perceptBus = createPerceptBus();
@@ -143,8 +185,18 @@ export function defineCiel(options: DefineCielOptions): Ciel {
 
   const installNoesis = async (module: AnyNoesis): Promise<void> => {
     const scope = createLifecycleScope();
-    const ctx: NoesisSetupContext = {
+    const requestedProjection = module.projection;
+    const projection = requestedProjection
+      ? projectionRegistry.get(requestedProjection.id)
+      : undefined;
+
+    if (requestedProjection && !projection) {
+      throw new Error(`Projection "${requestedProjection.name}" is not registered in this Ciel`);
+    }
+
+    const ctx: NoesisSetupContext<any> = {
       engram,
+      project: createProjectionRunner(projection, instrument),
       onCue(cue, handler) {
         const dispose = cueBus.onCue(cue, instrument(handler));
         scope.onDispose(dispose);

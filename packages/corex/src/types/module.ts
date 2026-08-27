@@ -4,6 +4,7 @@ export const ModuleType = {
   Stimulus: 'stimulus',
   Sensu: 'sensu',
   Noesis: 'noesis',
+  Projection: 'projection',
   Interceptor: 'interceptor',
 } as const;
 

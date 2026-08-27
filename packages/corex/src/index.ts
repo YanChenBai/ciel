@@ -4,6 +4,8 @@ export * from './engram/index.ts';
 export * from './noesis/index.ts';
 export * from './interceptor/index.ts';
 export * from './percept/index.ts';
+export * from './projection/index.ts';
+export * from './projector/index.ts';
 export * from './sensu/index.ts';
 export * from './signal/index.ts';
 export * from './stimulus/index.ts';

@@ -75,6 +75,10 @@ export interface Percept<TSource extends Signal<any> = Signal<any>> extends Ciel
 
 export type DefinePerceptOptions = CielMetadata;
 
+export type PerceptOf<TDefinition extends PerceptDefinition> = Percept & {
+  readonly definition: TDefinition;
+};
+
 export function definePercept(options: DefinePerceptOptions): PerceptDefinition {
   const definition: PerceptDefinition = {
     ...options,

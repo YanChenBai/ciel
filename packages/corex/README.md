@@ -2,6 +2,49 @@
 
 Corex 提供 Ciel 的模块定义,运行时连接和可插拔函数拦截能力.
 
+## Projection
+
+Projector 定义可复用的 Engram 投影逻辑，Projection 使用对象组合并命名多个 Projector。
+Projection 需要与使用它的 Noesis 一同注册到 Ciel 顶层：
+
+```ts
+import { defineCiel, defineNoesis, defineProjection, defineProjector } from '@ciels/corex';
+
+const speechProjector = defineProjector({
+  name: 'speech',
+  project({ engram }) {
+    return engram.entries(speechPercept).flatMap(entry => entry.value.contents);
+  },
+});
+
+const agentProjection = defineProjection({
+  name: 'agent-context',
+  projectors: {
+    speech: speechProjector,
+    vision: visionProjector,
+  },
+});
+
+const agent = defineNoesis({
+  name: 'agent',
+  projection: agentProjection,
+  setup(ctx) {
+    ctx.onCue(thinkingCue, async () => {
+      const context = await ctx.project(ctx.engram.recent());
+
+      context.speech;
+      context.vision;
+    });
+  },
+});
+
+const ciel = defineCiel({ modules: [agentProjection, agent] });
+```
+
+每次 `project()` 都会先从输入条目创建固定的只读 Engram 快照。各 Projector 并行执行，
+返回结果仍按照 `projectors` 的 key 命名和推导类型。同一个 Projector 可以被多个 Projection
+复用；Noesis 引用的 Projection 未在当前 Ciel 注册时，Ciel 会拒绝启动。
+
 ## Instrumentation
 
 Core Runtime 会 instrument 以下函数边界:

@@ -64,6 +64,27 @@ test('读取左闭右开的时间窗口', () => {
   expect(engram.recent(50).map(entry => entry.value)).toEqual([inside, atEnd]);
 });
 
+test('按照 Percept 定义筛选条目', () => {
+  const otherPerceptDefinition = definePercept({
+    name: 'other-percept',
+    description: 'Another percept used by Engram tests',
+  });
+  const engram = createEngram({ windowMs: 100, now: () => 1_000 });
+  const included = createTestPercept('included', 1);
+  const temporal = { kind: 'instant', at: 2 } as const;
+  const source = signalDefinition.create('excluded', temporal);
+  const excluded = otherPerceptDefinition.create({
+    source,
+    contents: [{ type: 'text', text: 'excluded' }],
+    temporal,
+  });
+
+  engram.append(included, excluded);
+
+  expect(engram.entries(perceptDefinition).map(entry => entry.value)).toEqual([included]);
+  expect(engram.entries(otherPerceptDefinition).map(entry => entry.value)).toEqual([excluded]);
+});
+
 test('游标按配置的时间窗口推进', () => {
   let now = 1_000;
   const engram = createEngram({
