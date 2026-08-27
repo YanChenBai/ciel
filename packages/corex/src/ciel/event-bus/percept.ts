@@ -1,19 +1,8 @@
-import { EventEmitter } from '@ciels/event';
-
 import type { Percept, PerceptDefinition } from '../../percept/index.ts';
 import type { Dispose, MaybePromise } from '../../types/index.ts';
+import { createAsyncEventEmitter } from './emitter.ts';
 
 export type PerceptHandler = (percept: Percept) => MaybePromise<void>;
-
-interface PerceptBusEvents {
-  [event: string]: (percept: Percept) => MaybePromise<void>;
-}
-
-const ANY_PERCEPT_EVENT = 'percept:any';
-
-function perceptEvent(definition: PerceptDefinition): string {
-  return `percept:${definition.id}`;
-}
 
 export interface PerceptListener {
   onAnyPercept(handler: PerceptHandler): Dispose;
@@ -26,37 +15,18 @@ export interface PerceptBus extends PerceptListener {
 }
 
 export function createPerceptBus(): PerceptBus {
-  const emitter = new EventEmitter<PerceptBusEvents>();
+  const emitter = createAsyncEventEmitter<Percept>();
 
   function onAnyPercept(handler: PerceptHandler): Dispose {
-    return emitter.on(ANY_PERCEPT_EVENT, handler);
+    return emitter.onAny(handler);
   }
 
   function onPercept(definition: PerceptDefinition, handler: PerceptHandler): Dispose {
-    return emitter.on(perceptEvent(definition), handler);
+    return emitter.on(definition.id, handler);
   }
 
   async function emitPercept(percept: Percept): Promise<void> {
-    const errors: unknown[] = [];
-
-    try {
-      await emitter.emitAsync(ANY_PERCEPT_EVENT, percept);
-    } catch (error) {
-      errors.push(error);
-    }
-
-    try {
-      await emitter.emitAsync(perceptEvent(percept.definition), percept);
-    } catch (error) {
-      errors.push(error);
-    }
-
-    if (errors.length === 1) {
-      throw errors[0];
-    }
-    if (errors.length > 1) {
-      throw new AggregateError(errors, 'Failed to emit Percept');
-    }
+    await emitter.emit(percept.definition.id, percept);
   }
 
   return {

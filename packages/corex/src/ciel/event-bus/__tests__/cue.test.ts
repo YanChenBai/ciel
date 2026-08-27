@@ -36,3 +36,31 @@ test('处理器被释放后停止路由', async () => {
 
   expect(handled).toBe(1);
 });
+
+test('所有处理器完成后聚合错误', async () => {
+  const definition = defineCue({ name: 'failed', description: 'Failed' });
+  const cueBus = createCueBus();
+  const calls: string[] = [];
+  const firstError = new Error('first failed');
+  const secondError = new Error('second failed');
+
+  cueBus.onCue(definition, () => {
+    calls.push('first');
+    throw firstError;
+  });
+  cueBus.onCue(definition, () => {
+    calls.push('second');
+    throw secondError;
+  });
+  cueBus.onCue(definition, () => {
+    calls.push('third');
+  });
+
+  const emittedError = await cueBus
+    .emitCue(definition.create(undefined, instant))
+    .catch((caught: unknown) => caught);
+
+  expect(calls).toEqual(['first', 'second', 'third']);
+  expect(emittedError).toBeInstanceOf(AggregateError);
+  expect((emittedError as AggregateError).errors).toEqual([firstError, secondError]);
+});

@@ -1,17 +1,8 @@
-import { EventEmitter } from '@ciels/event';
-
 import type { AnyCue, AnyCueDefinition, CueOf } from '../../cue/index.ts';
 import type { Dispose, MaybePromise } from '../../types/index.ts';
+import { createAsyncEventEmitter } from './emitter.ts';
 
 type CueHandler = (cue: AnyCue) => MaybePromise<void>;
-
-interface CueBusEvents {
-  [event: string]: (cue: AnyCue) => MaybePromise<void>;
-}
-
-function cueEvent(definition: AnyCueDefinition): string {
-  return `cue:${definition.id}`;
-}
 
 export interface CueListener {
   onCue<TDefinition extends AnyCueDefinition>(
@@ -25,18 +16,18 @@ export interface CueBus extends CueListener {
 }
 
 export function createCueBus(): CueBus {
-  const emitter = new EventEmitter<CueBusEvents>();
+  const emitter = createAsyncEventEmitter<AnyCue>();
 
   function onCue<TDefinition extends AnyCueDefinition>(
     definition: TDefinition,
     handler: (cue: CueOf<TDefinition>) => MaybePromise<void>,
   ): Dispose {
     const cueHandler = handler as CueHandler;
-    return emitter.on(cueEvent(definition), cueHandler);
+    return emitter.on(definition.id, cueHandler);
   }
 
   async function emitCue(cue: AnyCue): Promise<void> {
-    await emitter.emitAsync(cueEvent(cue.definition), cue);
+    await emitter.emit(cue.definition.id, cue);
   }
 
   return {

@@ -18,8 +18,18 @@ function createFixture() {
   return { definition, percept };
 }
 
+async function expectEmissionErrors(
+  emission: Promise<void>,
+  expected: readonly unknown[],
+): Promise<void> {
+  const error = await emission.catch((caught: unknown) => caught);
+
+  expect(error).toBeInstanceOf(AggregateError);
+  expect((error as AggregateError).errors).toEqual(expected);
+}
+
 describe('PerceptBus 错误隔离', () => {
-  it('全量监听器失败后继续执行特定监听器', async () => {
+  it('全量监听器失败时不影响特定监听器', async () => {
     const { definition, percept } = createFixture();
     const perceptBus = createPerceptBus();
     const calls: string[] = [];
@@ -33,11 +43,11 @@ describe('PerceptBus 错误隔离', () => {
       calls.push('specific');
     });
 
-    await expect(perceptBus.emitPercept(percept)).rejects.toBe(error);
-    expect(calls).toEqual(['any', 'specific']);
+    await expectEmissionErrors(perceptBus.emitPercept(percept), [error]);
+    expect(calls).toEqual(['specific', 'any']);
   });
 
-  it('特定监听器失败时保留原始错误', async () => {
+  it('特定监听器失败时聚合原始错误', async () => {
     const { definition, percept } = createFixture();
     const perceptBus = createPerceptBus();
     const error = new Error('specific failed');
@@ -47,7 +57,7 @@ describe('PerceptBus 错误隔离', () => {
       throw error;
     });
 
-    await expect(perceptBus.emitPercept(percept)).rejects.toBe(error);
+    await expectEmissionErrors(perceptBus.emitPercept(percept), [error]);
   });
 
   it('两个通道都失败时按执行顺序聚合错误', async () => {
@@ -63,15 +73,30 @@ describe('PerceptBus 错误隔离', () => {
       throw specificError;
     });
 
-    let error: unknown;
-    try {
-      await perceptBus.emitPercept(percept);
-    } catch (caught) {
-      error = caught;
-    }
+    await expectEmissionErrors(perceptBus.emitPercept(percept), [specificError, anyError]);
+  });
 
-    expect(error).toBeInstanceOf(AggregateError);
-    expect((error as AggregateError).errors).toEqual([anyError, specificError]);
+  it('同一通道的处理器全部完成并聚合错误', async () => {
+    const { definition, percept } = createFixture();
+    const perceptBus = createPerceptBus();
+    const calls: string[] = [];
+    const firstError = new Error('first failed');
+    const secondError = new Error('second failed');
+
+    perceptBus.onPercept(definition, () => {
+      calls.push('first');
+      throw firstError;
+    });
+    perceptBus.onPercept(definition, () => {
+      calls.push('second');
+      throw secondError;
+    });
+    perceptBus.onPercept(definition, () => {
+      calls.push('third');
+    });
+
+    await expectEmissionErrors(perceptBus.emitPercept(percept), [firstError, secondError]);
+    expect(calls).toEqual(['first', 'second', 'third']);
   });
 
   it('同一个处理器显式订阅两个通道时分别执行', async () => {

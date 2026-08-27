@@ -36,3 +36,39 @@ test('处理器被释放后停止路由 Signal', async () => {
 
   expect(handled).toBe(1);
 });
+
+test('按 Emittery 语义异步调度并聚合错误', async () => {
+  const definition = defineSignal({ name: 'failed', description: 'Failed' });
+  const signalBus = createSignalBus();
+  const error = new Error('signal failed');
+  let handled = false;
+
+  signalBus.onSignal(definition, () => {
+    handled = true;
+    throw error;
+  });
+
+  const emission = signalBus.emitSignal(definition.create(undefined, instant));
+  expect(handled).toBe(false);
+
+  const emittedError = await emission.catch((caught: unknown) => caught);
+  expect(handled).toBe(true);
+  expect(emittedError).toBeInstanceOf(AggregateError);
+  expect((emittedError as AggregateError).errors).toEqual([error]);
+});
+
+test('同一个处理器重复订阅同一事件时只执行一次', async () => {
+  const definition = defineSignal({ name: 'deduplicated', description: 'Deduplicated' });
+  const signalBus = createSignalBus();
+  let handled = 0;
+  const handler = () => {
+    handled += 1;
+  };
+
+  signalBus.onSignal(definition, handler);
+  signalBus.onSignal(definition, handler);
+
+  await signalBus.emitSignal(definition.create(undefined, instant));
+
+  expect(handled).toBe(1);
+});

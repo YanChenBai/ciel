@@ -160,7 +160,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
   const lifecycle = createLifecycle({
     name: 'Ciel',
     async setup() {
-      // Engram 必须最先订阅, 确保其他 Percept 监听器运行前已经完成记录
+      // Engram 必须优先注册，避免后续模块在 setup 阶段发出的 Percept 漏记
       installEngram();
       await installModules(sensuModules, installSensu);
       await installModules(noesisModules, installNoesis);

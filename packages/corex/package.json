@@ -31,8 +31,8 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "@ciels/event": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
+    "emittery": "2.0.0",
     "uuid": "^14.0.2"
   },
   "devDependencies": {
