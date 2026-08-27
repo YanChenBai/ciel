@@ -1,17 +1,14 @@
 import {
   type CielData,
   type CielDefinition,
+  type CielMetadata,
   DataType,
   DefinitionType,
   type Temporal,
 } from '../types/index.ts';
 import { createId } from '../utils/index.ts';
 
-export interface DefineCueOptions {
-  readonly name: string;
-
-  readonly description?: string;
-}
+export type DefineCueOptions = CielMetadata;
 
 export interface CueDefinition<TPayload = unknown> extends CielDefinition<
   typeof DefinitionType.Cue

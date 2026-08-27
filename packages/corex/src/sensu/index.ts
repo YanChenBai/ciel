@@ -1,7 +1,13 @@
 import type { AnyCue } from '../cue/index.ts';
 import type { Percept } from '../percept/index.ts';
 import type { AnySignalDefinition, SignalOf } from '../signal/index.ts';
-import { type CielModule, type Dispose, type MaybePromise, ModuleType } from '../types/index.ts';
+import {
+  type CielMetadata,
+  type CielModule,
+  type Dispose,
+  type MaybePromise,
+  ModuleType,
+} from '../types/index.ts';
 import { createId } from '../utils/index.ts';
 
 export interface SensuSetupContext {
@@ -23,11 +29,7 @@ export interface SensuSetupContext {
   onDispose(dispose: Dispose): void;
 }
 
-export interface DefineSensuOptions {
-  readonly name: string;
-
-  readonly description?: string;
-
+export interface DefineSensuOptions extends CielMetadata {
   setup(this: void, ctx: SensuSetupContext): MaybePromise<void>;
 }
 

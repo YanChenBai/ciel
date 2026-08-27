@@ -2,6 +2,7 @@ import type { Signal } from '../signal/index.ts';
 import {
   type CielData,
   type CielDefinition,
+  type CielMetadata,
   DataType,
   DefinitionType,
   type Temporal,
@@ -72,11 +73,7 @@ export interface Percept<TSource extends Signal<any> = Signal<any>> extends Ciel
   readonly confidence?: number;
 }
 
-export interface DefinePerceptOptions {
-  name: string;
-
-  description?: string;
-}
+export type DefinePerceptOptions = CielMetadata;
 
 export function definePercept(options: DefinePerceptOptions): PerceptDefinition {
   const definition: PerceptDefinition = {

@@ -1,5 +1,11 @@
 import type { AnySignal } from '../signal/index.ts';
-import { type CielModule, type Dispose, type MaybePromise, ModuleType } from '../types/index.ts';
+import {
+  type CielMetadata,
+  type CielModule,
+  type Dispose,
+  type MaybePromise,
+  ModuleType,
+} from '../types/index.ts';
 import { createId } from '../utils/index.ts';
 
 export interface StimulusSetupContext {
@@ -8,11 +14,7 @@ export interface StimulusSetupContext {
   onDispose(dispose: Dispose): void;
 }
 
-export interface DefineStimulusOptions {
-  readonly name: string;
-
-  readonly description?: string;
-
+export interface DefineStimulusOptions extends CielMetadata {
   setup(this: void, ctx: StimulusSetupContext): MaybePromise<void>;
 }
 

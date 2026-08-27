@@ -1,5 +1,4 @@
-import { ModuleType } from '../types/index.ts';
-import type { CielModule } from '../types/index.ts';
+import { type CielMetadata, type CielModule, ModuleType } from '../types/index.ts';
 import { createId } from '../utils/index.ts';
 
 export type AnyFunction = (...args: any[]) => any;
@@ -9,11 +8,7 @@ export type AnyFunction = (...args: any[]) => any;
  */
 export type InterceptorWrapper<T extends AnyFunction = AnyFunction> = (next: T) => T;
 
-export interface DefineInterceptorOptions {
-  readonly name: string;
-
-  readonly description?: string;
-
+export interface DefineInterceptorOptions extends CielMetadata {
   /**
    * 判断是否拦截目标函数,未命中时返回 undefined
    */

@@ -1,6 +1,12 @@
 import type { CueListener } from '../ciel/event-bus/index.ts';
 import type { EngramReader } from '../engram/index.ts';
-import { type CielModule, type Dispose, type MaybePromise, ModuleType } from '../types/index.ts';
+import {
+  type CielMetadata,
+  type CielModule,
+  type Dispose,
+  type MaybePromise,
+  ModuleType,
+} from '../types/index.ts';
 import { createId } from '../utils/index.ts';
 
 export interface NoesisSetupContext extends CueListener {
@@ -12,11 +18,7 @@ export interface NoesisSetupContext extends CueListener {
   onDispose(dispose: Dispose): void;
 }
 
-export interface DefineNoesisOptions {
-  readonly name: string;
-
-  readonly description?: string;
-
+export interface DefineNoesisOptions extends CielMetadata {
   setup(this: void, ctx: NoesisSetupContext): MaybePromise<void>;
 }
 

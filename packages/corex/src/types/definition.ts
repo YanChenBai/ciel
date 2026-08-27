@@ -1,3 +1,5 @@
+import type { CielMetadata } from './common.ts';
+
 export const DefinitionType = {
   Signal: 'signal-definition',
   Percept: 'percept-definition',
@@ -6,7 +8,9 @@ export const DefinitionType = {
 
 export type DefinitionType = (typeof DefinitionType)[keyof typeof DefinitionType];
 
-export interface CielDefinition<TType extends DefinitionType = DefinitionType> {
+export interface CielDefinition<
+  TType extends DefinitionType = DefinitionType,
+> extends CielMetadata {
   /**
    * 定义类型
    */
@@ -16,14 +20,4 @@ export interface CielDefinition<TType extends DefinitionType = DefinitionType> {
    * 定义的 UUIDv7 唯一标识
    */
   readonly id: string;
-
-  /**
-   * 便于展示和调试的定义名称
-   */
-  readonly name: string;
-
-  /**
-   * 定义的语义和用途说明
-   */
-  readonly description?: string;
 }
