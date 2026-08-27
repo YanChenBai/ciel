@@ -10,13 +10,14 @@ import {
   defineSensu,
   defineSignal,
   defineStimulus,
-  useInterceptor,
 } from '../../index.ts';
 
 describe('Ciel interceptor 集成', () => {
-  it('拦截 setup,emit 和事件处理边界,并在注销后停止拦截', async () => {
+  it('作为模块拦截 setup,emit 和事件处理边界', async () => {
     const calls: string[] = [];
     const interceptor = defineInterceptor({
+      name: 'logger',
+      description: 'Logs Ciel boundaries',
       intercept<T extends AnyFunction>(target: T) {
         return next =>
           ((...args: Parameters<T>) => {
@@ -25,7 +26,6 @@ describe('Ciel interceptor 集成', () => {
           }) as T;
       },
     });
-    const disposeInterceptor = useInterceptor(interceptor);
     const signal = defineSignal<string>({ name: 'message', description: 'Message signal' });
     const percept = definePercept({ name: 'message', description: 'Message percept' });
     const cue = defineCue<string>({ name: 'message', description: 'Message cue' });
@@ -64,7 +64,7 @@ describe('Ciel interceptor 集成', () => {
         );
       },
     });
-    const ciel = defineCiel({ modules: [stimulus, sensu, noesis] });
+    const ciel = defineCiel({ modules: [interceptor, stimulus, sensu, noesis] });
 
     try {
       await ciel.start();
@@ -80,21 +80,16 @@ describe('Ciel interceptor 集成', () => {
         'emitCue',
         'handleCue',
       ]);
-
-      await disposeInterceptor();
-      await ciel.start();
-      await ciel.stop();
-
-      expect(calls).toHaveLength(8);
     } finally {
       await ciel.stop();
-      await disposeInterceptor();
     }
   });
 
-  it('拦截 Ciel 外部派发的 Cue', async () => {
+  it('仅拦截所属 Ciel 实例外部派发的 Cue', async () => {
     const calls: string[] = [];
     const interceptor = defineInterceptor({
+      name: 'logger',
+      description: 'Logs Ciel boundaries',
       intercept<T extends AnyFunction>(target: T) {
         return next =>
           ((...args: Parameters<T>) => {
@@ -103,18 +98,20 @@ describe('Ciel interceptor 集成', () => {
           }) as T;
       },
     });
-    const disposeInterceptor = useInterceptor(interceptor);
     const cue = defineCue<string>({ name: 'manual', description: 'Manual cue' });
-    const ciel = defineCiel({ modules: [] });
+    const instrumentedCiel = defineCiel({ modules: [interceptor] });
+    const isolatedCiel = defineCiel({ modules: [] });
 
     try {
-      await ciel.start();
-      await ciel.emitCue(cue.create('hello', { kind: 'instant', at: 1 }));
+      await instrumentedCiel.start();
+      await isolatedCiel.start();
+      await instrumentedCiel.emitCue(cue.create('observed', { kind: 'instant', at: 1 }));
+      await isolatedCiel.emitCue(cue.create('isolated', { kind: 'instant', at: 2 }));
 
       expect(calls).toEqual(['emitCue']);
     } finally {
-      await ciel.stop();
-      await disposeInterceptor();
+      await instrumentedCiel.stop();
+      await isolatedCiel.stop();
     }
   });
 });

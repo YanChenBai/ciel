@@ -10,7 +10,8 @@ Core Runtime 会 instrument 以下函数边界:
 - `onSignal` 和 `onCue` 注册的 handler
 - `emitSignal`, `emitPercept`, `emitCue`
 
-外部能力通过 `defineInterceptor()` 定义拦截器,通过 `useInterceptor()` 动态安装:
+Interceptor 与其他 Ciel 模块一样通过 `defineInterceptor()` 定义，并放入
+`defineCiel()` 的 `modules` 中：
 
 ```ts
 import {
@@ -19,10 +20,11 @@ import {
   defineInterceptor,
   defineSignal,
   defineStimulus,
-  useInterceptor,
-} from 'corex';
+} from '@ciels/corex';
 
 const logger = defineInterceptor({
+  name: 'logger',
+  description: 'Logs instrumented function calls',
   intercept<T extends AnyFunction>(target: T) {
     return next =>
       ((...args: Parameters<T>) => {
@@ -58,20 +60,17 @@ const stimulus = defineStimulus({
   },
 });
 
-const ciel = defineCiel({ modules: [stimulus] });
-const disposeInterceptor = useInterceptor(logger);
+const ciel = defineCiel({ modules: [logger, stimulus] });
 
 try {
   await ciel.start();
 } finally {
   await ciel.stop();
-  await disposeInterceptor();
 }
 ```
 
-`instrument(fn)` 本身不需要注销,它会在调用时读取当前 registry. `useInterceptor()` 返回的 disposer 由安装者持有,应用级 interceptor 应在应用退出时注销,Ciel 实例级 interceptor 应在对应实例停止后注销.
-
-同一个 interceptor 可以被多个生命周期重复安装,只有全部 disposer 都执行后才会从 registry 移除.
+`intercept(target)` 返回 wrapper 时拦截目标函数，返回 `undefined` 时跳过。Interceptor 归所在的
+Ciel 实例所有，模块数组中的声明顺序就是 wrapper 的组合顺序，不同 Ciel 实例彼此隔离。
 
 ## Development
 

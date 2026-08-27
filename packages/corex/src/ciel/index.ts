@@ -1,6 +1,6 @@
 import type { AnyCue } from '../cue/index.ts';
 import { createEngram } from '../engram/index.ts';
-import { instrument } from '../interceptor/index.ts';
+import { createInstrumenter, type Interceptor } from '../interceptor/index.ts';
 import type { AnyNoesis, NoesisSetupContext } from '../noesis/index.ts';
 import type { Percept } from '../percept/index.ts';
 import type { Sensu, SensuSetupContext } from '../sensu/index.ts';
@@ -19,6 +19,8 @@ import type { Ciel, DefineCielOptions, InstallableCielModule } from './types.ts'
 export type { Ciel, CielStatus, DefineCielOptions, InstallableCielModule } from './types.ts';
 
 interface ResolvedModules {
+  readonly interceptorModules: Interceptor[];
+
   readonly stimulusModules: AnyStimulus[];
 
   readonly sensuModules: Sensu[];
@@ -27,21 +29,29 @@ interface ResolvedModules {
 }
 
 function collectModules(modules: readonly InstallableCielModule[]): ResolvedModules {
+  const interceptorModules: Interceptor[] = [];
   const stimulusModules: AnyStimulus[] = [];
   const sensuModules: Sensu[] = [];
   const noesisModules: AnyNoesis[] = [];
 
   for (const module of modules) {
-    if (module.type === ModuleType.Sensu) {
-      sensuModules.push(module);
-    } else if (module.type === ModuleType.Noesis) {
-      noesisModules.push(module);
-    } else if (module.type === ModuleType.Stimulus) {
-      stimulusModules.push(module);
+    switch (module.type) {
+      case ModuleType.Interceptor:
+        interceptorModules.push(module);
+        break;
+      case ModuleType.Sensu:
+        sensuModules.push(module);
+        break;
+      case ModuleType.Noesis:
+        noesisModules.push(module);
+        break;
+      case ModuleType.Stimulus:
+        stimulusModules.push(module);
+        break;
     }
   }
 
-  return { stimulusModules, sensuModules, noesisModules };
+  return { interceptorModules, stimulusModules, sensuModules, noesisModules };
 }
 
 async function installModules<T>(modules: T[], install: (module: T) => Promise<void>) {
@@ -51,8 +61,11 @@ async function installModules<T>(modules: T[], install: (module: T) => Promise<v
 }
 
 export function defineCiel(options: DefineCielOptions): Ciel {
-  const { stimulusModules, sensuModules, noesisModules } = collectModules(options.modules);
+  const { interceptorModules, stimulusModules, sensuModules, noesisModules } = collectModules(
+    options.modules,
+  );
 
+  const instrument = createInstrumenter(interceptorModules);
   const engram = createEngram({ windowMs: 1000 * 60 * 5 });
   const cueBus = createCueBus();
   const perceptBus = createPerceptBus();

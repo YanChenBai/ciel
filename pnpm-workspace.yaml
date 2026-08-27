@@ -26,7 +26,7 @@ overrides:
   '@vue/runtime-vapor': 3.6.0-rc.4
   '@vue/server-renderer': 3.6.0-rc.4
   '@vue/shared': 3.6.0-rc.4
-  typescript: npm:typescript-native-bridge@6.0.3-bridge.12.tsgo.7.0.2
+  typescript: npm:typescript-native-bridge@6.0.3-bridge.15.tsgo.7.0.2
   vite: 'catalog:'
   vue: 3.6.0-rc.4
 

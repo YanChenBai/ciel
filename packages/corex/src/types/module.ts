@@ -2,6 +2,7 @@ export const ModuleType = {
   Stimulus: 'stimulus',
   Sensu: 'sensu',
   Noesis: 'noesis',
+  Interceptor: 'interceptor',
 } as const;
 
 export type ModuleType = (typeof ModuleType)[keyof typeof ModuleType];

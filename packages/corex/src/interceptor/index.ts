@@ -1,67 +1,48 @@
-import type { Dispose } from '../types/index.ts';
-import type { AnyFunction, Interceptor, InterceptorWrapper } from './types.ts';
+import { ModuleType } from '../types/index.ts';
+import type { CielModule } from '../types/index.ts';
+import { createId } from '../utils/index.ts';
 
-export type * from './types.ts';
-
-const interceptors = new Map<Interceptor, number>();
-
-// Registry 变化后递增版本,让已有包装函数按需刷新匹配结果
-let version = 0;
+export type AnyFunction = (...args: any[]) => any;
 
 /**
- * 定义拦截器,并保留传入对象的精确类型
+ * 包装下一层函数,返回调用签名不变的新函数
  */
-export function defineInterceptor<T extends Interceptor>(interceptor: T): T {
-  return interceptor;
+export type InterceptorWrapper<T extends AnyFunction = AnyFunction> = (next: T) => T;
+
+export interface DefineInterceptorOptions {
+  readonly name: string;
+
+  readonly description: string;
+
+  /**
+   * 判断是否拦截目标函数,未命中时返回 undefined
+   */
+  intercept<T extends AnyFunction>(target: T): InterceptorWrapper<T> | undefined;
 }
 
+export interface Interceptor extends DefineInterceptorOptions, CielModule<'interceptor'> {}
+
+export type Instrument = <T extends AnyFunction>(target: T) => T;
+
 /**
- * 安装拦截器,返回对应的卸载函数
+ * 定义拦截器模块
  */
-export function useInterceptor(interceptor: Interceptor): Dispose {
-  const references = interceptors.get(interceptor) ?? 0;
-
-  interceptors.set(interceptor, references + 1);
-
-  if (references === 0) {
-    version++;
-  }
-
-  let active = true;
-
-  return () => {
-    if (!active) {
-      return;
-    }
-
-    active = false;
-
-    const currentReferences = interceptors.get(interceptor);
-
-    if (currentReferences === 1) {
-      interceptors.delete(interceptor);
-      version++;
-    } else if (currentReferences) {
-      interceptors.set(interceptor, currentReferences - 1);
-    }
+export function defineInterceptor(options: DefineInterceptorOptions): Interceptor {
+  return {
+    ...options,
+    type: ModuleType.Interceptor,
+    id: createId(),
   };
 }
 
 /**
- * 将目标函数接入拦截器,并在调用时应用当前已安装的拦截器
+ * 为一组 interceptor 模块创建相互隔离的 instrumenter
  */
-export function instrument<T extends AnyFunction>(target: T): T {
-  let cachedVersion = -1;
-  let wrappers: InterceptorWrapper<T>[] = [];
+export function createInstrumenter(interceptors: readonly Interceptor[]): Instrument {
+  return function instrument<T extends AnyFunction>(target: T): T {
+    const wrappers: InterceptorWrapper<T>[] = [];
 
-  const update = (): void => {
-    if (cachedVersion === version) {
-      return;
-    }
-
-    wrappers = [];
-
-    for (const interceptor of interceptors.keys()) {
+    for (const interceptor of interceptors) {
       const wrapper = interceptor.intercept(target);
 
       if (wrapper) {
@@ -69,21 +50,17 @@ export function instrument<T extends AnyFunction>(target: T): T {
       }
     }
 
-    cachedVersion = version;
+    return function (this: ThisParameterType<T>, ...args: Parameters<T>): ReturnType<T> {
+      // Target continuation 始终使用本次 invocation 的 receiver
+      let next = ((...nextArgs: Parameters<T>): ReturnType<T> =>
+        Reflect.apply(target, this, nextArgs)) as T;
+
+      // 从后向前组合，使先声明的 wrapper 位于调用链外层
+      for (let index = wrappers.length - 1; index >= 0; index--) {
+        next = wrappers[index]!(next);
+      }
+
+      return Reflect.apply(next, this, args);
+    } as T;
   };
-
-  return function (this: unknown, ...args: Parameters<T>): ReturnType<T> {
-    update();
-
-    // 捕获本次调用的 this,拦截器只需通过 next 进入下一层
-    let next = ((...nextArgs: Parameters<T>): ReturnType<T> =>
-      Reflect.apply(target, this, nextArgs)) as T;
-
-    // 从后向前组合,使先注册的 wrapper 位于调用链外层
-    for (let index = wrappers.length - 1; index >= 0; index--) {
-      next = wrappers[index]!(next);
-    }
-
-    return next(...args);
-  } as T;
 }

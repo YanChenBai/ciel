@@ -1,20 +1,40 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 
-import { defineInterceptor, instrument, useInterceptor } from './index.ts';
-import type { AnyFunction } from './types.ts';
+import { createInstrumenter, defineInterceptor } from './index.ts';
+import type { AnyFunction } from './index.ts';
 
 describe('interceptor', () => {
-  it('未安装拦截器时保持原函数行为', () => {
+  it('定义为 Ciel 模块', () => {
+    const interceptor = defineInterceptor({
+      name: 'logger',
+      description: 'Logs calls',
+      intercept() {
+        return undefined;
+      },
+    });
+
+    expect(interceptor).toMatchObject({
+      type: 'interceptor',
+      name: 'logger',
+      description: 'Logs calls',
+      id: expect.any(String),
+    });
+  });
+
+  it('未声明 interceptor 时保持原函数行为', () => {
     const target = vi.fn((value: number) => value * 2);
+    const instrument = createInstrumenter([]);
     const instrumented = instrument(target);
 
     expect(instrumented(3)).toBe(6);
     expect(target).toHaveBeenCalledWith(3);
   });
 
-  it('按注册顺序组合匹配的包装器', () => {
+  it('按模块声明顺序组合匹配的 wrapper', () => {
     const calls: string[] = [];
     const first = defineInterceptor({
+      name: 'first',
+      description: 'First wrapper',
       intercept<T extends AnyFunction>() {
         return next =>
           ((...args: Parameters<T>) => {
@@ -26,11 +46,15 @@ describe('interceptor', () => {
       },
     });
     const skipped = defineInterceptor({
+      name: 'skipped',
+      description: 'Does not match',
       intercept() {
         return undefined;
       },
     });
     const second = defineInterceptor({
+      name: 'second',
+      description: 'Second wrapper',
       intercept<T extends AnyFunction>() {
         return next =>
           ((...args: Parameters<T>) => {
@@ -41,35 +65,32 @@ describe('interceptor', () => {
           }) as T;
       },
     });
-    const disposeFirst = useInterceptor(first);
-    const disposeSkipped = useInterceptor(skipped);
-    const disposeSecond = useInterceptor(second);
+    const instrument = createInstrumenter([first, skipped, second]);
+    const instrumented = instrument(() => {
+      calls.push('target');
+      return 'result';
+    });
 
-    try {
-      const instrumented = instrument(() => {
-        calls.push('target');
-        return 'result';
-      });
-
-      expect(instrumented()).toBe('result');
-      expect(calls).toEqual([
-        'first:before',
-        'second:before',
-        'target',
-        'second:after',
-        'first:after',
-      ]);
-    } finally {
-      void disposeSecond();
-      void disposeSkipped();
-      void disposeFirst();
-    }
+    expect(instrumented()).toBe('result');
+    expect(calls).toEqual([
+      'first:before',
+      'second:before',
+      'target',
+      'second:after',
+      'first:after',
+    ]);
   });
 
-  it('对已经 instrument 的函数动态安装和卸载拦截器', () => {
+  it('intercept 返回 undefined 时跳过不匹配的目标函数', () => {
     const calls: string[] = [];
     const interceptor = defineInterceptor({
-      intercept<T extends AnyFunction>() {
+      name: 'selective',
+      description: 'Only observes selected targets',
+      intercept<T extends AnyFunction>(target: T) {
+        if (target.name !== 'observed') {
+          return undefined;
+        }
+
         return next =>
           ((...args: Parameters<T>) => {
             calls.push('interceptor');
@@ -77,92 +98,85 @@ describe('interceptor', () => {
           }) as T;
       },
     });
-    const instrumented = instrument(() => calls.push('target'));
-
-    instrumented();
-    const dispose = useInterceptor(interceptor);
-
-    try {
-      instrumented();
-    } finally {
-      void dispose();
-    }
-
-    instrumented();
-
-    expect(calls).toEqual(['target', 'interceptor', 'target', 'target']);
-  });
-
-  it('重复安装同一个定义时等待全部注销后再移除', () => {
-    const calls: string[] = [];
-    const interceptor = defineInterceptor({
-      intercept<T extends AnyFunction>() {
-        return next =>
-          ((...args: Parameters<T>) => {
-            calls.push('interceptor');
-            return next(...args);
-          }) as T;
-      },
+    const instrument = createInstrumenter([interceptor]);
+    const observed = instrument(function observed() {
+      calls.push('observed');
     });
-    const instrumented = instrument(() => calls.push('target'));
-    const disposeFirst = useInterceptor(interceptor);
-    const disposeSecond = useInterceptor(interceptor);
+    const ignored = instrument(function ignored() {
+      calls.push('ignored');
+    });
 
-    instrumented();
-    void disposeFirst();
-    instrumented();
-    void disposeSecond();
-    instrumented();
+    observed();
+    ignored();
 
-    expect(calls).toEqual(['interceptor', 'target', 'interceptor', 'target', 'target']);
+    expect(calls).toEqual(['interceptor', 'observed', 'ignored']);
   });
 
-  it('只在 registry 变化后重新执行拦截判断', () => {
+  it('每个 instrumenter 独立匹配并复用结果', () => {
+    const calls: string[] = [];
     let interceptCalls = 0;
     const interceptor = defineInterceptor({
+      name: 'logger',
+      description: 'Logs calls',
       intercept<T extends AnyFunction>() {
         interceptCalls++;
-        return (next: T): T => next;
+        return next =>
+          ((...args: Parameters<T>) => {
+            calls.push('interceptor');
+            return next(...args);
+          }) as T;
       },
     });
-    const instrumented = instrument((value: number) => value);
-    const dispose = useInterceptor(interceptor);
+    const instrumented = createInstrumenter([interceptor])(() => calls.push('target'));
+    const isolated = createInstrumenter([])(() => calls.push('isolated'));
 
-    try {
-      expect(instrumented(1)).toBe(1);
-      expect(instrumented(2)).toBe(2);
-      expect(interceptCalls).toBe(1);
-    } finally {
-      void dispose();
-    }
+    instrumented();
+    instrumented();
+    isolated();
+
+    expect(interceptCalls).toBe(1);
+    expect(calls).toEqual(['interceptor', 'target', 'interceptor', 'target', 'isolated']);
   });
 
-  it('保留原函数的 this 语义', () => {
+  it('保留 target 和 wrapper 的 this 语义', () => {
+    const receivers: unknown[] = [];
     const interceptor = defineInterceptor({
+      name: 'receiver',
+      description: 'Records receivers',
       intercept<T extends AnyFunction>() {
-        return next => ((...args: Parameters<T>) => next(...args)) as T;
+        return next =>
+          function (this: ThisParameterType<T>, ...args: Parameters<T>) {
+            receivers.push(this);
+            return Reflect.apply(next, this, args);
+          } as T;
       },
     });
-    const dispose = useInterceptor(interceptor);
+    const instrument = createInstrumenter([interceptor]);
     const calculate = instrument(function (this: { base: number }, delta: number) {
       return this.base + delta;
     });
+    const receiver = { base: 2 };
 
-    try {
-      expect(calculate.call({ base: 2 }, 3)).toBe(5);
-    } finally {
-      void dispose();
-    }
+    expect(calculate.call(receiver, 3)).toBe(5);
+    expect(receivers).toEqual([receiver]);
   });
 
   it('保持异步返回值和异常语义', async () => {
+    const instrument = createInstrumenter([]);
     const instrumentedAsync = instrument(async () => 42);
     const error = new Error('failed');
     const instrumentedError = instrument(() => {
       throw error;
     });
+    let caught: unknown;
+
+    try {
+      instrumentedError();
+    } catch (currentError) {
+      caught = currentError;
+    }
 
     await expect(instrumentedAsync()).resolves.toBe(42);
-    expect(() => instrumentedError()).toThrow(error);
+    expect(caught).toBe(error);
   });
 });
