@@ -1,4 +1,4 @@
-import type { Dispose, MaybePromise } from '#shared/async.ts';
+import type { MaybePromise, OnDispose } from '#shared/async.ts';
 
 export type LifecycleStatus = 'idle' | 'starting' | 'running' | 'stopping';
 
@@ -15,6 +15,6 @@ export interface CreateLifecycleOptions {
 }
 
 export interface LifecycleScope {
-  onDispose(dispose: Dispose): void;
+  onDispose: OnDispose;
   dispose(): Promise<void>;
 }

@@ -64,15 +64,15 @@ test('将 Stimulus 的多个 Signal 路由到 Sensu', async () => {
     description: 'Converts audio signals into percepts',
     setup(ctx) {
       for (const signal of [microphoneSignal, systemAudioSignal] as const) {
-        ctx.onSignal(signal, async input => {
+        ctx.interpret(signal, input => {
           received.push(input.payload.source);
-          await ctx.emitPercept(
-            audioPercept.create({
+          return {
+            percepts: audioPercept.create({
               source: input,
               contents: [{ type: 'text', text: input.payload.source }],
               temporal: input.temporal,
             }),
-          );
+          };
         });
       }
     },
@@ -114,15 +114,15 @@ test('在 Percept 写入 Engram 后向 Noesis 派发 Cue 并随作用域自动�
     name: 'message',
     description: 'Converts messages into percepts',
     setup(ctx) {
-      ctx.onSignal(messageSignal, async signal => {
-        await ctx.emitPercept(
-          messagePercept.create({
+      ctx.interpret(messageSignal, signal => {
+        return {
+          percepts: messagePercept.create({
             source: signal,
             contents: [{ type: 'text', text: signal.payload }],
             temporal: signal.temporal,
           }),
-        );
-        await ctx.emitCue(speechEnd.create(signal.payload, signal.temporal));
+          cues: speechEnd.create(signal.temporal, signal.payload),
+        };
       });
     },
   });
@@ -177,7 +177,7 @@ test('从 Ciel 外部手动派发 Cue', async () => {
   const ciel = defineCiel({ modules: [noesis] });
 
   await ciel.start();
-  await ciel.emitCue(manual.create({ prompt: 'inspect current context' }, temporal));
+  await ciel.emitCue(manual.create(temporal, { prompt: 'inspect current context' }));
 
   expect(received).toEqual(['inspect current context']);
   expect(ciel.engram.size).toBe(0);
@@ -206,7 +206,7 @@ test('按相反顺序释放插件作用域', async () => {
     name: 'message',
     description: 'Converts message signals into percepts',
     setup(ctx) {
-      ctx.onSignal(messageSignal, () => undefined);
+      ctx.interpret(messageSignal, () => undefined);
       ctx.onDispose(() => {
         disposed.push('sensu');
       });

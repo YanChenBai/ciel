@@ -2,7 +2,7 @@ import type { CielData } from '#model/data.ts';
 import type { CielDefinition } from '#model/definition.ts';
 import type { LLMContext } from '#model/llm/index.ts';
 import type { Signal } from '#model/signal/index.ts';
-import type { Dispose, MaybePromise, Temporal } from '#shared';
+import type { Temporal } from '#shared';
 import type { CielMetadata } from '#shared/metadata.ts';
 
 export interface PerceptDefinition extends CielDefinition<'percept-definition'> {
@@ -40,9 +40,3 @@ export type DefinePerceptOptions = CielMetadata;
 export type PerceptOf<TDefinition extends PerceptDefinition> = Percept & {
   readonly definition: TDefinition;
 };
-export type PerceptHandler = (percept: Percept) => MaybePromise<void>;
-
-export interface PerceptListener {
-  onAnyPercept(handler: PerceptHandler): Dispose;
-  onPercept(definition: PerceptDefinition, handler: PerceptHandler): Dispose;
-}

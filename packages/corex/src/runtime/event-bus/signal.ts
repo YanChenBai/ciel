@@ -1,19 +1,19 @@
-import type { AnySignal, AnySignalDefinition, SignalOf } from '#model/signal/index.ts';
-import type { Dispose, MaybePromise } from '#shared/async.ts';
+import type { AnySignal, AnySignalDefinition, SignalHandler } from '#model/signal/index.ts';
+import type { Dispose } from '#shared/async.ts';
 
 import { createAsyncEventEmitter } from './emitter.ts';
 import type { SignalBus } from './types.ts';
 
-type SignalHandler = (signal: AnySignal) => MaybePromise<void>;
+type AnySignalHandler = SignalHandler<AnySignalDefinition>;
 
 export function createSignalBus(): SignalBus {
   const emitter = createAsyncEventEmitter<AnySignal>();
 
   function onSignal<TDefinition extends AnySignalDefinition>(
     definition: TDefinition,
-    handler: (signal: SignalOf<TDefinition>) => MaybePromise<void>,
+    handler: SignalHandler<TDefinition>,
   ): Dispose {
-    const signalHandler = handler as SignalHandler;
+    const signalHandler = handler as AnySignalHandler;
     return emitter.on(definition.id, signalHandler);
   }
 

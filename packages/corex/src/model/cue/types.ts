@@ -5,11 +5,15 @@ import type { CielMetadata } from '#shared/metadata.ts';
 
 export type DefineCueOptions = CielMetadata;
 
-export interface CueDefinition<TPayload = unknown> extends CielDefinition<'cue-definition'> {
-  readonly create: (payload: TPayload, temporal: Temporal) => Cue<TPayload>;
+export type CreateCue<TPayload> = undefined extends TPayload
+  ? (temporal: Temporal, payload?: TPayload) => Cue<TPayload>
+  : (temporal: Temporal, payload: TPayload) => Cue<TPayload>;
+
+export interface CueDefinition<TPayload = void> extends CielDefinition<'cue-definition'> {
+  readonly create: CreateCue<TPayload>;
 }
 
-export interface Cue<TPayload = unknown> extends CielData<'cue'> {
+export interface Cue<TPayload = void> extends CielData<'cue'> {
   readonly definition: CueDefinition<TPayload>;
   readonly payload: TPayload;
   readonly temporal: Temporal;
@@ -17,12 +21,19 @@ export interface Cue<TPayload = unknown> extends CielData<'cue'> {
 
 export type AnyCueDefinition = CueDefinition<any>;
 export type AnyCue = Cue<any>;
+export type EmitCue = (cue: AnyCue) => Promise<void>;
 export type CueOf<TDefinition extends AnyCueDefinition> =
   TDefinition extends CueDefinition<infer TPayload> ? Cue<TPayload> : never;
 
+export type CueHandler<TDefinition extends AnyCueDefinition> = (
+  cue: CueOf<TDefinition>,
+) => MaybePromise<void>;
+
+export type OnCue = <TDefinition extends AnyCueDefinition>(
+  definition: TDefinition,
+  handler: CueHandler<TDefinition>,
+) => Dispose;
+
 export interface CueListener {
-  onCue<TDefinition extends AnyCueDefinition>(
-    definition: TDefinition,
-    handler: (cue: CueOf<TDefinition>) => MaybePromise<void>,
-  ): Dispose;
+  onCue: OnCue;
 }

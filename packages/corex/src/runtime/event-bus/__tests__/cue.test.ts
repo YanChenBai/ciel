@@ -17,8 +17,8 @@ test('按 Cue 定义路由并等待异步监听器', async () => {
     received.push(cue.payload);
   });
 
-  await cueBus.emitCue(ignored.create('ignored', instant));
-  await cueBus.emitCue(selected.create('accepted', instant));
+  await cueBus.emitCue(ignored.create(instant, 'ignored'));
+  await cueBus.emitCue(selected.create(instant, 'accepted'));
 
   expect(received).toEqual(['accepted']);
 });
@@ -31,9 +31,9 @@ test('处理器被释放后停止路由', async () => {
     handled += 1;
   });
 
-  await cueBus.emitCue(definition.create(undefined, instant));
+  await cueBus.emitCue(definition.create(instant));
   await dispose();
-  await cueBus.emitCue(definition.create(undefined, instant));
+  await cueBus.emitCue(definition.create(instant));
 
   expect(handled).toBe(1);
 });
@@ -58,7 +58,7 @@ test('所有处理器完成后聚合错误', async () => {
   });
 
   const emittedError = await cueBus
-    .emitCue(definition.create(undefined, instant))
+    .emitCue(definition.create(instant))
     .catch((caught: unknown) => caught);
 
   expect(calls).toEqual(['first', 'second', 'third']);

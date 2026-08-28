@@ -17,12 +17,17 @@ export interface Signal<TPayload = unknown> extends CielData<'signal'> {
 
 export type AnySignalDefinition = SignalDefinition<any>;
 export type AnySignal = Signal<any>;
+export type EmitSignal = (signal: AnySignal) => Promise<void>;
 export type SignalOf<TDefinition extends AnySignalDefinition> =
   TDefinition extends SignalDefinition<infer TPayload> ? Signal<TPayload> : never;
+
+export type SignalHandler<TDefinition extends AnySignalDefinition> = (
+  signal: SignalOf<TDefinition>,
+) => MaybePromise<void>;
 
 export interface SignalListener {
   onSignal<TDefinition extends AnySignalDefinition>(
     definition: TDefinition,
-    handler: (signal: SignalOf<TDefinition>) => MaybePromise<void>,
+    handler: SignalHandler<TDefinition>,
   ): Dispose;
 }

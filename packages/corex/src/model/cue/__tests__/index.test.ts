@@ -13,7 +13,7 @@ test('创建保留定义、载荷和时间信息的 Cue', () => {
   });
   const payload = { word: 'Ciel' };
 
-  const cue = definition.create(payload, instant);
+  const cue = definition.create(instant, payload);
 
   expect(definition).toMatchObject({
     type: DefinitionType.Cue,
@@ -24,6 +24,18 @@ test('创建保留定义、载荷和时间信息的 Cue', () => {
     type: DataType.Cue,
     definition,
     payload,
+    temporal: instant,
+  });
+});
+
+test('无载荷 Cue 只需要时间信息', () => {
+  const definition = defineCue({ name: 'manual' });
+
+  const cue = definition.create(instant);
+
+  expect(cue).toMatchObject({
+    definition,
+    payload: undefined,
     temporal: instant,
   });
 });

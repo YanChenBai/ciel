@@ -65,7 +65,7 @@ test('展开组合模块，按 Sensu、Noesis、Stimulus 顺序启动并逆序�
 
 const instant = { kind: 'instant', at: 1 } as const;
 
-test('收集 Sensu 显式派发的 Percept', async () => {
+test('收集 Sensu 解释 Signal 后返回的 Percept', async () => {
   const signal = defineSignal<number>({ name: 'number', description: 'Number' });
   const percept = definePercept({ name: 'number', description: 'Number percept' });
   const stimulus = defineStimulus({
@@ -81,18 +81,18 @@ test('收集 Sensu 显式派发的 Percept', async () => {
     name: 'number',
     description: 'Reads numbers',
     setup(ctx) {
-      ctx.onSignal(signal, async current => {
+      ctx.interpret(signal, current => {
         if (current.payload > 2) {
           return;
         }
 
-        await ctx.emitPercept(
-          percept.create({
+        return {
+          percepts: percept.create({
             source: current,
             contents: [{ type: 'text', text: String(current.payload) }],
             temporal: current.temporal,
           }),
-        );
+        };
       });
     },
   });
@@ -128,7 +128,7 @@ test('启动失败时清理已安装的作用域', async () => {
     name: 'reader',
     description: 'Reader',
     setup(ctx) {
-      ctx.onSignal(signal, () => undefined);
+      ctx.interpret(signal, () => undefined);
       ctx.onDispose(() => {
         calls.push('sensu');
       });

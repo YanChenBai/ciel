@@ -15,8 +15,6 @@ export type {
   DefinePerceptOptions,
   Percept,
   PerceptDefinition,
-  PerceptHandler,
-  PerceptListener,
   PerceptOf,
 } from './types.ts';
 

@@ -61,22 +61,22 @@ describe('Ciel Projection', () => {
     const sensu = defineSensu({
       name: 'input',
       setup(ctx) {
-        ctx.onSignal(inputSignal, async signal => {
-          await ctx.emitPercept(
-            speechPercept.create({
-              source: signal,
-              contents: [{ type: 'text', text: signal.payload }],
-              temporal: signal.temporal,
-            }),
-          );
-          await ctx.emitPercept(
-            visionPercept.create({
-              source: signal,
-              contents: [{ type: 'image', data: 'frame' }],
-              temporal: signal.temporal,
-            }),
-          );
-          await ctx.emitCue(thinkingCue.create(undefined, signal.temporal));
+        ctx.interpret(inputSignal, signal => {
+          return {
+            percepts: [
+              speechPercept.create({
+                source: signal,
+                contents: [{ type: 'text', text: signal.payload }],
+                temporal: signal.temporal,
+              }),
+              visionPercept.create({
+                source: signal,
+                contents: [{ type: 'image', data: 'frame' }],
+                temporal: signal.temporal,
+              }),
+            ],
+            cues: thinkingCue.create(signal.temporal),
+          };
         });
       },
     });
@@ -85,7 +85,7 @@ describe('Ciel Projection', () => {
       projection: agentProjection,
       setup(ctx) {
         ctx.onCue(thinkingCue, async () => {
-          const context = await ctx.project(ctx.engram.recent());
+          const context = await ctx.projectRecent();
           expectTypeOf(context.speech).toEqualTypeOf<{ type: 'text'; text: string }[]>();
           expectTypeOf(context.vision).toEqualTypeOf<
             { type: 'image'; data: string | Uint8Array | URL }[]

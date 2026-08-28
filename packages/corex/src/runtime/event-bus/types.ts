@@ -1,6 +1,5 @@
-import type { AnyCue, CueListener } from '#model/cue/index.ts';
-import type { Percept, PerceptListener } from '#model/percept/index.ts';
-import type { AnySignal, SignalListener } from '#model/signal/index.ts';
+import type { CueListener, EmitCue } from '#model/cue/index.ts';
+import type { EmitSignal, SignalListener } from '#model/signal/index.ts';
 import type { Dispose, MaybePromise } from '#shared/async.ts';
 
 export type EventHandler<T extends object> = (data: T) => MaybePromise<void>;
@@ -12,13 +11,9 @@ export interface AsyncEventEmitter<T extends object> {
 }
 
 export interface CueBus extends CueListener {
-  emitCue(cue: AnyCue): Promise<void>;
-}
-
-export interface PerceptBus extends PerceptListener {
-  emitPercept(percept: Percept): Promise<void>;
+  emitCue: EmitCue;
 }
 
 export interface SignalBus extends SignalListener {
-  emitSignal(signal: AnySignal): Promise<void>;
+  emitSignal: EmitSignal;
 }

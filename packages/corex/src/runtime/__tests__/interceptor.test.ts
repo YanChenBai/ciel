@@ -33,15 +33,15 @@ describe('Ciel interceptor 集成', () => {
       name: 'message',
       description: 'Handles messages',
       setup(ctx) {
-        ctx.onSignal(signal, async function handleSignal(current) {
-          await ctx.emitPercept(
-            percept.create({
+        ctx.interpret(signal, function interpretSignal(current) {
+          return {
+            percepts: percept.create({
               source: current,
               contents: [{ type: 'text', text: current.payload }],
               temporal: current.temporal,
             }),
-          );
-          await ctx.emitCue(cue.create(current.payload, current.temporal));
+            cues: cue.create(current.temporal, current.payload),
+          };
         });
       },
     });
@@ -75,8 +75,7 @@ describe('Ciel interceptor 集成', () => {
         'setup',
         'setup',
         'emitSignal',
-        'handleSignal',
-        'emitPercept',
+        'interpretSignal',
         'emitCue',
         'handleCue',
       ]);
@@ -105,8 +104,8 @@ describe('Ciel interceptor 集成', () => {
     try {
       await instrumentedCiel.start();
       await isolatedCiel.start();
-      await instrumentedCiel.emitCue(cue.create('observed', { kind: 'instant', at: 1 }));
-      await isolatedCiel.emitCue(cue.create('isolated', { kind: 'instant', at: 2 }));
+      await instrumentedCiel.emitCue(cue.create({ kind: 'instant', at: 1 }, 'observed'));
+      await isolatedCiel.emitCue(cue.create({ kind: 'instant', at: 2 }, 'isolated'));
 
       expect(calls).toEqual(['emitCue']);
     } finally {

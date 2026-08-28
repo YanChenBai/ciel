@@ -7,6 +7,8 @@ export type {
   AnyNoesis,
   DefineNoesisOptions,
   Noesis,
+  NoesisProject,
+  NoesisProjectRecent,
   NoesisProjection,
   NoesisProjectionResult,
   NoesisSetupContext,

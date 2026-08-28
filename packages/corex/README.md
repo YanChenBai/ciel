@@ -9,7 +9,7 @@ Corex 是 Ciel 的模块化运行时。它负责连接外部输入、感知处�
 flowchart LR
   stimulus[Stimulus] -->|emitSignal| signal[Signal]
   signal --> sensu[Sensu]
-  sensu -->|emitPercept| percept[Percept]
+  sensu -->|return percepts| percept[Percept]
   percept --> engram[Engram]
   sensu -->|emitCue| cue[Cue]
   cue --> noesis[Noesis]
@@ -68,10 +68,9 @@ Projection 注册表和 Instrumenter。
 
 启动顺序固定，不受 `modules` 中的排列顺序影响：
 
-1. 先安装 Engram 监听，避免启动阶段产生的 Percept 漏记。
-2. 安装所有 Sensu，使 Signal 发出前已有消费者。
-3. 安装所有 Noesis，使 Cue 发出前已有消费者。
-4. 最后安装 Stimulus，允许其在 `setup()` 中立即产生 Signal。
+1. 安装所有 Sensu，使 Signal 发出前已有消费者。
+2. 安装所有 Noesis，使 Cue 发出前已有消费者。
+3. 最后安装 Stimulus，允许其在 `setup()` 中立即产生 Signal。
 
 模块通过 `ctx.onDispose()` 注册清理函数。停止或启动失败时，Ciel 按模块作用域的相反顺序
 执行清理；多个清理错误会合并为 `AggregateError`。停止 Ciel 不会自动清空 Engram，重新启动
@@ -106,8 +105,9 @@ const messageInput = defineStimulus({
 
 ### Sensu 与 Percept
 
-Sensu 使用 `ctx.onSignal(definition, handler)` 订阅具体 SignalDefinition。处理结果通过
-`ctx.emitPercept()` 形成 Percept；该 Promise 完成时，Percept 已经经过事件总线并写入 Engram。
+Sensu 使用 `ctx.interpret(definition, interpreter)` 注册具体 SignalDefinition 的解释器。解释器
+返回包含 Percept 和 Cue 的结果；Runtime 先将全部 Percept 作为同一批次写入 Engram，再依次派发
+Cue。解释器不直接操作 Engram 或 Cue 总线，因此输入和输出都有明确边界。
 
 Percept 的 `contents` 可以混合 `text`、`image` 和 `audio`，并通过 `source` 保留产生它的原始
 Signal。Sensu 可以在感知处理完成后继续发出 Cue，通知 Noesis 开始认知处理。
@@ -167,10 +167,11 @@ const agentProjection = defineProjection({
 ```
 
 `ctx.project(entries)` 会先复制输入条目，创建固定的 EngramView，再并行执行所有 Projector。
+需要直接投影最近的感知时，可以使用 `ctx.projectRecent(durationMs?)` 简化调用。
 每个 Projector 必须返回统一的 `LLMContext` 多模态内容格式；结果仍使用对象中的 key：
 
 ```ts
-const context = await ctx.project(ctx.engram.recent());
+const context = await ctx.projectRecent();
 
 context.speech;
 context.vision;
@@ -187,8 +188,8 @@ Interceptor 在 Ciel 实例内部组成 Instrumenter。`intercept(target)` 返�
 当前会 instrument 的边界包括：
 
 - Stimulus、Sensu 和 Noesis 的 `setup()`。
-- `emitSignal()`、`emitPercept()` 和 `emitCue()`。
-- `onSignal()` 与 `onCue()` 注册的 handler。
+- `emitSignal()` 和 `emitCue()`。
+- `interpret()` 注册的 interpreter 与 `onCue()` 注册的 handler。
 - Projection 中每个 Projector 的 `project()`。
 
 Interceptor 适合实现观测和控制，不应承载 Signal、Percept 或 Cue 的业务转换逻辑。不同 Ciel
@@ -214,20 +215,20 @@ import {
 const temporal = { kind: 'instant', at: Date.now() } as const;
 const messageSignal = defineSignal<string>({ name: 'message' });
 const speechPercept = definePercept({ name: 'speech' });
-const thinkingCue = defineCue<void>({ name: 'thinking' });
+const thinkingCue = defineCue({ name: 'thinking' });
 
 const speechSensu = defineSensu({
   name: 'speech',
   setup(ctx) {
-    ctx.onSignal(messageSignal, async signal => {
-      await ctx.emitPercept(
-        speechPercept.create({
+    ctx.interpret(messageSignal, signal => {
+      return {
+        percepts: speechPercept.create({
           source: signal,
           contents: [{ type: 'text', text: signal.payload }],
           temporal: signal.temporal,
         }),
-      );
-      await ctx.emitCue(thinkingCue.create(undefined, signal.temporal));
+        cues: thinkingCue.create(signal.temporal),
+      };
     });
   },
 });
@@ -253,7 +254,7 @@ const agent = defineNoesis({
   projection: agentProjection,
   setup(ctx) {
     ctx.onCue(thinkingCue, async () => {
-      const context = await ctx.project(ctx.engram.recent());
+      const context = await ctx.projectRecent();
       console.log(context.speech);
     });
   },

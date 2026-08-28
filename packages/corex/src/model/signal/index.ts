@@ -8,8 +8,10 @@ export type {
   AnySignal,
   AnySignalDefinition,
   DefineSignalOptions,
+  EmitSignal,
   Signal,
   SignalDefinition,
+  SignalHandler,
   SignalListener,
   SignalOf,
 } from './types.ts';

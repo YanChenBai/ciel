@@ -1,12 +1,57 @@
-import type { AnyCue } from '#model/cue/index.ts';
-import type { Engram } from '#model/engram/index.ts';
-import type { Interceptor } from '#modules/interceptor/index.ts';
+import type { EmitCue } from '#model/cue/index.ts';
+import type { Engram, EngramEntry } from '#model/engram/index.ts';
+import type { LLMContext } from '#model/llm/index.ts';
+import type { Instrument, Interceptor } from '#modules/interceptor/index.ts';
 import type { AnyNoesis } from '#modules/noesis/index.ts';
 import type { AnyProjection } from '#modules/projection/index.ts';
 import type { Sensu } from '#modules/sensu/index.ts';
 import type { AnyStimulus } from '#modules/stimulus/index.ts';
+import type { MaybePromise } from '#shared/async.ts';
 
-import type { LifecycleStatus } from './lifecycle/index.ts';
+import type { CueBus, SignalBus } from './event-bus/index.ts';
+import type { LifecycleScope, LifecycleStatus } from './lifecycle/index.ts';
+
+export interface RuntimeServices {
+  readonly cueBus: CueBus;
+  readonly emitCue: EmitCue;
+  readonly engram: Engram;
+  readonly instrument: Instrument;
+  readonly projectionRegistry: ReadonlyMap<string, AnyProjection>;
+  readonly scopes: LifecycleScope[];
+  readonly signalBus: SignalBus;
+}
+
+export interface SetupModule<TContext> {
+  setup(this: void, ctx: TContext): MaybePromise<void>;
+}
+
+export interface CreateSetupContextOptions<TModule> {
+  readonly module: TModule;
+  readonly scope: LifecycleScope;
+  readonly services: RuntimeServices;
+}
+
+export type SetupContextFactory<TModule, TContext> = (
+  options: CreateSetupContextOptions<TModule>,
+) => TContext;
+
+export interface InstallModulesOptions<TModule, TContext> {
+  readonly createContext: SetupContextFactory<TModule, TContext>;
+  readonly modules: TModule[];
+  readonly services: RuntimeServices;
+}
+
+export type ProjectionRunner = (
+  entries: readonly EngramEntry[],
+) => Promise<Readonly<Record<string, LLMContext>>>;
+
+export interface ResolvedModules {
+  readonly interceptorModules: Interceptor[];
+  readonly stimulusModules: AnyStimulus[];
+  readonly sensuModules: Sensu[];
+  readonly noesisModules: AnyNoesis[];
+  readonly projectionModules: AnyProjection[];
+}
 
 export type InstallableCielModule = AnyStimulus | Sensu | AnyNoesis | AnyProjection | Interceptor;
 
@@ -26,7 +71,7 @@ export interface Ciel {
   /**
    * 从 Ciel 外部手动派发认知线索
    */
-  emitCue(cue: AnyCue): Promise<void>;
+  readonly emitCue: EmitCue;
 
   start(): Promise<void>;
 
