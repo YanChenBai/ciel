@@ -135,7 +135,7 @@ Engram；它只通过 Cue 总线触发订阅了对应 CueDefinition 的 Noesis�
 `ciel.emitCue()` 手动派发 Cue。
 
 Noesis 可以直接读取 `ctx.engram`。如果声明了 `projection`，还可以将选定的 Engram 条目交给
-`ctx.project()`，得到类型由 Projector 对象 key 自动推导的具名结果。只响应 Cue 而不需要投影
+`ctx.project()`，得到类型由 Projector 对象 key 自动推导的具名 LLM 上下文。只响应 Cue 而不需要投影
 的 Noesis 可以省略 `projection`。
 
 ### Projector 与 Projection
@@ -150,7 +150,9 @@ const speechProjector = defineProjector({
     return engram
       .entries(speechPercept)
       .flatMap(entry =>
-        entry.value.contents.flatMap(content => (content.type === 'text' ? [content.text] : [])),
+        entry.value.contents.flatMap(content =>
+          content.type === 'text' ? [{ type: 'text', text: content.text }] : [],
+        ),
       );
   },
 });
@@ -165,7 +167,7 @@ const agentProjection = defineProjection({
 ```
 
 `ctx.project(entries)` 会先复制输入条目，创建固定的 EngramView，再并行执行所有 Projector。
-结果仍使用对象中的 key：
+每个 Projector 必须返回统一的 `LLMContext` 多模态内容格式；结果仍使用对象中的 key：
 
 ```ts
 const context = await ctx.project(ctx.engram.recent());

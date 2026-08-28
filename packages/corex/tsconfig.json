@@ -15,6 +15,17 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "#src/*": ["./src/*"],
+      "#model": ["./src/model/index.ts"],
+      "#model/*": ["./src/model/*"],
+      "#modules": ["./src/modules/index.ts"],
+      "#modules/*": ["./src/modules/*"],
+      "#runtime": ["./src/runtime/index.ts"],
+      "#runtime/*": ["./src/runtime/*"],
+      "#shared": ["./src/shared/index.ts"],
+      "#shared/*": ["./src/shared/*"]
+    }
   }
 }
