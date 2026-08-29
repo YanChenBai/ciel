@@ -30,11 +30,11 @@
     "@elysia/eden": "^1.4.10",
     "@elysia/node": "^1.4.6",
     "@sinclair/typebox": "^0.34.52",
-    "elysia": "^1.4.29"
+    "elysia": "^1.4.30"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
-    "bumpp": "^12.2.1",
+    "@types/node": "^26.4.0",
+    "bumpp": "^12.2.2",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

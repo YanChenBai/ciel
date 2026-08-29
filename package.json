@@ -8,8 +8,8 @@
   },
   "devDependencies": {
     "@oxc-node/cli": "catalog:",
-    "@vitejs/devtools-oxc": "^0.4.12",
-    "@vitejs/devtools-vite": "^0.4.12",
+    "@vitejs/devtools-oxc": "^0.6.2",
+    "@vitejs/devtools-vite": "^0.6.2",
     "typescript": "^7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
@@ -24,5 +24,5 @@
   "engines": {
     "node": "^24.0.0"
   },
-  "packageManager": "pnpm@11.22.0"
+  "packageManager": "pnpm@12.0.0"
 }

@@ -27,34 +27,34 @@
   "dependencies": {
     "@ciels/core": "workspace:*",
     "@ciels/vigilia-bridge": "workspace:*",
-    "@lucide/vue": "^1.31.0",
+    "@lucide/vue": "^1.35.0",
     "@vueuse/core": "^14.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "reka-ui": "^2.10.3",
-    "tailwind-merge": "^3.4.0",
+    "reka-ui": "^2.10.4",
+    "tailwind-merge": "^3.6.0",
     "vis-timeline": "^8.5.4",
     "vue-json-pretty": "^2.6.0"
   },
   "devDependencies": {
-    "@oxlint/plugins": "^1.78.0",
+    "@oxlint/plugins": "^1.80.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
     "@tsconfig/node24": "^24.0.5",
-    "@tsdown/css": "^0.21.7",
+    "@tsdown/css": "^0.22.14",
     "@types/node": "catalog:",
     "@types/postcss-import": "^14.0.3",
-    "@vitejs/devtools": "^0.4.12",
+    "@vitejs/devtools": "^0.6.2",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
-    "postcss-import": "^16.1.1",
+    "postcss-import": "^17.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plugin-vue-devtools": "^8.2.1",
     "vite-plus": "catalog:",
     "vue": "rc",
-    "vue-tsc": "^3.3.10"
+    "vue-tsc": "^3.3.11"
   },
   "peerDependencies": {
     "vue": ">=3.6.0"

@@ -30,15 +30,15 @@
     "check": "vp check",
     "prepublishOnly": "vp run build"
   },
-  "devDependencies": {
-    "@types/node": "^26.1.1",
-    "bumpp": "^11.1.0",
-    "typescript": "^7.0.2",
-    "vite": "catalog:",
-    "vite-plus": "catalog:"
-  },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
     "superjson": "^2.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "bumpp": "^12.2.2",
+    "typescript": "^7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   }
 }

@@ -15,19 +15,19 @@
     "test": "vp test run"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.30",
+    "@ai-sdk/openai-compatible": "^3.0.39",
     "@ciels/core": "workspace:*",
     "@ciels/devtools": "workspace:*",
     "@ciels/vigilia-bridge": "workspace:*",
-    "@lucide/vue": "^1.31.0",
+    "@lucide/vue": "^1.35.0",
     "@vueuse/core": "^14.4.0",
-    "ai": "^7.0.66",
+    "ai": "^7.0.83",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "reka-ui": "^2.10.3",
+    "reka-ui": "^2.10.4",
     "tailwind-merge": "^3.6.0",
     "vue": "rc",
-    "zod": "^4.1.12"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -42,6 +42,6 @@
     "typescript": "catalog:",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9",
     "vite-plus": "catalog:",
-    "vue-tsc": "^3.3.10"
+    "vue-tsc": "^3.3.11"
   }
 }
