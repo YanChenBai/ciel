@@ -14,6 +14,7 @@ import { ModuleType } from '#modules/types.ts';
 import type { OnDispose } from '#shared/async.ts';
 
 import { createCueBus, createSignalBus } from './event-bus/index.ts';
+import { CielOperationName } from './instrumentation.ts';
 import {
   createLifecycle,
   createLifecycleScope,
@@ -40,6 +41,7 @@ export type {
   InstallableCielModule,
   InstallableCielModuleEntry,
 } from './types.ts';
+export { CielOperationName };
 
 /**
  * 将 Projection 中的 Projector 预先绑定为可执行函数并接入 Interceptor。 每次投影都会从传入条目创建固定的 EngramView，并行生成按 Projector
@@ -51,7 +53,20 @@ function createProjectionRunner(
 ): ProjectionRunner {
   const projectors = projection
     ? (Object.entries(projection.projectors) as [string, AnyProjector][]).map(
-        ([name, projector]) => [name, instrument(projector.project)] as const,
+        ([name, projector]) =>
+          [
+            name,
+            instrument(projector.project, {
+              name: CielOperationName.ProjectorProject,
+              metadata: {
+                projectionId: projection.id,
+                projectionName: projection.name,
+                projectorId: projector.id,
+                projectorName: projector.name,
+                projectorKey: name,
+              },
+            }),
+          ] as const,
       )
     : [];
 
@@ -76,13 +91,22 @@ function normalizeMany<T>(value: T | readonly T[] | undefined): readonly T[] {
 }
 
 const createSensuSetupContext: SetupContextFactory<Sensu, SensuSetupContext> = ({
+  module,
   scope,
   services,
 }) => {
   const { emitCue, engram, instrument, signalBus } = services;
 
   const interpret: SensuInterpret = (definition, interpreter) => {
-    const runInterpreter = instrument(interpreter);
+    const runInterpreter = instrument(interpreter, {
+      name: CielOperationName.SensuInterpret,
+      metadata: {
+        moduleId: module.id,
+        moduleName: module.name,
+        signalDefinitionId: definition.id,
+        signalDefinitionName: definition.name,
+      },
+    });
 
     const handleSignal: SignalHandler<typeof definition> = async signal => {
       const interpretation = await runInterpreter(signal);
@@ -109,6 +133,7 @@ const createSensuSetupContext: SetupContextFactory<Sensu, SensuSetupContext> = (
 };
 
 const createStimulusSetupContext: SetupContextFactory<AnyStimulus, StimulusSetupContext> = ({
+  module,
   scope,
   services,
 }) => {
@@ -118,7 +143,13 @@ const createStimulusSetupContext: SetupContextFactory<AnyStimulus, StimulusSetup
     return signalBus.emitSignal(signal);
   }
 
-  const instrumentedEmitSignal: EmitSignal = instrument(emitSignal);
+  const instrumentedEmitSignal: EmitSignal = instrument(emitSignal, {
+    name: CielOperationName.SignalEmit,
+    metadata: {
+      moduleId: module.id,
+      moduleName: module.name,
+    },
+  });
   const onDispose: OnDispose = dispose => scope.onDispose(dispose);
   return { emitSignal: instrumentedEmitSignal, onDispose };
 };
@@ -141,7 +172,18 @@ const createNoesisSetupContext: SetupContextFactory<AnyNoesis, NoesisSetupContex
   const project = createProjectionRunner(projection, instrument);
   const projectRecent: NoesisProjectRecent<any> = durationMs => project(engram.recent(durationMs));
   const onCue: OnCue = (cue, handler) => {
-    const dispose = cueBus.onCue(cue, instrument(handler));
+    const dispose = cueBus.onCue(
+      cue,
+      instrument(handler, {
+        name: CielOperationName.CueHandle,
+        metadata: {
+          cueDefinitionId: cue.id,
+          cueDefinitionName: cue.name,
+          moduleId: module.id,
+          moduleName: module.name,
+        },
+      }),
+    );
     scope.onDispose(dispose);
     return dispose;
   };
@@ -198,14 +240,21 @@ function collectModules(entries: readonly InstallableCielModuleEntry[]): Resolve
 async function installModules<TContext, TModule extends SetupModule<TContext>>(
   options: InstallModulesOptions<TModule, TContext>,
 ): Promise<void> {
-  const { createContext, modules, services } = options;
+  const { createContext, modules, services, setupOperationName } = options;
 
   for (const module of modules) {
     const scope = createLifecycleScope();
     services.scopes.push(scope);
 
     const ctx = createContext({ module, scope, services });
-    await services.instrument(module.setup)(ctx);
+    await services.instrument(module.setup, {
+      name: setupOperationName,
+      metadata: {
+        moduleId: module.id,
+        moduleName: module.name,
+        moduleType: module.type,
+      },
+    })(ctx);
   }
 }
 
@@ -226,7 +275,9 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     return cueBus.emitCue(cue);
   }
 
-  const instrumentedEmitCue = instrument(emitCue);
+  const instrumentedEmitCue = instrument(emitCue, {
+    name: CielOperationName.CueEmit,
+  });
   const services: RuntimeServices = {
     cueBus,
     emitCue: instrumentedEmitCue,
@@ -244,16 +295,19 @@ export function defineCiel(options: DefineCielOptions): Ciel {
         createContext: createSensuSetupContext,
         modules: sensuModules,
         services,
+        setupOperationName: CielOperationName.SensuSetup,
       });
       await installModules({
         createContext: createNoesisSetupContext,
         modules: noesisModules,
         services,
+        setupOperationName: CielOperationName.NoesisSetup,
       });
       await installModules({
         createContext: createStimulusSetupContext,
         modules: stimulusModules,
         services,
+        setupOperationName: CielOperationName.StimulusSetup,
       });
     },
     dispose: () => disposeScopes(scopes),

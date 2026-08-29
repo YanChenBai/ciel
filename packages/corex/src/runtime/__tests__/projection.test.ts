@@ -8,7 +8,7 @@ import { defineProjection, defineProjector } from '#modules/projection/index.ts'
 import { defineSensu } from '#modules/sensu/index.ts';
 import { defineStimulus } from '#modules/stimulus/index.ts';
 
-import { defineCiel } from './index.ts';
+import { defineCiel } from '../index.ts';
 
 const temporal = { kind: 'instant', at: 1 } as const;
 

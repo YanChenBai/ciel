@@ -2,26 +2,34 @@ import { describe, expect, it } from 'vite-plus/test';
 
 import {
   type AnyFunction,
+  CielOperationName,
   defineCue,
   defineCiel,
   defineNoesis,
   defineInterceptor,
   definePercept,
+  defineProjection,
+  defineProjector,
   defineSensu,
   defineSignal,
   defineStimulus,
+  type InstrumentContext,
 } from '#src/index.ts';
 
 describe('Ciel interceptor 集成', () => {
   it('作为模块拦截 setup,emit 和事件处理边界', async () => {
-    const calls: string[] = [];
+    const calls: InstrumentContext[] = [];
     const interceptor = defineInterceptor({
       name: 'logger',
       description: 'Logs Ciel boundaries',
-      intercept<T extends AnyFunction>(target: T) {
+      intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
+        if (!context) {
+          throw new Error('Expected instrument context');
+        }
+
         return next =>
           ((...args: Parameters<T>) => {
-            calls.push(target.name);
+            calls.push(context);
             return next(...args);
           }) as T;
       },
@@ -71,13 +79,56 @@ describe('Ciel interceptor 集成', () => {
       await ciel.stop();
 
       expect(calls).toEqual([
-        'setup',
-        'setup',
-        'setup',
-        'emitSignal',
-        'interpretSignal',
-        'emitCue',
-        'handleCue',
+        {
+          name: CielOperationName.SensuSetup,
+          metadata: {
+            moduleId: sensu.id,
+            moduleName: sensu.name,
+            moduleType: sensu.type,
+          },
+        },
+        {
+          name: CielOperationName.NoesisSetup,
+          metadata: {
+            moduleId: noesis.id,
+            moduleName: noesis.name,
+            moduleType: noesis.type,
+          },
+        },
+        {
+          name: CielOperationName.StimulusSetup,
+          metadata: {
+            moduleId: stimulus.id,
+            moduleName: stimulus.name,
+            moduleType: stimulus.type,
+          },
+        },
+        {
+          name: CielOperationName.SignalEmit,
+          metadata: {
+            moduleId: stimulus.id,
+            moduleName: stimulus.name,
+          },
+        },
+        {
+          name: CielOperationName.SensuInterpret,
+          metadata: {
+            moduleId: sensu.id,
+            moduleName: sensu.name,
+            signalDefinitionId: signal.id,
+            signalDefinitionName: signal.name,
+          },
+        },
+        { name: CielOperationName.CueEmit },
+        {
+          name: CielOperationName.CueHandle,
+          metadata: {
+            cueDefinitionId: cue.id,
+            cueDefinitionName: cue.name,
+            moduleId: noesis.id,
+            moduleName: noesis.name,
+          },
+        },
       ]);
     } finally {
       await ciel.stop();
@@ -85,14 +136,18 @@ describe('Ciel interceptor 集成', () => {
   });
 
   it('仅拦截所属 Ciel 实例外部派发的 Cue', async () => {
-    const calls: string[] = [];
+    const calls: InstrumentContext[] = [];
     const interceptor = defineInterceptor({
       name: 'logger',
       description: 'Logs Ciel boundaries',
-      intercept<T extends AnyFunction>(target: T) {
+      intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
+        if (!context) {
+          throw new Error('Expected instrument context');
+        }
+
         return next =>
           ((...args: Parameters<T>) => {
-            calls.push(target.name);
+            calls.push(context);
             return next(...args);
           }) as T;
       },
@@ -107,10 +162,87 @@ describe('Ciel interceptor 集成', () => {
       await instrumentedCiel.emitCue(cue.create({ kind: 'instant', at: 1 }, 'observed'));
       await isolatedCiel.emitCue(cue.create({ kind: 'instant', at: 2 }, 'isolated'));
 
-      expect(calls).toEqual(['emitCue']);
+      expect(calls).toEqual([{ name: CielOperationName.CueEmit }]);
     } finally {
       await instrumentedCiel.stop();
       await isolatedCiel.stop();
+    }
+  });
+
+  it('为 Projector 边界提供静态 name 和 metadata', async () => {
+    const calls: InstrumentContext[] = [];
+    const interceptor = defineInterceptor({
+      name: 'logger',
+      intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
+        if (!context) {
+          throw new Error('Expected instrument context');
+        }
+
+        return next =>
+          ((...args: Parameters<T>) => {
+            calls.push(context);
+            return next(...args);
+          }) as T;
+      },
+    });
+    const cue = defineCue<void>({ name: 'project' });
+    const projector = defineProjector({
+      name: 'empty',
+      project() {
+        return [];
+      },
+    });
+    const projection = defineProjection({
+      name: 'empty',
+      projectors: { empty: projector },
+    });
+    const noesis = defineNoesis({
+      name: 'project',
+      projection,
+      setup(ctx) {
+        ctx.onCue(cue, async () => {
+          await ctx.project([]);
+        });
+      },
+    });
+    const ciel = defineCiel({ modules: [interceptor, projection, noesis] });
+
+    try {
+      await ciel.start();
+      await ciel.emitCue(cue.create({ kind: 'instant', at: 1 }));
+
+      expect(calls).toEqual([
+        {
+          name: CielOperationName.NoesisSetup,
+          metadata: {
+            moduleId: noesis.id,
+            moduleName: noesis.name,
+            moduleType: noesis.type,
+          },
+        },
+        { name: CielOperationName.CueEmit },
+        {
+          name: CielOperationName.CueHandle,
+          metadata: {
+            cueDefinitionId: cue.id,
+            cueDefinitionName: cue.name,
+            moduleId: noesis.id,
+            moduleName: noesis.name,
+          },
+        },
+        {
+          name: CielOperationName.ProjectorProject,
+          metadata: {
+            projectionId: projection.id,
+            projectionName: projection.name,
+            projectorId: projector.id,
+            projectorKey: 'empty',
+            projectorName: projector.name,
+          },
+        },
+      ]);
+    } finally {
+      await ciel.stop();
     }
   });
 });

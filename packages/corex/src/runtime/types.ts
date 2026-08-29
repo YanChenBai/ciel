@@ -6,9 +6,11 @@ import type { AnyNoesis } from '#modules/noesis/index.ts';
 import type { AnyProjection } from '#modules/projection/index.ts';
 import type { Sensu } from '#modules/sensu/index.ts';
 import type { AnyStimulus } from '#modules/stimulus/index.ts';
+import type { CielModule } from '#modules/types.ts';
 import type { MaybePromise } from '#shared/async.ts';
 
 import type { CueBus, SignalBus } from './event-bus/index.ts';
+import type { CielOperationName } from './instrumentation.ts';
 import type { LifecycleScope, LifecycleStatus } from './lifecycle/index.ts';
 
 export interface RuntimeServices {
@@ -21,7 +23,7 @@ export interface RuntimeServices {
   readonly signalBus: SignalBus;
 }
 
-export interface SetupModule<TContext> {
+export interface SetupModule<TContext> extends CielModule {
   setup(this: void, ctx: TContext): MaybePromise<void>;
 }
 
@@ -39,6 +41,7 @@ export interface InstallModulesOptions<TModule, TContext> {
   readonly createContext: SetupContextFactory<TModule, TContext>;
   readonly modules: TModule[];
   readonly services: RuntimeServices;
+  readonly setupOperationName: CielOperationName;
 }
 
 export type ProjectionRunner = (

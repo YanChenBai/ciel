@@ -182,8 +182,23 @@ context.vision;
 
 ### Interceptor
 
-Interceptor 在 Ciel 实例内部组成 Instrumenter。`intercept(target)` 返回 wrapper 时包裹目标，
-返回 `undefined` 时跳过；先声明的 Interceptor 位于组合调用链的外层。
+Corex 基于 `@ciels/interceptor` 在每个 Ciel 实例内部组成 Instrumenter，并为通用
+Interceptor 协议补充 Ciel 模块元数据。`intercept(target, context)` 返回 wrapper 时包裹目标，
+返回 `undefined` 时跳过；先声明的 Interceptor 位于组合调用链的外层。Corex 使用
+`CielOperationName` 为每个运行时边界提供稳定、低基数的 `InstrumentContext.name`；
+`metadata` 只包含创建 wrapper 时已经确定的静态标识：
+
+| 边界                    | metadata                                                        |
+| ----------------------- | --------------------------------------------------------------- |
+| 各模块 `setup()`        | `moduleId`、`moduleName`、`moduleType`                          |
+| Stimulus `emitSignal()` | `moduleId`、`moduleName`                                        |
+| Sensu interpreter       | 模块标识，以及 `signalDefinitionId`、`signalDefinitionName`     |
+| Noesis cue handler      | 模块标识，以及 `cueDefinitionId`、`cueDefinitionName`           |
+| Projector `project()`   | Projection、Projector 标识，以及 Projection 中的 `projectorKey` |
+| Ciel 全局 `emitCue()`   | 无；它也可以由 Ciel 外部调用，没有可靠的静态来源模块            |
+
+实际输入、输出、异常和耗时属于一次调用的动态数据，由 wrapper 从函数参数、返回结果和执行过程
+中采集，不重复写入 `metadata`。
 
 当前会 instrument 的边界包括：
 
