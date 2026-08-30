@@ -1,7 +1,7 @@
 {
   "name": "@ciels/telemetry",
   "version": "0.0.0",
-  "description": "A starter for creating a TypeScript package.",
+  "description": "Corex-native hierarchical operation telemetry with OpenTelemetry projection.",
   "homepage": "https://github.com/author/library#readme",
   "bugs": {
     "url": "https://github.com/author/library/issues"
@@ -31,7 +31,9 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
+    "@ciels/interceptor": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
+    "corex": "workspace:*",
     "superjson": "^2.2.6"
   },
   "devDependencies": {

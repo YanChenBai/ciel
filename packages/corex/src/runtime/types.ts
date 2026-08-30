@@ -1,82 +1,34 @@
-import type { EmitCue } from '#model/cue/index.ts';
-import type { Engram, EngramEntry } from '#model/engram/index.ts';
-import type { LLMContext } from '#model/llm/index.ts';
-import type { Instrument, Interceptor } from '#modules/interceptor/index.ts';
-import type { AnyNoesis } from '#modules/noesis/index.ts';
-import type { AnyProjection } from '#modules/projection/index.ts';
-import type { Sensu } from '#modules/sensu/index.ts';
-import type { AnyStimulus } from '#modules/stimulus/index.ts';
-import type { CielModule } from '#modules/types.ts';
-import type { MaybePromise } from '#shared/async.ts';
+import type { AgentMessage } from '@earendil-works/pi-agent-core';
 
-import type { CueBus, SignalBus } from './event-bus/index.ts';
-import type { CielOperationName } from './instrumentation.ts';
-import type { LifecycleScope, LifecycleStatus } from './lifecycle/index.ts';
+import type { AnyCue } from '#model/cue/index.ts';
+import type { Engram } from '#model/engram/index.ts';
+import type { CielPlugin } from '#plugin/types.ts';
 
-export interface RuntimeServices {
-  readonly cueBus: CueBus;
-  readonly emitCue: EmitCue;
-  readonly engram: Engram;
-  readonly instrument: Instrument;
-  readonly projectionRegistry: ReadonlyMap<string, AnyProjection>;
-  readonly scopes: LifecycleScope[];
-  readonly signalBus: SignalBus;
-}
+import type { CielAgentOptions } from './agent/index.ts';
+import type { LifecycleStatus } from './lifecycle/index.ts';
 
-export interface SetupModule<TContext> extends CielModule {
-  setup(this: void, ctx: TContext): MaybePromise<void>;
-}
+export type Think = (cue: AnyCue) => Promise<readonly AgentMessage[]>;
 
-export interface CreateSetupContextOptions<TModule> {
-  readonly module: TModule;
-  readonly scope: LifecycleScope;
-  readonly services: RuntimeServices;
-}
+export type InstallableCielPlugin = CielPlugin;
+export type InstallableCielPluginEntry = InstallableCielPlugin | readonly InstallableCielPlugin[];
 
-export type SetupContextFactory<TModule, TContext> = (
-  options: CreateSetupContextOptions<TModule>,
-) => TContext;
-
-export interface InstallModulesOptions<TModule, TContext> {
-  readonly createContext: SetupContextFactory<TModule, TContext>;
-  readonly modules: TModule[];
-  readonly services: RuntimeServices;
-  readonly setupOperationName: CielOperationName;
-}
-
-export type ProjectionRunner = (
-  entries: readonly EngramEntry[],
-) => Promise<Readonly<Record<string, LLMContext>>>;
-
-export interface ResolvedModules {
-  readonly interceptorModules: Interceptor[];
-  readonly stimulusModules: AnyStimulus[];
-  readonly sensuModules: Sensu[];
-  readonly noesisModules: AnyNoesis[];
-  readonly projectionModules: AnyProjection[];
-}
-
-export type InstallableCielModule = AnyStimulus | Sensu | AnyNoesis | AnyProjection | Interceptor;
-
-export type InstallableCielModuleEntry = InstallableCielModule | readonly InstallableCielModule[];
-
-export interface DefineCielOptions {
-  readonly modules: readonly InstallableCielModuleEntry[];
+export interface DefineCielOptions extends CielAgentOptions {
+  /**
+   * 长期稳定的 Ciel/资源隔离标识；不传时生成 UUID。
+   */
+  readonly id?: string;
+  readonly plugins: readonly InstallableCielPluginEntry[];
 }
 
 export type CielStatus = LifecycleStatus;
 
 export interface Ciel {
+  readonly id: string;
+  readonly sessionId: string;
   readonly engram: Engram;
-
+  readonly messages: readonly AgentMessage[];
   readonly status: CielStatus;
-
-  /**
-   * 从 Ciel 外部手动派发认知线索
-   */
-  readonly emitCue: EmitCue;
-
+  readonly think: Think;
   start(): Promise<void>;
-
   stop(): Promise<void>;
 }

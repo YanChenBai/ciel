@@ -32,6 +32,8 @@
   },
   "dependencies": {
     "@ciels/interceptor": "workspace:*",
+    "@earendil-works/pi-agent-core": "0.84.3",
+    "@earendil-works/pi-ai": "0.84.3",
     "@opentelemetry/api": "^1.9.1",
     "emittery": "2.0.0",
     "uuid": "^14.0.2"

@@ -3,6 +3,7 @@ import type { PerceptDefinition, PerceptOf } from '#model/percept/index.ts';
 import type {
   CreateEngramOptions,
   Engram,
+  EngramCheckout,
   EngramEntry,
   EngramView,
   EngramWindow,
@@ -12,9 +13,12 @@ export type {
   CreateEngramCursorOptions,
   CreateEngramOptions,
   Engram,
+  EngramCheckout,
+  EngramConsumer,
   EngramCursor,
   EngramEntry,
   EngramReader,
+  EngramRecentOptions,
   EngramView,
   EngramWindow,
 } from './types.ts';
@@ -22,6 +26,24 @@ export type {
 function assertPositiveDuration(value: number, name: string): void {
   if (!Number.isFinite(value) || value <= 0) {
     throw new RangeError(`${name} must be a positive finite number`);
+  }
+}
+
+function assertPositiveInteger(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+}
+
+function assertSequence(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer`);
+  }
+}
+
+function assertSequenceBoundary(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value < -1) {
+    throw new RangeError(`${name} must be a safe integer greater than or equal to -1`);
   }
 }
 
@@ -63,10 +85,10 @@ export function createEngramView(source: readonly EngramEntry[]): EngramView {
 }
 
 /**
- * 创建用于记录和按时间窗口读取 Percept 的 Engram
+ * 创建用于记录和按序号读取 Percept 的 Engram
  */
 export function createEngram(options: CreateEngramOptions): Engram {
-  assertPositiveDuration(options.windowMs, 'windowMs');
+  assertPositiveInteger(options.recentLimit, 'recentLimit');
   if (options.retentionMs !== undefined) {
     assertPositiveDuration(options.retentionMs, 'retentionMs');
   }
@@ -74,6 +96,7 @@ export function createEngram(options: CreateEngramOptions): Engram {
   const clock = options.now ?? Date.now;
   const entries: EngramEntry[] = [];
   let sequence = 0;
+  let consumerSequence = 0;
 
   const readNow = (): number => {
     const timestamp = clock();
@@ -141,11 +164,66 @@ export function createEngram(options: CreateEngramOptions): Engram {
       return appended;
     },
 
-    recent(durationMs = options.windowMs) {
-      assertPositiveDuration(durationMs, 'durationMs');
-      const to = readNow();
-      pruneAt(to);
-      return entries.filter(entry => entry.recordedAt >= to - durationMs && entry.recordedAt <= to);
+    createConsumer(id = `consumer-${consumerSequence++}`) {
+      let position = sequence - 1;
+      let active: EngramCheckout | undefined;
+
+      return {
+        id,
+
+        get position() {
+          return position;
+        },
+
+        checkout() {
+          if (active) {
+            return active;
+          }
+
+          pruneAt(readNow());
+          const through = sequence - 1;
+          active = {
+            consumerId: id,
+            after: position,
+            through,
+            entries: entries.filter(
+              entry => entry.sequence > position && entry.sequence <= through,
+            ),
+          };
+          return active;
+        },
+
+        commit(checkout) {
+          if (checkout !== active || checkout.consumerId !== id) {
+            throw new Error(`Engram checkout does not belong to consumer "${id}"`);
+          }
+
+          position = checkout.through;
+          active = undefined;
+        },
+      };
+    },
+
+    recent(recentOptions = {}) {
+      const limit = recentOptions.limit ?? options.recentLimit;
+      const through = recentOptions.through ?? sequence - 1;
+      assertPositiveInteger(limit, 'limit');
+      assertSequenceBoundary(through, 'through');
+      if (through === -1) {
+        return [];
+      }
+      pruneAt(readNow());
+      return entries.filter(entry => entry.sequence <= through).slice(-limit);
+    },
+
+    betweenSequences(from, through) {
+      assertSequence(from, 'from');
+      assertSequence(through, 'through');
+      if (through < from) {
+        throw new RangeError('through must be greater than or equal to from');
+      }
+      pruneAt(readNow());
+      return entries.filter(entry => entry.sequence >= from && entry.sequence <= through);
     },
 
     between(from, to) {
@@ -153,8 +231,8 @@ export function createEngram(options: CreateEngramOptions): Engram {
       return readBetween(from, to);
     },
 
-    createCursor(cursorOptions = {}) {
-      const windowMs = cursorOptions.windowMs ?? options.windowMs;
+    createCursor(cursorOptions) {
+      const { windowMs } = cursorOptions;
       assertPositiveDuration(windowMs, 'windowMs');
 
       let position = cursorOptions.from ?? readNow();

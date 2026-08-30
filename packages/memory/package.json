@@ -1,0 +1,41 @@
+{
+  "name": "@ciels/memory",
+  "version": "0.0.0",
+  "description": "Agentized persistent memory for Corex.",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check",
+    "prepublishOnly": "vp run build"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.84.3",
+    "@earendil-works/pi-ai": "0.84.3",
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-pgvector": "0.0.9",
+    "ai": "7.0.83",
+    "corex": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "typebox": "1.3.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "bumpp": "^12.2.2",
+    "typescript": "^7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

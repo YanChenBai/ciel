@@ -11,12 +11,8 @@ export type {
   Cue,
   CreateCue,
   CueDefinition,
-  CueHandler,
-  CueListener,
   CueOf,
   DefineCueOptions,
-  EmitCue,
-  OnCue,
 } from './types.ts';
 
 /**

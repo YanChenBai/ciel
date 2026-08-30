@@ -1,4 +1,3 @@
-import type { CueListener, EmitCue } from '#model/cue/index.ts';
 import type { EmitSignal, SignalListener } from '#model/signal/index.ts';
 import type { Dispose, MaybePromise } from '#shared/async.ts';
 
@@ -8,10 +7,6 @@ export interface AsyncEventEmitter<T extends object> {
   emit(event: PropertyKey, data: T): Promise<void>;
   on(event: PropertyKey, handler: EventHandler<T>): Dispose;
   onAny(handler: EventHandler<T>): Dispose;
-}
-
-export interface CueBus extends CueListener {
-  emitCue: EmitCue;
 }
 
 export interface SignalBus extends SignalListener {

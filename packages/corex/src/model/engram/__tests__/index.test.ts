@@ -26,7 +26,7 @@ function createTestPercept(value: string, at: number): Percept {
 
 test('将多个 Percept 作为同一时间戳批次追加', () => {
   const engram = createEngram({
-    windowMs: 1_000,
+    recentLimit: 10,
     now: () => 10_000,
   });
   const first = createTestPercept('first', 1);
@@ -43,10 +43,10 @@ test('将多个 Percept 作为同一时间戳批次追加', () => {
   expect(engram.append()).toEqual([]);
 });
 
-test('读取左闭右开的时间窗口', () => {
+test('读取时间范围和最近的 sequence 窗口', () => {
   let now = 1_000;
   const engram = createEngram({
-    windowMs: 100,
+    recentLimit: 2,
     now: () => now,
   });
   const atStart = createTestPercept('at-start', 1);
@@ -60,8 +60,10 @@ test('读取左闭右开的时间窗口', () => {
   engram.append(atEnd);
 
   expect(engram.between(1_000, 1_100).map(entry => entry.value)).toEqual([atStart, inside]);
-  expect(engram.recent().map(entry => entry.value)).toEqual([atStart, inside, atEnd]);
-  expect(engram.recent(50).map(entry => entry.value)).toEqual([inside, atEnd]);
+  expect(engram.recent().map(entry => entry.value)).toEqual([inside, atEnd]);
+  expect(engram.recent({ limit: 1 }).map(entry => entry.value)).toEqual([atEnd]);
+  expect(engram.recent({ through: 1 }).map(entry => entry.value)).toEqual([atStart, inside]);
+  expect(engram.betweenSequences(0, 1).map(entry => entry.value)).toEqual([atStart, inside]);
 });
 
 test('按照 Percept 定义筛选条目', () => {
@@ -69,7 +71,7 @@ test('按照 Percept 定义筛选条目', () => {
     name: 'other-percept',
     description: 'Another percept used by Engram tests',
   });
-  const engram = createEngram({ windowMs: 100, now: () => 1_000 });
+  const engram = createEngram({ recentLimit: 10, now: () => 1_000 });
   const included = createTestPercept('included', 1);
   const temporal = { kind: 'instant', at: 2 } as const;
   const source = signalDefinition.create('excluded', temporal);
@@ -88,7 +90,7 @@ test('按照 Percept 定义筛选条目', () => {
 test('游标按配置的时间窗口推进', () => {
   let now = 1_000;
   const engram = createEngram({
-    windowMs: 100,
+    recentLimit: 10,
     now: () => now,
   });
   const first = createTestPercept('first', 1);
@@ -98,7 +100,7 @@ test('游标按配置的时间窗口推进', () => {
   now = 1_100;
   engram.append(second);
 
-  const cursor = engram.createCursor({ from: 1_000 });
+  const cursor = engram.createCursor({ from: 1_000, windowMs: 100 });
 
   expect(cursor.peek().entries.map(entry => entry.value)).toEqual([first]);
   expect(cursor.position).toBe(1_000);
@@ -110,10 +112,27 @@ test('游标按配置的时间窗口推进', () => {
   expect(cursor.position).toBe(1_000);
 });
 
+test('consumer 只在 commit 后推进，并保留 checkout 期间的新条目', () => {
+  const engram = createEngram({ recentLimit: 10, now: () => 1_000 });
+  const consumer = engram.createConsumer('agent');
+  const first = createTestPercept('first', 1);
+  const second = createTestPercept('second', 2);
+
+  engram.append(first);
+  const checkout = consumer.checkout();
+  engram.append(second);
+
+  expect(consumer.checkout()).toBe(checkout);
+  expect(checkout.entries.map(entry => entry.value)).toEqual([first]);
+  consumer.commit(checkout);
+  expect(consumer.position).toBe(0);
+  expect(consumer.checkout().entries.map(entry => entry.value)).toEqual([second]);
+});
+
 test('清理超过保留期限的条目', () => {
   let now = 1_000;
   const engram = createEngram({
-    windowMs: 100,
+    recentLimit: 10,
     retentionMs: 200,
     now: () => now,
   });
@@ -133,11 +152,13 @@ test('清理超过保留期限的条目', () => {
 });
 
 test('校验时长和时间范围', () => {
-  expect(() => createEngram({ windowMs: 0 })).toThrow(RangeError);
+  expect(() => createEngram({ recentLimit: 0 })).toThrow(RangeError);
 
-  const engram = createEngram({ windowMs: 100, now: () => 1_000 });
+  const engram = createEngram({ recentLimit: 10, now: () => 1_000 });
 
-  expect(() => engram.recent(-1)).toThrow(RangeError);
+  expect(() => engram.recent({ limit: -1 })).toThrow(RangeError);
+  expect(() => engram.recent({ through: -2 })).toThrow(RangeError);
   expect(() => engram.between(2, 1)).toThrow(RangeError);
+  expect(() => engram.betweenSequences(2, 1)).toThrow(RangeError);
   expect(() => engram.createCursor({ windowMs: Number.POSITIVE_INFINITY })).toThrow(RangeError);
 });

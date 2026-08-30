@@ -3,7 +3,9 @@ packages:
   - apps/*
 
 allowBuilds:
+  '@google/genai': false
   '@parcel/watcher': true
+  protobufjs: false
   vue-demi: true
 
 catalog:

@@ -1,0 +1,17 @@
+export { createSerializer, defineTransformer } from './serializer.ts';
+export type { TelemetrySerializer } from './serializer.ts';
+export { telemetry } from './telemetry.ts';
+export type {
+  Telemetry,
+  TelemetryCaptureOptions,
+  TelemetryConfiguration,
+  TelemetryError,
+  TelemetryEvent,
+  TelemetryEventQuery,
+  TelemetryOperation,
+  TelemetryOperationCompletedEvent,
+  TelemetryOperationFailedEvent,
+  TelemetryOperationStartedEvent,
+  TelemetrySubscriber,
+  Transformer,
+} from './types.ts';

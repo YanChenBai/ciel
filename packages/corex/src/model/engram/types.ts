@@ -2,9 +2,9 @@ import type { Percept, PerceptDefinition, PerceptOf } from '#model/percept/index
 
 export interface CreateEngramOptions {
   /**
-   * 默认用于最近查询和游标的时间窗口大小
+   * Recent() 默认返回的最大条目数
    */
-  readonly windowMs: number;
+  readonly recentLimit: number;
   /**
    * 条目的保留时长，省略时永久保留
    */
@@ -51,9 +51,20 @@ export interface CreateEngramCursorOptions {
    */
   readonly from?: number;
   /**
-   * 每个窗口的时长，默认使用 Engram 的窗口大小
+   * 每个时间窗口的时长
    */
-  readonly windowMs?: number;
+  readonly windowMs: number;
+}
+
+export interface EngramRecentOptions {
+  /**
+   * 最多返回的条目数，默认使用 Engram 的 recentLimit。
+   */
+  readonly limit?: number;
+  /**
+   * 返回 sequence 不超过此边界的条目，默认使用最新序号。
+   */
+  readonly through?: number;
 }
 
 export interface EngramCursor {
@@ -91,9 +102,13 @@ export interface EngramReader {
     percept: TDefinition,
   ): readonly EngramEntry<PerceptOf<TDefinition>>[];
   /**
-   * 读取最近一段时间内的条目
+   * 按 sequence 读取指定边界前最近的条目
    */
-  recent(durationMs?: number): readonly EngramEntry[];
+  recent(options?: EngramRecentOptions): readonly EngramEntry[];
+  /**
+   * 读取指定闭区间内的 sequence 条目
+   */
+  betweenSequences(from: number, through: number): readonly EngramEntry[];
   /**
    * 读取指定左闭右开时间范围内的条目
    */
@@ -101,7 +116,27 @@ export interface EngramReader {
   /**
    * 创建按固定时间窗口读取条目的游标
    */
-  createCursor(options?: CreateEngramCursorOptions): EngramCursor;
+  createCursor(options: CreateEngramCursorOptions): EngramCursor;
+}
+
+/**
+ * 一次稳定的增量读取。提交前重复 checkout 会返回同一批条目。
+ */
+export interface EngramCheckout {
+  readonly consumerId: string;
+  readonly after: number;
+  readonly through: number;
+  readonly entries: readonly EngramEntry[];
+}
+
+/**
+ * 独立消费 Engram 增量的游标。
+ */
+export interface EngramConsumer {
+  readonly id: string;
+  readonly position: number;
+  checkout(): EngramCheckout;
+  commit(checkout: EngramCheckout): void;
 }
 
 export interface EngramView {
@@ -128,6 +163,10 @@ export interface Engram extends EngramReader {
   append<TPercept extends Percept>(
     ...percepts: readonly TPercept[]
   ): readonly EngramEntry<TPercept>[];
+  /**
+   * 创建一个从当前 Engram 末尾之后开始消费的独立游标。
+   */
+  createConsumer(id?: string): EngramConsumer;
   /**
    * 清理超过保留时长的条目并返回清理数量
    */

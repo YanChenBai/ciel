@@ -1,297 +1,198 @@
 # Corex
 
-Corex 是 Ciel 的模块化运行时。它负责连接外部输入、感知处理、实时感知记录和认知触发，
-并提供可复用的上下文投影与函数拦截能力。
+Corex 是 Ciel 的感知与 Agent 运行时。一个 `Ciel` 固定绑定一个内部 Agent；所有扩展能力统一
+实现为 `CielPlugin`，不再按感知、输入源或拦截器划分插件种类。
 
-## 整体流程
+## 数据流
 
 ```mermaid
 flowchart LR
-  stimulus[Stimulus] -->|emitSignal| signal[Signal]
-  signal --> sensu[Sensu]
-  sensu -->|return percepts| percept[Percept]
+  source[Plugin / external source] --> signal[Signal]
+  signal --> sensu[PluginContext.sensu]
+  sensu --> percept[Percept]
   percept --> engram[Engram]
-  sensu -->|emitCue| cue[Cue]
-  cue --> noesis[Noesis]
-  engram --> noesis
-  noesis -->|project entries| projection[Projection]
-  projection --> projectors[Projectors]
-  projectors --> context[具名上下文]
+  sensu --> cue[Cue]
+  cue --> queue[Agent serial queue]
+  engram --> projector[Projector Plugins]
+  projector --> queue
+  queue --> agent[Pi agent loop]
 ```
 
-数据流由 `Signal`、`Percept` 和 `Cue` 串联。`Ciel` 收集并安装模块，`Interceptor`
-则可以包裹关键函数边界，而不改变各模块的业务职责。
+- Signal 是运行时输入事件。
+- Plugin 通过 `sensu()` 把 Signal 转换为 Percept，并可返回触发思考的 Cue。
+- Engram 只保存真实 Percept，是短中期感知日志。
+- Projector Plugin 把一次稳定的 Engram 快照转换成具名模型上下文。
+- 内部 Agent 串行处理 Cue，并管理 Pi 消息历史和工具循环。
 
-## 核心概念
+解释器会先把同批 Percept 写入 Engram，再把 Cue 放入 Agent 队列。它不等待模型完成，因此输入
+不会被一次长思考阻塞；同一 Ciel 内的思考仍严格串行。
 
-### 运行时与模块
-
-| 名称          | 定义方式              | 作用                                                               |
-| ------------- | --------------------- | ------------------------------------------------------------------ |
-| `Ciel`        | `defineCiel()`        | 运行时容器，收集模块、连接事件总线、持有 Engram 并管理启动和停止。 |
-| `Stimulus`    | `defineStimulus()`    | 接入外部输入，在 `setup()` 中产生一个或多个 Signal。               |
-| `Sensu`       | `defineSensu()`       | 订阅指定 Signal，将原始输入解释为 Percept，并在合适时产生 Cue。    |
-| `Noesis`      | `defineNoesis()`      | 订阅 Cue，读取 Engram，并执行思考、决策或其他认知逻辑。            |
-| `Projection`  | `defineProjection()`  | 将一组具名 Projector 注册为 Noesis 可选择的上下文投影方案。        |
-| `Interceptor` | `defineInterceptor()` | 为运行时函数边界添加日志、追踪、计时等横切行为。                   |
-
-`Stimulus`、`Sensu`、`Noesis`、`Projection` 和 `Interceptor` 都是可放入
-`defineCiel({ modules })` 的顶层模块。每个模块都有独立的 UUIDv7 `id`，`name` 主要用于展示
-和诊断，运行时路由不依赖名称。
-
-### 定义与数据
-
-| 名称                            | 定义方式          | 作用                                                                            |
-| ------------------------------- | ----------------- | ------------------------------------------------------------------------------- |
-| `SignalDefinition` / `Signal`   | `defineSignal()`  | 描述原始输入类型，并创建携带 `payload` 和 `temporal` 的 Signal。                |
-| `PerceptDefinition` / `Percept` | `definePercept()` | 描述感知类型，并创建带来源 Signal、多模态内容、时间范围和可选置信度的 Percept。 |
-| `CueDefinition` / `Cue`         | `defineCue()`     | 描述认知触发条件，并创建携带 payload 和时间信息的 Cue。                         |
-
-Definition 是稳定的类型化工厂，Data 是一次具体事件。Signal、Percept 和 Cue 都保留自己的
-Definition，因此事件总线和 Engram 可以按 Definition 的 `id` 精确路由或筛选。
-
-### 共享设施
-
-| 名称           | 作用                                                                              |
-| -------------- | --------------------------------------------------------------------------------- |
-| `Engram`       | 按写入时间记录 Percept，支持全量、最近窗口、时间范围、Definition 筛选和游标读取。 |
-| `EngramReader` | Noesis 获得的只读 Engram 接口。                                                   |
-| `EngramView`   | 一次 Projection 输入形成的固定只读快照，只允许读取快照内的条目。                  |
-| `Projector`    | 可复用的投影函数，从 EngramView 生成一种具名上下文结果；它本身不需要注册到 Ciel。 |
-
-## 各模块职责
-
-### Ciel
-
-`defineCiel()` 接收模块或模块数组，并为每个 Ciel 实例创建相互隔离的事件总线、Engram、
-Projection 注册表和 Instrumenter。
-
-启动顺序固定，不受 `modules` 中的排列顺序影响：
-
-1. 安装所有 Sensu，使 Signal 发出前已有消费者。
-2. 安装所有 Noesis，使 Cue 发出前已有消费者。
-3. 最后安装 Stimulus，允许其在 `setup()` 中立即产生 Signal。
-
-模块通过 `ctx.onDispose()` 注册清理函数。停止或启动失败时，Ciel 按模块作用域的相反顺序
-执行清理；多个清理错误会合并为 `AggregateError`。停止 Ciel 不会自动清空 Engram，重新启动
-同一个实例时仍可读取此前保留的 Percept。
-
-### Stimulus 与 Signal
-
-Stimulus 负责输入边界，例如麦克风、页面事件、定时器或外部消息。它只产生 Signal，不直接
-写入 Engram，也不负责理解输入内容。
+## Ciel
 
 ```ts
-const messageSignal = defineSignal<string>({
-  name: 'message',
-  description: '外部文字消息',
-});
-
-const messageInput = defineStimulus({
-  name: 'message-input',
-  async setup(ctx) {
-    await ctx.emitSignal(
-      messageSignal.create('你好', {
-        kind: 'instant',
-        at: Date.now(),
-      }),
-    );
-  },
+defineCiel({
+  id,
+  sessionId,
+  sessionStore,
+  instructions,
+  model,
+  prompt,
+  onAgentEvent,
+  plugins,
+  // 其余 Pi AgentLoopConfig 选项也平铺在这里
 });
 ```
 
-`Temporal` 可以是瞬时事件 `{ kind: 'instant', at }`，也可以是时间区间
-`{ kind: 'interval', start, end }`。
+`instructions` 会原样作为内部 Agent 的 system prompt。Corex 不再组合人格或业务提示词。
 
-### Sensu 与 Percept
+## Plugin
 
-Sensu 使用 `ctx.interpret(definition, interpreter)` 注册具体 SignalDefinition 的解释器。解释器
-返回包含 Percept 和 Cue 的结果；Runtime 先将全部 Percept 作为同一批次写入 Engram，再依次派发
-Cue。解释器不直接操作 Engram 或 Cue 总线，因此输入和输出都有明确边界。
-
-Percept 的 `contents` 可以混合 `text`、`image` 和 `audio`，并通过 `source` 保留产生它的原始
-Signal。Sensu 可以在感知处理完成后继续发出 Cue，通知 Noesis 开始认知处理。
-
-### Engram
-
-Engram 保存的是 `EngramEntry`，而不是裸 Percept。每个条目额外包含当前 Engram 内递增的
-`sequence` 和实际写入时间 `recordedAt`；Percept 自己的 `temporal` 仍表示事件对应的时间。
-
-主要读取方式：
-
-- `all()`：读取当前保留的全部条目。
-- `recent(durationMs?)`：读取最近窗口，省略参数时使用 Engram 默认窗口。
-- `between(from, to)`：读取左闭右开的写入时间范围。
-- `entries(perceptDefinition)`：按 PerceptDefinition 筛选当前保留条目。
-- `createCursor()`：按固定时间窗口逐段读取。
-
-Corex 创建的 Ciel 当前使用五分钟默认窗口，但没有配置自动保留期限；直接调用
-`createEngram()` 时可以分别配置 `windowMs` 和 `retentionMs`。
-
-### Cue 与 Noesis
-
-Cue 表示“现在值得进行一次认知处理”，例如语音结束、手动请求或定时思考。Cue 不会写入
-Engram；它只通过 Cue 总线触发订阅了对应 CueDefinition 的 Noesis。Ciel 外部也可以调用
-`ciel.emitCue()` 手动派发 Cue。
-
-Noesis 可以直接读取 `ctx.engram`。如果声明了 `projection`，还可以将选定的 Engram 条目交给
-`ctx.project()`，得到类型由 Projector 对象 key 自动推导的具名 LLM 上下文。只响应 Cue 而不需要投影
-的 Noesis 可以省略 `projection`。
-
-### Projector 与 Projection
-
-Projector 封装一种可复用的上下文转换。Projection 使用对象为多个 Projector 命名，并作为
-顶层模块注册到 Ciel：
+`definePlugin()` 只接受一个配置工厂，并返回具体 Plugin 的定义函数：
 
 ```ts
-const speechProjector = defineProjector({
-  name: 'speech',
-  project({ engram }) {
-    return engram
-      .entries(speechPercept)
-      .flatMap(entry =>
-        entry.value.contents.flatMap(content =>
-          content.type === 'text' ? [{ type: 'text', text: content.text }] : [],
-        ),
-      );
-  },
-});
+interface MemoryOptions {
+  readonly name: string;
+  readonly description?: string;
+  readonly path: string;
+}
 
-const agentProjection = defineProjection({
-  name: 'agent-context',
-  projectors: {
-    speech: speechProjector,
-    vision: visionProjector,
+const memoryPlugin = definePlugin((options: MemoryOptions) => ({
+  name: options.name,
+  description: options.description,
+
+  setup(ctx) {
+    const namespace = ctx.id;
+    // 不包含主 Ciel 的 instructions、会话、Tools 与 prompt。
+    const inheritedAgentConfig = ctx.agent;
+
+    ctx.provide({
+      tools: [memoryRecall, memoryUpdate],
+      projectors: [memoryProjector],
+      interceptors: [observer],
+    });
+
+    const memoryRuntime = createMemory({ path: options.path });
+    ctx.onStart(() => memoryRuntime.start(inheritedAgentConfig, namespace));
+    ctx.onDispose(() => memoryRuntime.close());
   },
+}));
+
+const memory = memoryPlugin({
+  name: 'memory',
+  path: '.ciel/memory.db',
 });
 ```
 
-`ctx.project(entries)` 会先复制输入条目，创建固定的 EngramView，再并行执行所有 Projector。
-需要直接投影最近的感知时，可以使用 `ctx.projectRecent(durationMs?)` 简化调用。
-每个 Projector 必须返回统一的 `LLMContext` 多模态内容格式；结果仍使用对象中的 key：
+所有 Plugin 获得同一个扁平 `PluginContext`：
 
 ```ts
-const context = await ctx.projectRecent();
+interface PluginContext {
+  readonly id: string;
+  readonly agent: AgentConfig;
+  readonly sensu: Sensu;
+  readonly emitSignal: EmitSignal;
+  readonly instrument: Instrument;
 
-context.speech;
-context.vision;
+  provide(contribution: PluginContribution): void;
+  onStart(start: Dispose): void;
+  onDispose(dispose: Dispose): void;
+}
 ```
 
-同一个 Projector 可以被多个 Projection 复用。Projection 必须和引用它的 Noesis 一起注册到
-当前 Ciel；缺失注册会使 Ciel 拒绝启动。任一 Projector 失败时，本次 `project()` 整体失败。
+`PluginOptions` 包含 `name`、可选 `description`、`tools`、`projectors`、`interceptors` 和可选
+`setup`。静态能力直接声明在 options；依赖 `ctx.id` 或 `ctx.agent` 才能创建的能力，通过
+`setup()` 中的 `ctx.provide()` 追加。
 
-### Interceptor
+`setup()` 在 `defineCiel()` 期间同步执行，仅用于声明能力和生命周期。异步初始化或外部资源接入
+放入 `onStart()`；setup 返回后再调用 `provide()`、`sensu()` 等注册方法会报错。
 
-Corex 基于 `@ciels/interceptor` 在每个 Ciel 实例内部组成 Instrumenter，并为通用
-Interceptor 协议补充 Ciel 模块元数据。`intercept(target, context)` 返回 wrapper 时包裹目标，
-返回 `undefined` 时跳过；先声明的 Interceptor 位于组合调用链的外层。Corex 使用
-`CielOperationName` 为每个运行时边界提供稳定、低基数的 `InstrumentContext.name`；
-`metadata` 只包含创建 wrapper 时已经确定的静态标识：
+运行时先安装全部 `sensu()` 订阅，再启动 Agent，最后按 plugins 声明顺序执行 `onStart()`。
+因此任意 Plugin 都可以在 `onStart()` 中安全调用 `emitSignal()`，且不依赖插件类别或安装顺序。
+停止时 Plugin 按相反顺序清理，然后停止 Agent 和 Signal 订阅。启动前或停止后调用
+`emitSignal()` 会失败。`instrument()` 使用当前 Ciel 的 `@ciels/interceptor` 链包装 Plugin 内部操作，
+并为显式 `InstrumentContext` 自动追加 `pluginId` 与 `pluginName`；包装后的操作也只能在运行期间执行。
 
-| 边界                    | metadata                                                        |
-| ----------------------- | --------------------------------------------------------------- |
-| 各模块 `setup()`        | `moduleId`、`moduleName`、`moduleType`                          |
-| Stimulus `emitSignal()` | `moduleId`、`moduleName`                                        |
-| Sensu interpreter       | 模块标识，以及 `signalDefinitionId`、`signalDefinitionName`     |
-| Noesis cue handler      | 模块标识，以及 `cueDefinitionId`、`cueDefinitionName`           |
-| Projector `project()`   | Projection、Projector 标识，以及 Projection 中的 `projectorKey` |
-| Ciel 全局 `emitCue()`   | 无；它也可以由 Ciel 外部调用，没有可靠的静态来源模块            |
-
-实际输入、输出、异常和耗时属于一次调用的动态数据，由 wrapper 从函数参数、返回结果和执行过程
-中采集，不重复写入 `metadata`。
-
-当前会 instrument 的边界包括：
-
-- Stimulus、Sensu 和 Noesis 的 `setup()`。
-- `emitSignal()` 和 `emitCue()`。
-- `interpret()` 注册的 interpreter 与 `onCue()` 注册的 handler。
-- Projection 中每个 Projector 的 `project()`。
-
-Interceptor 适合实现观测和控制，不应承载 Signal、Percept 或 Cue 的业务转换逻辑。不同 Ciel
-实例拥有不同的 Instrumenter，彼此不会共享拦截状态。
+Tools 按 `name` 合并，Projectors 按对象 key 合并；与 `defineCiel()` 直接配置或其他 Plugin 重名时
+会在构造阶段报错。
 
 ## 完整示例
 
-下面的最小流程将文字 Signal 转为 Percept，写入 Engram，再通过 Cue 触发 Noesis 投影：
-
 ```ts
+import { builtinModels } from '@earendil-works/pi-ai/providers/all';
 import {
   defineCiel,
   defineCue,
-  defineNoesis,
+  definePlugin,
   definePercept,
-  defineProjection,
   defineProjector,
-  defineSensu,
   defineSignal,
-  defineStimulus,
-} from '@ciels/corex';
+} from 'corex';
 
-const temporal = { kind: 'instant', at: Date.now() } as const;
+const model = builtinModels().getModel('openai', 'gpt-5-mini')!;
 const messageSignal = defineSignal<string>({ name: 'message' });
-const speechPercept = definePercept({ name: 'speech' });
-const thinkingCue = defineCue({ name: 'thinking' });
+const messagePercept = definePercept({ name: 'message' });
+const thinkCue = defineCue({ name: 'new-message', prompt: '请根据最新消息决定是否回应。' });
 
-const speechSensu = defineSensu({
-  name: 'speech',
+const defineInput = definePlugin((options: { readonly message: string }) => ({
+  name: 'message-input',
   setup(ctx) {
-    ctx.interpret(messageSignal, signal => {
-      return {
-        percepts: speechPercept.create({
-          source: signal,
-          contents: [{ type: 'text', text: signal.payload }],
-          temporal: signal.temporal,
-        }),
-        cues: thinkingCue.create(signal.temporal),
-      };
+    ctx.sensu(messageSignal, signal => ({
+      percepts: messagePercept.create({
+        source: signal,
+        temporal: signal.temporal,
+        contents: [{ type: 'text', text: signal.payload }],
+      }),
+      cues: thinkCue.create(signal.temporal),
+    }));
+
+    ctx.onStart(() => {
+      const temporal = { kind: 'instant', at: Date.now() } as const;
+      return ctx.emitSignal(messageSignal.create(options.message, temporal));
     });
   },
-});
+}));
 
-const speechProjector = defineProjector({
-  name: 'speech',
+const input = defineInput({ message: '你好' });
+
+const messages = defineProjector({
+  name: 'messages',
   project({ engram }) {
     return engram
-      .entries(speechPercept)
-      .flatMap(entry =>
-        entry.value.contents.flatMap(content => (content.type === 'text' ? [content.text] : [])),
-      );
-  },
-});
-
-const agentProjection = defineProjection({
-  name: 'agent-context',
-  projectors: { speech: speechProjector },
-});
-
-const agent = defineNoesis({
-  name: 'agent',
-  projection: agentProjection,
-  setup(ctx) {
-    ctx.onCue(thinkingCue, async () => {
-      const context = await ctx.projectRecent();
-      console.log(context.speech);
-    });
-  },
-});
-
-const input = defineStimulus({
-  name: 'input',
-  async setup(ctx) {
-    await ctx.emitSignal(messageSignal.create('你好', temporal));
+      .entries(messagePercept)
+      .flatMap(entry => entry.value.contents)
+      .filter(content => content.type === 'text');
   },
 });
 
 const ciel = defineCiel({
-  modules: [agentProjection, speechSensu, agent, input],
+  id: 'ciel-main',
+  sessionId: new Date().toISOString().slice(0, 10),
+  instructions: '你是夏尔。',
+  model,
+  plugins: [messages, input, businessToolPlugin],
 });
 
-try {
-  await ciel.start();
-} finally {
-  await ciel.stop();
-}
+await ciel.start();
+await ciel.stop();
 ```
+
+## 会话与 Engram
+
+`id` 是稳定的 Ciel/资源隔离标识，`sessionId` 是一次对话标识。默认 Session key 同时包含两者；
+要跨进程恢复，调用方必须提供稳定的 `id` 和 `sessionId`。默认使用 `.ciel` 下的 Pi JSONL
+Session，也可传入 `createAgentSessionStore()` 或用 `sessionStore: false` 禁用。
+
+Agent 每轮开始时 checkout 尚未消费的 Percept，Projector 读取不超过该边界的最近快照。Pi loop
+成功后才提交 checkout；失败时下轮仍会看到同一增量。思考期间新增的 Percept 留给下一轮。
+
+长期记忆不写回 Engram：它应由 Plugin 通过 Tools 写入、通过 Tool 或 Projector 检索，并拥有自己的
+持久化与生命周期。
+
+## 可观测边界
+
+Plugin 通过 `interceptors` 或 `ctx.provide()` 提供 `@ciels/interceptor` 拦截器。稳定操作名包括
+`AgentThink`、`AgentPrompt`、`AgentGenerate`、`AgentToolExecute`、`PluginStart`、
+`ProjectorProject`、`Sensu` 和 `SignalEmit`。
 
 ## 开发
 

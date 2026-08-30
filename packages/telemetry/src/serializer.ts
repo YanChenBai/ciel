@@ -2,20 +2,18 @@ import SuperJSON from 'superjson';
 
 import type { Transformer } from './types.ts';
 
+export type TelemetrySerializer = SuperJSON;
+
 export function defineTransformer<T, Serialized>(transformer: Transformer<T, Serialized>) {
   return transformer;
 }
 
-export interface CreateSerializerOptions {
-  transformers?: readonly Transformer[];
-}
+export function createSerializer(transformers: readonly Transformer[] = []): TelemetrySerializer {
+  const serializer = new SuperJSON();
 
-export function createSerializer(options: CreateSerializerOptions = {}) {
-  const instance = new SuperJSON();
-
-  for (const transformer of options.transformers ?? []) {
-    instance.registerCustom(transformer, transformer.name);
+  for (const transformer of transformers) {
+    serializer.registerCustom(transformer, transformer.name);
   }
 
-  return instance;
+  return serializer;
 }
