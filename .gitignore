@@ -11,7 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
-.ciel-data/
+.ciel/
 out
 
 # dotenv environment variable files
@@ -36,3 +36,5 @@ out
 !.vscode/
 !.vscode/settings.json
 !.vscode/extensions.json
+.agents
+skills-lock.json

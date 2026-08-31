@@ -1,5 +1,3 @@
-// @env node
-
 import { definePlugin, defineSignal, type Signal, type SignalDefinition } from 'corex';
 
 import { Hearing } from './definitions.ts';

@@ -147,8 +147,11 @@ ciel/
 │   ├── core/               # 感知、上下文、记忆、认知和 Vigilia
 │   ├── asr/                # VAD、ASR、时间戳和说话人识别
 │   ├── event/              # 支持同步与异步监听的类型化事件
-│   ├── bridge/             # Vigilia WebSocket 服务与客户端
-│   └── devtools/           # 可嵌入、可独立部署的运行检查器
+│   ├── devtool-protocol/   # Devtool 纯类型协议
+│   ├── devtool-bridge/     # 传输无关的协议会话与分派
+│   ├── devtool/            # 下一代 Vapor Devtool
+│   ├── bridge/             # 待移除的 Vigilia WebSocket Bridge
+│   └── devtools/           # 待替换的旧运行检查器
 ├── .ciel-data/             # 模型、声纹、视觉快照和记忆数据
 ├── vite.config.ts          # Vite+ 工作区配置
 └── package.json
@@ -171,13 +174,16 @@ packages/core/src/
 
 ### Package 职责
 
-| Package                   | 职责                                 |
-| ------------------------- | ------------------------------------ |
-| **@ciels/core**           | Ciel 的主要运行时和公共 API。        |
-| **@ciels/asr**            | 底层语音识别、VAD 和说话人能力。     |
-| **@ciels/event**          | 运行时内部使用的类型化事件基础设施。 |
-| **@ciels/vigilia-bridge** | 将 Vigilia 暴露为 WebSocket 服务。   |
-| **@ciels/devtools**       | 可嵌入组件和完整可部署检查器。       |
+| Package                     | 职责                                              |
+| --------------------------- | ------------------------------------------------- |
+| **@ciels/core**             | Ciel 的主要运行时和公共 API。                     |
+| **@ciels/asr**              | 底层语音识别、VAD 和说话人能力。                  |
+| **@ciels/event**            | 运行时内部使用的类型化事件基础设施。              |
+| **@ciels/devtool-protocol** | Devtool 的传输无关纯类型协议。                    |
+| **@ciels/devtool-bridge**   | 协议握手、请求分派与事件广播，不绑定具体传输。    |
+| **@ciels/devtool**          | 基于 Vapor、Vuetify v0 和 Tailwind 的新 Devtool。 |
+| **@ciels/vigilia-bridge**   | 旧 Vigilia WebSocket Bridge，全面重构时直接移除。 |
+| **@ciels/devtools**         | 旧运行检查器，Devtool 完整后统一替换。            |
 
 ## 6. 开发
 

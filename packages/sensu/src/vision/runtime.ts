@@ -1,5 +1,3 @@
-// @env node
-
 import type { Signal } from 'corex';
 import sharp from 'sharp';
 

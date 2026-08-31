@@ -1,5 +1,3 @@
-// @env node
-
 import { ASR, type ASROptions, type ASRResult } from '@ciels/asr';
 import type { Instrument } from '@ciels/interceptor';
 import type { EmitSignal, Signal, SignalDefinition } from 'corex';

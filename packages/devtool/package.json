@@ -1,0 +1,49 @@
+{
+  "name": "@ciels/devtool",
+  "version": "0.0.0",
+  "description": "Next-generation typed developer tool for Ciel.",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json",
+    "./style.css": "./dist/style.css"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "test": "vp test",
+    "prepublishOnly": "vp run build"
+  },
+  "dependencies": {
+    "@ciels/devtool-protocol": "workspace:*",
+    "@vuetify/v0": "^1.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tsconfig/node24": "^24.0.5",
+    "@types/node": "catalog:",
+    "@types/postcss-import": "^14.0.3",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/tsconfig": "^0.9.1",
+    "postcss-import": "^17.0.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:",
+    "vue": "rc",
+    "vue-tsc": "^3.3.11"
+  },
+  "peerDependencies": {
+    "vue": ">=3.6.0"
+  },
+  "engines": {
+    "node": "^24.0.0"
+  }
+}
