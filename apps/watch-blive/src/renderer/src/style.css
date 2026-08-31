@@ -1,0 +1,225 @@
+@import 'tailwindcss';
+
+:root {
+  color-scheme: dark;
+  --background: #171819;
+  --foreground: #eeeeef;
+  --primary: #fb7299;
+  --primary-foreground: #241117;
+  --border: rgb(255 255 255 / 9%);
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+button,
+input {
+  font: inherit;
+}
+
+.embedded-devtool > .devtool > header {
+  display: none;
+}
+
+.embedded-devtool > .devtool {
+  min-height: 0;
+  flex: 1;
+}
+
+@layer components {
+  .titlebar {
+    -webkit-app-region: drag;
+    display: flex;
+    height: 42px;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    background: #1c1d1e;
+    padding: 4px 150px 4px 14px;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+  .pill {
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 999px;
+    padding: 2px 7px;
+    color: #a1a1aa;
+    font-size: 10px;
+  }
+  .nav-button,
+  .secondary-button,
+  .danger-button,
+  .account-button,
+  .danger-menu,
+  .primary-button {
+    -webkit-app-region: no-drag;
+    border: 0;
+    cursor: default;
+  }
+  .nav-button {
+    border-radius: 6px;
+    background: transparent;
+    padding: 5px 9px;
+    color: #71717a;
+    font-size: 11px;
+  }
+  .nav-button > span,
+  .secondary-button > span,
+  .danger-button > span,
+  .danger-menu > span,
+  .primary-button > span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .nav-button.active {
+    background: rgb(255 255 255 / 8%);
+    color: #f4f4f5;
+  }
+  .secondary-button,
+  .danger-button {
+    border-radius: 7px;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+  .secondary-button {
+    border: 1px solid rgb(255 255 255 / 12%);
+    background: #26272a;
+    color: #e4e4e7;
+  }
+  .danger-button {
+    background: rgb(240 91 103 / 13%);
+    color: #ff9ba5;
+  }
+  .account-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 7px;
+    background: transparent;
+    padding: 4px 6px;
+    color: #e4e4e7;
+    font-size: 11px;
+  }
+  .account-popover {
+    z-index: 100;
+    margin-top: 8px;
+    min-width: 140px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #27282a;
+    padding: 5px;
+    box-shadow: 0 14px 40px rgb(0 0 0 / 45%);
+  }
+  .danger-menu {
+    width: 100%;
+    border-radius: 6px;
+    background: transparent;
+    padding: 7px 8px;
+    color: #ff8d99;
+    font-size: 12px;
+  }
+  .field-label {
+    color: #d8d8da;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .field-control,
+  .select-trigger {
+    width: 100%;
+    height: 39px;
+    border: 1px solid rgb(255 255 255 / 12%);
+    border-radius: 10px;
+    background: #1b1c1e;
+    padding: 0 11px;
+    color: #eeeeef;
+    outline: none;
+    font-size: 13px;
+  }
+  .field-control:focus,
+  .select-trigger:focus {
+    border-color: rgb(251 114 153 / 65%);
+    box-shadow: 0 0 0 3px rgb(251 114 153 / 12%);
+  }
+  .field-help {
+    margin: 6px 0 0;
+    color: #71717a;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .select-trigger {
+    display: flex;
+    align-items: center;
+    text-align: left;
+  }
+  .select-content {
+    z-index: 100;
+    min-width: 260px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #27282a;
+    padding: 5px;
+    box-shadow: 0 14px 40px rgb(0 0 0 / 45%);
+  }
+  .select-item {
+    border-radius: 7px;
+    padding: 7px 9px;
+    color: #d4d4d8;
+    font-size: 12px;
+    outline: none;
+  }
+  .select-item[data-highlighted] {
+    background: rgb(255 255 255 / 8%);
+    color: white;
+  }
+  .primary-button {
+    height: 42px;
+    width: 100%;
+    border-radius: 10px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .primary-button:disabled,
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .eyebrow {
+    margin: 0;
+    color: #52525b;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+  }
+}

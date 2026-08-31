@@ -1,0 +1,47 @@
+{
+  "name": "@ciels/watch-blive",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Corex-native Bilibili live desktop client.",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "build": "evp build",
+    "check": "vp check && vue-tsc --build",
+    "doctor": "evp doctor",
+    "preview": "evp preview",
+    "smoke": "evp smoke",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.39",
+    "@ciels/devtool": "workspace:*",
+    "@ciels/devtool-bridge": "workspace:*",
+    "@ciels/devtool-protocol": "workspace:*",
+    "@ciels/memory": "workspace:*",
+    "@ciels/sensu": "workspace:*",
+    "@ciels/telemetry": "workspace:*",
+    "@earendil-works/pi-agent-core": "0.84.3",
+    "@earendil-works/pi-ai": "0.84.3",
+    "@lucide/vue": "^1.35.0",
+    "@vuetify/v0": "^1.2.0",
+    "ai": "^7.0.83",
+    "corex": "workspace:*",
+    "typebox": "1.3.7",
+    "vue": "rc"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@tsconfig/node24": "^24.0.5",
+    "@types/node": "catalog:",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/tsconfig": "^0.9.1",
+    "electron": "43.4.0",
+    "electron-vite-plus": "0.1.0-alpha.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "catalog:",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9",
+    "vite-plus": "catalog:",
+    "vue-tsc": "^3.3.11"
+  }
+}

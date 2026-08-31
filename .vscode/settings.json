@@ -20,6 +20,7 @@
     "source.fixAll.oxc": "explicit"
   },
   "cSpell.words": [
+    "Agentized",
     "AISDK",
     "Auris",
     "Bilibili",
@@ -27,6 +28,8 @@
     "ciel",
     "ciels",
     "cile",
+    "cntr",
+    "contenteditable",
     "corex",
     "devtools",
     "dotenv",
@@ -44,7 +47,10 @@
     "oxlint",
     "oxnode",
     "Pglite",
+    "pgvector",
+    "ptype",
     "recongition",
+    "roomid",
     "sensus",
     "silero",
     "typebox",
@@ -53,6 +59,7 @@
     "Vestigium",
     "vigilia",
     "voidzero",
+    "vuetify",
     "worktrees"
   ],
   "explorer.fileNesting.enabled": true,

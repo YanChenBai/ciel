@@ -14,7 +14,7 @@ export default defineConfig({
     dts: {},
     entry: './src/index.ts',
     exports: true,
-    plugins: [vue({ features: { vapor: true }, isProduction: true })],
+    plugins: [vue()],
     tsconfig: './tsconfig.app.json',
   },
   resolve: {
