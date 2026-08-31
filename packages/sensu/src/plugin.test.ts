@@ -2,13 +2,18 @@
 
 import type { ASROptions, ASRResult } from '@ciels/asr';
 import type { AnyFunction, InstrumentContext } from '@ciels/interceptor';
-import type { Model } from '@earendil-works/pi-ai';
-import { createEngramView, defineCiel, definePlugin } from 'corex';
+import {
+  createAssistantMessageEventStream,
+  type AssistantMessage,
+  type Model,
+} from '@earendil-works/pi-ai';
+import { type CielAgentOptions, defineCiel, definePlugin, type PluginRuntimeContext } from 'corex';
 import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
 const asr = vi.hoisted(() => ({
   close: vi.fn(async () => undefined),
+  emitResult: true,
   flush: vi.fn(),
   options: [] as Array<ASROptions | undefined>,
 }));
@@ -34,7 +39,9 @@ vi.mock('@ciels/asr', () => ({
         startAt: segment.startAt,
         endAt: new Date(segment.startAt.getTime() + 1_000),
       };
-      this.listeners.get('result')?.(result);
+      this.listeners.get('speechstart')?.(segment.startAt);
+      if (asr.emitResult) this.listeners.get('result')?.(result);
+      this.listeners.get('speechend')?.(result.endAt);
     }
 
     flush = asr.flush;
@@ -58,8 +65,34 @@ const testModel = {
   maxTokens: 4_096,
 } as Model<any>;
 
+function testStream(messageText = 'ok'): ReturnType<NonNullable<CielAgentOptions['stream']>> {
+  const message: AssistantMessage = {
+    role: 'assistant',
+    content: [{ type: 'text', text: messageText }],
+    api: testModel.api,
+    provider: testModel.provider,
+    model: testModel.id,
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: 'stop',
+    timestamp: Date.now(),
+  };
+  const stream = createAssistantMessageEventStream();
+  queueMicrotask(() => {
+    stream.push({ type: 'start', partial: { ...message, stopReason: 'pending' } });
+    stream.push({ type: 'done', reason: 'stop', message });
+  });
+  return stream;
+}
+
 describe('sensuPlugin', () => {
-  it('接入 Corex 并通过单个投影合并视觉和听觉上下文', async () => {
+  it('以流式 Sensu 接入 Corex，并在 speech-end 同时提交 Percept 与 Cue', async () => {
     const screen = definePhoton({ name: 'screen' });
     const microphone = defineEcho({ name: 'microphone' });
     const image = await sharp({
@@ -114,107 +147,124 @@ describe('sensuPlugin', () => {
           },
         },
       ],
-    }))({});
+      create: () => ({}),
+    }))();
     const source = definePlugin(() => ({
       name: 'source',
-      setup(ctx) {
-        ctx.onStart(async () => {
-          await ctx.emitSignal(screen.create({ data: image }, { kind: 'instant', at: 1_000 }));
-          await ctx.emitSignal(
-            microphone.create(
-              { data: Buffer.alloc(3_200) },
-              { kind: 'interval', start: 1_000, end: 1_100 },
-            ),
-          );
-        });
+      create() {
+        return {
+          async activate(ctx: PluginRuntimeContext) {
+            await ctx.emitSignal(screen.create({ data: image }, { kind: 'instant', at: 1_000 }));
+            await ctx.emitSignal(
+              microphone.create(
+                { data: Buffer.alloc(3_200) },
+                { kind: 'interval', start: 1_000, end: 1_100 },
+              ),
+            );
+          },
+        };
       },
-    }))({});
+    }))();
+    const stream: NonNullable<CielAgentOptions['stream']> = () => testStream();
     const ciel = defineCiel({
       instructions: 'You are Ciel.',
       model: testModel,
       sessionStore: false,
-      plugins: [observer, sensu, source],
+      stream,
+      extensions: [observer, sensu, source],
     });
 
     await ciel.start();
     await vi.waitFor(() => {
       expect(ciel.engram.entries(Sight)).toHaveLength(1);
       expect(ciel.engram.entries(Hearing)).toHaveLength(1);
+      expect(ciel.messages).toHaveLength(2);
     });
 
     expect(asr.options).toEqual([{ bufferSeconds: 30, speakerThreshold: 0.6, maxSpeakers: 4 }]);
     await vi.waitFor(() => expect(operations).toHaveLength(2));
-    expect(operations).toEqual([
-      {
-        args: [{ data: Buffer.alloc(3_200), startAt: new Date(1_000) }],
-        context: {
-          name: SensuOperationName.ASRInput,
-          metadata: {
-            capability: 'hearing',
-            pluginId: sensu.id,
-            pluginName: sensu.name,
-            signalDefinitionId: microphone.id,
-            signalDefinitionName: microphone.name,
-          },
+    expect(operations[0]).toMatchObject({
+      args: [{ data: Buffer.alloc(3_200), startAt: new Date(1_000) }],
+      context: {
+        name: SensuOperationName.ASRInput,
+        metadata: {
+          pluginId: sensu.id,
+          pluginName: sensu.name,
+          extensionKind: 'sensu',
+          extensionName: 'microphone.hearing',
+          signalDefinitionId: microphone.id,
+          signalDefinitionName: microphone.name,
         },
-        output: undefined,
       },
-      {
-        args: [
-          {
-            content: '你好，夏尔。',
-            speaker: 'Alice',
-            confidence: 0.9,
-            startAt: new Date(1_000),
-            endAt: new Date(2_000),
-          },
-        ],
-        context: {
-          name: SensuOperationName.ASROutput,
-          metadata: {
-            capability: 'hearing',
-            pluginId: sensu.id,
-            pluginName: sensu.name,
-            signalDefinitionId: microphone.id,
-            signalDefinitionName: microphone.name,
-          },
-        },
-        output: {
+      output: undefined,
+    });
+    expect(operations[1]).toMatchObject({
+      args: [
+        {
           origin: microphone,
+          startAt: new Date(1_000),
+          endAt: new Date(2_000),
           result: {
             content: '你好，夏尔。',
             speaker: 'Alice',
-            confidence: 0.9,
-            startAt: new Date(1_000),
-            endAt: new Date(2_000),
           },
         },
+      ],
+      context: {
+        name: SensuOperationName.ASROutput,
+        metadata: {
+          pluginId: sensu.id,
+          pluginName: sensu.name,
+          extensionKind: 'sensu',
+          extensionName: 'microphone.hearing',
+          signalDefinitionId: microphone.id,
+          signalDefinitionName: microphone.name,
+        },
       },
-    ]);
-    const projector = sensu.projectors?.[0];
-    expect(projector).toBeDefined();
-    const context = await projector!.project({ engram: createEngramView(ciel.engram.all()) });
-    expect(context[0]).toMatchObject({ type: 'text' });
-    expect(context[0]).toHaveProperty('text', expect.stringContaining('理解听到的内容。'));
-    expect(context[0]).toHaveProperty('text', expect.stringContaining('[microphone] [Alice]'));
-    expect(context[1]).toHaveProperty('text', expect.stringContaining('观察画面变化。'));
-    const projectedImage = context[2];
-    expect(projectedImage?.type).toBe('image');
-    if (
-      projectedImage?.type !== 'image' ||
-      typeof projectedImage.data === 'string' ||
-      projectedImage.data instanceof URL
-    ) {
-      throw new TypeError('Expected projected image bytes');
-    }
-    await expect(sharp(projectedImage.data).metadata()).resolves.toMatchObject({
-      width: 1920,
-      height: 1080,
+      output: { cueCount: 1, entries: [expect.any(Object)] },
+    });
+    expect(ciel.engram.entries(Hearing)[0]?.value).toMatchObject({
+      origin: microphone,
+      contents: [{ type: 'text', text: '[Alice] 你好，夏尔。' }],
     });
 
     await ciel.stop();
     expect(asr.flush).toHaveBeenCalledOnce();
     expect(asr.close).toHaveBeenCalledOnce();
+  });
+
+  it('没有 ASR 文本时仍由 speech-end 发出 Cue', async () => {
+    const microphone = defineEcho({ name: 'silent-speech' });
+    const sensu = sensuPlugin({ name: 'sensu-cue', hearing: { signals: [microphone] } });
+    const source = definePlugin(() => ({
+      name: 'cue-source',
+      create: () => ({
+        activate: ({ emitSignal }: PluginRuntimeContext) =>
+          emitSignal(
+            microphone.create(
+              { data: Buffer.alloc(3_200) },
+              { kind: 'interval', start: 3_000, end: 3_100 },
+            ),
+          ),
+      }),
+    }))();
+    const ciel = defineCiel({
+      instructions: 'You are Ciel.',
+      model: testModel,
+      sessionStore: false,
+      stream: () => testStream(),
+      extensions: [sensu, source],
+    });
+
+    asr.emitResult = false;
+    try {
+      await ciel.start();
+      await vi.waitFor(() => expect(ciel.messages).toHaveLength(2));
+      expect(ciel.engram.entries(Hearing)).toHaveLength(0);
+    } finally {
+      await ciel.stop();
+      asr.emitResult = true;
+    }
   });
 
   it('拒绝空能力、重复 Signal 和无效投影容量', () => {

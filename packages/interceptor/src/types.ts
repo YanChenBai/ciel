@@ -1,7 +1,7 @@
 export type AnyFunction = (...args: any[]) => any;
 
 /**
- * 包装下一层函数，返回调用签名不变的新函数
+ * 包装下一层函数并保持调用签名不变
  */
 export type InterceptorWrapper<T extends AnyFunction = AnyFunction> = (next: T) => T;
 
@@ -17,9 +17,19 @@ export interface InstrumentContext {
   readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * 为派生 Instrument 预先绑定的上下文
+ *
+ * Name 一旦在任意上层固定则下层不得改写 Metadata 会逐层合并
+ */
+export interface InstrumentPreset {
+  readonly name?: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+}
+
 export interface Interceptor {
   /**
-   * 判断是否拦截目标函数，未命中时返回 undefined
+   * 判断是否拦截目标函数 未命中时返回 undefined
    */
   intercept<T extends AnyFunction>(
     target: T,
@@ -27,4 +37,7 @@ export interface Interceptor {
   ): InterceptorWrapper<T> | undefined;
 }
 
-export type Instrument = <T extends AnyFunction>(target: T, context?: InstrumentContext) => T;
+export interface Instrument {
+  <T extends AnyFunction>(target: T, context?: InstrumentContext): T;
+  with(preset: InstrumentPreset): Instrument;
+}

@@ -1,18 +1,39 @@
-# @ciels/telemetry
+<h1 align="center">@ciels/telemetry</h1>
 
-面向 Corex 的层级 operation 遥测。它直接依赖 `corex`，通过 Corex Interceptor 接收
-`think`、prompt、模型生成、Tool 执行、Projection、Sensu 等稳定边界，并将同一异步调用链
-组织为可查询的父子 operation。
+<p align="center">把一次思考展开成可查询的层级 operation</p>
+
+<p align="center">
+  <img alt="OpenTelemetry" src="https://img.shields.io/badge/OpenTelemetry-compatible-F5A800?logo=opentelemetry&logoColor=white">
+  <img alt="Corex Interceptor" src="https://img.shields.io/badge/Corex-Interceptor-8A2BE2">
+</p>
+
+> Observe Corex without coupling the runtime to a telemetry backend
+
+## 能看到什么
+
+- Agent think、prompt 与模型生成
+- Tool 执行
+- Projector 投影
+- Sensu 创建、输入、输出与关闭
+- Plugin 生命周期
+- Signal 发布
+- 同一异步调用链中的父子 operation
+
+## 快速开始
 
 ```ts
-import { defineCiel } from 'corex';
+import { defineCiel, defineInterceptor } from 'corex';
 import { telemetry } from '@ciels/telemetry';
+
+const telemetryExtension = defineInterceptor({
+  name: 'telemetry',
+  interceptor: telemetry,
+});
 
 const ciel = defineCiel({
   instructions,
   model,
-  tools,
-  modules: [telemetry, ...modules],
+  extensions: [telemetryExtension, ...extensions],
 });
 
 telemetry.subscribe(event => {
@@ -20,11 +41,12 @@ telemetry.subscribe(event => {
 });
 ```
 
-`telemetry.currentOperation()` 返回当前异步调用链最内层 operation；`operation(id)` 和
-`parentOf(id)` 可用于向上追溯。每个 started/completed/failed 事件都携带相同的
-`TelemetryOperation`，父级关系不依赖 OpenTelemetry SDK 是否安装。
+`currentOperation()` 返回当前异步调用链最内层 operation。`operation(id)` 与 `parentOf(id)` 可用于
+向上追溯。started、completed 和 failed 事件共享同一个 `TelemetryOperation`。
 
-默认不记录动态输入输出，避免完整 prompt、上下文和工具参数进入遥测。需要本地调试时可显式开启：
+## 捕获输入输出
+
+默认不记录动态输入输出，避免 prompt、上下文和 Tool 参数意外进入遥测。需要本地调试时可以显式开启：
 
 ```ts
 telemetry.configure({
@@ -32,7 +54,7 @@ telemetry.configure({
 });
 ```
 
-领域对象可以复用 SuperJSON 的自定义转换器：
+领域对象可以注册 SuperJSON 转换器：
 
 ```ts
 import { defineTransformer, telemetry } from '@ciels/telemetry';
@@ -50,5 +72,15 @@ telemetry.configure({
 });
 ```
 
-库始终创建 OpenTelemetry span、operation counter、error counter 和 duration histogram，
-但不安装 SDK 或 exporter；宿主可以按部署环境自行配置 OpenTelemetry。
+## OpenTelemetry
+
+库会创建 span、operation counter、error counter 与 duration histogram，但不会安装 SDK 或
+exporter。宿主可以按部署环境接入自己的 OpenTelemetry pipeline。
+
+## 开发
+
+```shell
+vp check
+vp test --run
+vp pack
+```

@@ -12,8 +12,8 @@ import type { AnyCue } from '#model/cue/index.ts';
 import { createEngramView, type Engram } from '#model/engram/index.ts';
 import type { LLMContent } from '#model/llm/index.ts';
 
+import type { ResolvedTool } from '../extensions.ts';
 import { CielOperationName, type Instrument } from '../instrumentation.ts';
-import type { ResolvedTool } from '../plugins.ts';
 import { instrumentAgentOperations } from './instrumentation.ts';
 import { createAgentSessionKey } from './session.ts';
 import type {

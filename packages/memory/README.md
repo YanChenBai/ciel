@@ -1,9 +1,26 @@
-# @ciels/memory
+<h1 align="center">@ciels/memory</h1>
 
-`@ciels/memory` 为 Ciel 提供按天记忆、长期记忆、搜索和语义召回。它以 Corex Plugin 接入，
-自动贡献四个 Memory Tools 和一个只读 Projector。
+<p align="center">让 Ciel 记住经历、维护长期事实，并在正确的场景重新想起它们</p>
 
-## 快速使用
+<p align="center">
+  <img alt="PGlite" src="https://img.shields.io/badge/storage-PGlite-336791?logo=postgresql&logoColor=white">
+  <img alt="pgvector" src="https://img.shields.io/badge/search-pgvector-4B8BBE">
+  <img alt="Corex Plugin" src="https://img.shields.io/badge/Corex-Plugin-8A2BE2">
+</p>
+
+> Agentized daily memory, long-term revisions, deterministic search, and semantic recall
+
+## 为什么需要分层记忆
+
+对话历史只能告诉模型刚刚发生了什么，无法稳定表达跨日期事实，也无法隔离不同直播间、项目或人物。
+
+`@ciels/memory` 将记忆拆成三个边界：
+
+- Namespace 负责实例级硬隔离
+- Scope 负责同一实例中的业务场景隔离
+- Daily 与 Long-term 负责经历和稳定事实的不同生命周期
+
+## 快速开始
 
 ```ts
 import { memoryPlugin } from '@ciels/memory';
@@ -11,21 +28,14 @@ import { defineCiel } from 'corex';
 
 const memory = memoryPlugin({
   name: 'memory',
-
-  // 当前业务场景，例如直播间、项目或人物。
   scope: () => ({
     id: `room:${currentRoom.id}`,
     label: currentRoom.name,
   }),
-
-  // 这是 PGlite 数据目录，不是 Markdown 文件或单个数据库文件。
   store: { path: '.ciel-data/memory' },
   embedder,
-
-  // Memory Agent 默认继承主 Ciel 的 model、stream 等配置。
   agent: { maxTurns: 4 },
-  instructions: '只记录可以确认的事实。',
-
+  instructions: '只记录可以确认的事实',
   projector: {
     recentDays: 3,
     maxEntriesPerDay: 20,
@@ -36,78 +46,88 @@ const ciel = defineCiel({
   id: 'blive-main',
   instructions,
   model,
-  plugins: [memory],
+  extensions: [memory],
 });
 
 await ciel.start();
 await ciel.stop();
 ```
 
-`memoryPlugin()` 使用当前 Ciel 的 `id` 作为默认 Namespace，并复用主 Agent 的模型配置，但不会继承
-主 Ciel 的 instructions、会话历史、Tools 或 prompt。Memory Agent 拥有独立提示词和任务队列。
+Memory Agent 继承主 Ciel 的 model、stream 等模型配置，但不会继承 instructions、会话历史、主 Agent
+Tools 或 prompt。它拥有独立提示词和任务队列。
 
-## 数据如何保存
+## 记忆如何流动
 
-PGlite 是唯一事实库，正文和向量分开保存：
+```mermaid
+flowchart LR
+  Experience --> Remember[memory_remember]
+  Remember --> MemoryAgent[Memory Agent]
+  MemoryAgent --> Daily[Daily memory]
+  Daily --> Consolidate[Date consolidation]
+  Consolidate --> LongTerm[Long-term revision]
+  Daily --> Search[memory_search]
+  Daily --> Recall[memory_recall]
+  LongTerm --> Search
+  LongTerm --> Recall
+  Recall --> MainAgent[Main Agent]
+  Search --> MainAgent
+  Daily --> Projector
+  LongTerm --> Projector
+  Projector --> MainAgent
+```
+
+## 数据模型
+
+PGlite 是唯一事实库，正文与向量索引分开保存：
 
 ```text
 PGlite
 ├── daily_memory_entries         每日记忆正文
-├── long_term_memory_revisions   长期记忆正文及 revision
+├── long_term_memory_revisions   长期记忆正文与 revision
 ├── memory_namespaces            Namespace
 ├── memory_scopes                Scope
 ├── memory_consolidated_dates    已结算日期
 └── memory_embeddings            pgvector 语义索引
 ```
 
-- 每日记忆和长期记忆都以完整文本保存在关系表中，并非只保存向量。
-- `memory_embeddings` 只用于语义召回，通过记录 ID 关联正文。
-- `memory_search` 查询正文和结构化字段；`memory_recall` 使用 pgvector 找候选，再由 Memory Agent 整理。
-- Projector 读取正文后临时生成 Markdown 格式的 Agent 上下文。
-- 当前不会写出 `MEMORY.md` 或 `YYYY-MM-DD.md` 文件。
+正文始终保存在关系表中。`memory_embeddings` 只负责候选召回，不替代原始内容。当前不会写出
+`MEMORY.md` 或每日 Markdown 文件。
 
-`store.path` 是 PGlite 数据目录；测试可使用 `{ path: ':memory:' }` 创建纯内存数据库。
+## 隔离规则
 
-## 记忆层级
-
-### 每日记忆
-
-每日记忆记录实际发生的经历，按 `Namespace + Scope + YYYY-MM-DD` 隔离。Memory Agent 会先清理
-推测和重复表达，再写入正文与向量。可通过 `idempotencyKey` 避免重复提交。
-
-### 长期记忆
-
-长期记忆保存跨日期仍然有效的事实、偏好和关系。日期结束后，Memory Agent 根据每日记忆生成
-新的完整 revision；旧 revision 保留用于追溯。
-
-跨天结算是惰性的：新日期首次写入、`flush()` 或 `close()` 时处理已经结束的日期，不需要常驻
-定时器。
-
-## 隔离
-
-- Namespace 是硬隔离边界，默认使用 `ciel.id`，也可通过 `MemoryOptions.id` 覆盖。
-- Scope 是同一 Namespace 内的业务场景，由 `scope()` 动态返回。
-- `current` 只访问当前 Scope，`global` 访问全局记忆。
-- 跨 Scope 查询必须显式使用 `all`，结果始终携带来源 Scope。
+- Namespace 默认使用 `ciel.id`，也可由 `MemoryOptions.id` 覆盖
+- Scope 由 `scope()` 动态返回
+- `current` 只访问当前 Scope
+- `global` 只访问全局记忆
+- `all` 显式执行跨 Scope 检索，并保留结果来源
 
 ## Tools
 
-| Tool              | 作用                                                       |
-| ----------------- | ---------------------------------------------------------- |
-| `memory_remember` | 提交值得记住的经历，由 Memory Agent 总结后写入每日记忆。   |
-| `memory_update`   | 根据更正说明生成新的长期记忆 revision。                    |
-| `memory_recall`   | 使用向量召回相关记忆，并由 Memory Agent 去重、保留来源。   |
-| `memory_search`   | 确定性搜索原始记录，支持 Scope、日期、种类和游标分页过滤。 |
+Memory Plugin 直接向主 Agent 贡献原生 Tools，不使用 Tool Extension。
+
+| Tool              | 作用                               |
+| ----------------- | ---------------------------------- |
+| `memory_remember` | 总结经历并写入每日记忆             |
+| `memory_update`   | 根据更正生成新的长期记忆 revision  |
+| `memory_recall`   | 向量召回候选并由 Memory Agent 整理 |
+| `memory_search`   | 确定性搜索原始记录与结构化字段     |
+
+## Projector
 
 Projector 默认向主 Agent 提供：
 
-1. 全局长期记忆。
-2. 当前 Scope 的长期记忆。
-3. 当前 Scope 最近若干天的每日记忆。
+1. 全局长期记忆
+2. 当前 Scope 长期记忆
+3. 当前 Scope 最近若干天的每日记忆
 
-Projector 只读取已提交数据，不执行模型调用，也不会隐式写入记忆。
+Projector 只读取已提交数据，不调用模型，也不会隐式写入记忆。
 
-## 主要配置
+## 日期结算
+
+长期记忆通过完整 revision 更新，旧 revision 始终保留。跨天结算是惰性的，在新日期首次写入、
+`flush()` 或 `close()` 时处理已经结束的日期，不需要常驻定时器。
+
+## 配置
 
 ```ts
 interface MemoryOptions {
@@ -126,10 +146,13 @@ interface MemoryOptions {
 }
 ```
 
-- `instructions` 在内置事实性约束后追加业务规则。
-- `prompts` 可分别覆盖每日总结、长期整合、长期修订和召回整理提示词。
-- `projector` 控制最近天数、每日数量及是否包含全局或当前长期记忆。
-- `tools` 控制默认召回范围和查询数量。
+底层场景可以调用 `createMemory()` 获取 `tools`、`projector`、`start()`、`flush()` 与 `close()`。
+通常直接使用 `memoryPlugin()` 即可。
 
-底层使用场景可以调用 `createMemory()`，它返回 `tools`、`projector`、`start()`、`flush()` 和
-`close()`；通常直接使用 `memoryPlugin()` 即可。
+## 开发
+
+```shell
+vp check
+vp test --run
+vp pack
+```

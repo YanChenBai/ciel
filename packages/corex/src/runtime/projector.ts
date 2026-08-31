@@ -1,27 +1,27 @@
+import type { ProjectorContext } from '#extension';
 import { createEngramView, type EngramEntry } from '#model/engram/index.ts';
 import type { LLMContext } from '#model/llm/index.ts';
-import type { ProjectorContext } from '#plugin/types.ts';
 
+import type { ResolvedProjector } from './extensions.ts';
 import { CielOperationName } from './instrumentation.ts';
-import type { ResolvedProjector } from './plugins.ts';
 
 export type ProjectorRunner = (
   entries: readonly EngramEntry[],
 ) => Promise<Readonly<Record<string, LLMContext>>>;
 
 /**
- * 将 Plugin 贡献的 Projector 绑定为可执行的上下文投影。
+ * 将 Projector Extension 绑定为可执行的上下文投影
  */
 export function createProjectorRunner(definitions: readonly ResolvedProjector[]): ProjectorRunner {
   const projectors = definitions.map(
-    ({ key, instrument, projector }) =>
+    ({ extension, instrument }) =>
       [
-        key,
-        instrument(projector.project, {
+        extension.name,
+        instrument(extension.project, {
           name: CielOperationName.ProjectorProject,
           metadata: {
-            projectorKey: key,
-            projectorName: projector.name,
+            projectorKey: extension.name,
+            projectorName: extension.name,
           },
         }),
       ] as const,

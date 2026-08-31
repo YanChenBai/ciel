@@ -15,6 +15,12 @@ export interface Signal<TPayload = unknown> extends CielData<'signal'> {
   readonly temporal: Temporal;
 }
 
+export interface SignalReference<TDefinition extends AnySignalDefinition = AnySignalDefinition> {
+  readonly id: string;
+  readonly definition: TDefinition;
+  readonly temporal: Temporal;
+}
+
 export type AnySignalDefinition = SignalDefinition<any>;
 export type AnySignal = Signal<any>;
 export type EmitSignal = (signal: AnySignal) => Promise<void>;

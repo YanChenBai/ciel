@@ -8,11 +8,12 @@ import {
   type AgentSessionStore,
   defineCiel,
   defineCue,
-  definePlugin,
   definePercept,
+  definePlugin,
   defineProjector,
+  defineSensu,
   defineSignal,
-  type PluginOptions,
+  referenceSignal,
 } from '#src/index.ts';
 
 import { assistantMessage, streamResult, testModel, testStream } from './helpers.ts';
@@ -23,7 +24,6 @@ const cueDefinition = defineCue({
   description: 'Observe the latest input',
   prompt: 'Observe the latest perception.',
 });
-const createPlugin = definePlugin((options: PluginOptions) => options);
 
 function createCielOptions(stream: StreamFn = testStream) {
   return {
@@ -36,59 +36,64 @@ function createCielOptions(stream: StreamFn = testStream) {
 
 function createMemorySessionStore(): AgentSessionStore {
   const sessions = new Map<string, AgentMessage[]>();
-
-  function key(address: AgentSessionAddress): string {
-    return JSON.stringify([address.cielId, address.sessionId]);
-  }
-
-  async function load(address: AgentSessionAddress): Promise<readonly AgentMessage[]> {
-    return [...(sessions.get(key(address)) ?? [])];
-  }
-
-  async function append(
-    address: AgentSessionAddress,
-    messages: readonly AgentMessage[],
-  ): Promise<void> {
-    sessions.set(key(address), [...(sessions.get(key(address)) ?? []), ...messages]);
-  }
-
-  return { append, load };
+  const key = (address: AgentSessionAddress) => JSON.stringify([address.cielId, address.sessionId]);
+  return {
+    async load(address) {
+      return [...(sessions.get(key(address)) ?? [])];
+    },
+    async append(address, messages) {
+      sessions.set(key(address), [...(sessions.get(key(address)) ?? []), ...messages]);
+    },
+  };
 }
 
-test('按模块声明顺序启动并逆序停止', async () => {
+test('按四阶段生命周期启动、排空并逆序释放 Plugin', async () => {
   const calls: string[] = [];
-  const first = createPlugin({
-    name: 'first',
-    setup(ctx) {
-      ctx.onStart(() => {
-        calls.push('first:start');
-      });
-      ctx.onDispose(() => {
-        calls.push('first:stop');
-      });
+  const createLifecyclePlugin = definePlugin((name: string) => ({
+    name,
+    create() {
+      return {
+        initialize() {
+          calls.push(`${name}:initialize`);
+        },
+        activate() {
+          calls.push(`${name}:activate`);
+        },
+        deactivate() {
+          calls.push(`${name}:deactivate`);
+        },
+        dispose() {
+          calls.push(`${name}:dispose`);
+        },
+      };
     },
+  }));
+  const ciel = defineCiel({
+    ...createCielOptions(),
+    extensions: [createLifecyclePlugin('first'), createLifecyclePlugin('second')],
   });
-  const second = createPlugin({
-    name: 'second',
-    setup(ctx) {
-      ctx.onStart(() => {
-        calls.push('second:start');
-      });
-      ctx.onDispose(() => {
-        calls.push('second:stop');
-      });
-    },
-  });
-  const ciel = defineCiel({ ...createCielOptions(), plugins: [[first], second] });
 
   await ciel.start();
-  expect(calls).toEqual(['first:start', 'second:start']);
+  expect(calls).toEqual([
+    'first:initialize',
+    'second:initialize',
+    'first:activate',
+    'second:activate',
+  ]);
   await ciel.stop();
-  expect(calls).toEqual(['first:start', 'second:start', 'second:stop', 'first:stop']);
+  expect(calls).toEqual([
+    'first:initialize',
+    'second:initialize',
+    'first:activate',
+    'second:activate',
+    'second:deactivate',
+    'first:deactivate',
+    'second:dispose',
+    'first:dispose',
+  ]);
 });
 
-test('通用模块继承 Agent 配置并贡献 Tool、Projector 与生命周期', async () => {
-  const calls: string[] = [];
+test('Plugin 继承 Agent 配置并分别提供 Tool 与 Projector Extension', async () => {
   const execute = vi.fn(async () => ({
     content: [{ type: 'text' as const, text: 'remembered' }],
     details: { stored: true },
@@ -104,6 +109,13 @@ test('通用模块继承 Agent 配置并贡献 Tool、Projector 与生命周期'
       additionalProperties: false,
     },
     execute,
+  };
+  const hostTool: AgentTool<any> = {
+    name: 'host_tool',
+    label: 'Host tool',
+    description: 'Only available to the main Agent.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    execute: async () => ({ content: [], details: {} }),
   };
   const generated: AssistantMessage[] = [
     {
@@ -123,31 +135,26 @@ test('通用模块继承 Agent 配置并贡献 Tool、Projector 与生命周期'
   let inherited: unknown;
   let inheritedCielId: unknown;
   let projected: unknown;
-  const memory = createPlugin({
+  const createMemory = definePlugin(() => ({
     name: 'memory',
-    setup(ctx) {
-      inherited = ctx.agent;
-      inheritedCielId = ctx.id;
-      ctx.provide({
+    create(context) {
+      inherited = context.agent;
+      inheritedCielId = context.cielId;
+      return {
         tools: [tool],
-        projectors: [
+        extensions: [
           defineProjector({
             name: 'memory',
             project: () => [{ type: 'text', text: 'long-term memory' }],
           }),
         ],
-      });
-      ctx.onStart(() => {
-        calls.push('memory:start');
-      });
-      ctx.onDispose(() => {
-        calls.push('memory:stop');
-      });
+      };
     },
-  });
+  }));
   const ciel = defineCiel({
     ...createCielOptions(stream),
-    plugins: [memory],
+    extensions: [createMemory()],
+    tools: [hostTool],
     prompt(frame) {
       projected = frame.context;
       return { role: 'user', content: 'think', timestamp: 1 };
@@ -157,19 +164,44 @@ test('通用模块继承 Agent 配置并贡献 Tool、Projector 与生命周期'
   expect(inherited).toMatchObject({ model: testModel, stream });
   expect(inheritedCielId).toBe(ciel.id);
   expect(inherited).not.toHaveProperty('instructions');
+  expect(inherited).not.toHaveProperty('extensions');
   expect(inherited).not.toHaveProperty('tools');
-  expect(inherited).not.toHaveProperty('prompt');
-
   await ciel.start();
-  expect(calls).toEqual(['memory:start']);
   await ciel.think(cueDefinition.create(instant));
   expect(projected).toEqual({ memory: [{ type: 'text', text: 'long-term memory' }] });
   expect(execute).toHaveBeenCalledOnce();
   await ciel.stop();
-  expect(calls).toEqual(['memory:start', 'memory:stop']);
 });
 
-test('拒绝重复 Plugin 和冲突的 Agent 贡献', () => {
+test('顶层 tools 直接进入 Agent，不需要 Tool Extension', async () => {
+  const execute = vi.fn(async () => ({ content: [], details: { direct: true } }));
+  const tool: AgentTool<any> = {
+    name: 'direct_tool',
+    label: 'Direct tool',
+    description: 'Provided directly by defineCiel.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    execute,
+  };
+  const generated: AssistantMessage[] = [
+    {
+      ...assistantMessage('', 'toolUse'),
+      content: [{ type: 'toolCall', id: 'direct-call', name: tool.name, arguments: {} }],
+    },
+    assistantMessage('done'),
+  ];
+  const ciel = defineCiel({
+    ...createCielOptions(() => streamResult(generated.shift()!)),
+    extensions: [],
+    tools: [tool],
+  });
+
+  await ciel.start();
+  await ciel.think(cueDefinition.create(instant));
+  expect(execute).toHaveBeenCalledOnce();
+  await ciel.stop();
+});
+
+test('拒绝重复 Extension 和冲突的 Tool 或 Projector', () => {
   const tool: AgentTool<any> = {
     name: 'duplicate',
     label: 'Duplicate',
@@ -177,134 +209,179 @@ test('拒绝重复 Plugin 和冲突的 Agent 贡献', () => {
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     execute: async () => ({ content: [], details: {} }),
   };
-  const plugin = createPlugin({
-    name: 'provider',
-    setup(ctx) {
-      ctx.provide({ tools: [tool] });
-    },
-  });
-
-  expect(() =>
-    defineCiel({
-      ...createCielOptions(),
-      plugins: [plugin, plugin],
-    }),
-  ).toThrow('Ciel plugin "provider" is installed more than once');
-  expect(() =>
-    defineCiel({
-      ...createCielOptions(),
-      plugins: [plugin, createPlugin({ name: 'second-provider', tools: [tool] })],
-    }),
-  ).toThrow(
-    'Agent tool "duplicate" is provided by both plugin "provider" and plugin "second-provider"',
+  const extension = defineProjector({ name: 'same', project: () => [] });
+  expect(() => defineCiel({ ...createCielOptions(), extensions: [extension, extension] })).toThrow(
+    'Ciel extension "same" is installed more than once',
   );
-
-  expect(() =>
-    defineCiel({
-      ...createCielOptions(),
-      plugins: [createPlugin({ name: 'duplicate-provider', tools: [tool, tool] })],
-    }),
-  ).toThrow(
-    'Agent tool "duplicate" is provided by both plugin "duplicate-provider" and plugin "duplicate-provider"',
+  expect(() => defineCiel({ ...createCielOptions(), extensions: [], tools: [tool, tool] })).toThrow(
+    'Agent tool "duplicate" is provided by both',
   );
-
-  const firstProjector = defineProjector({ name: 'memory', project: () => [] });
-  const secondProjector = defineProjector({ name: 'memory', project: () => [] });
   expect(() =>
     defineCiel({
       ...createCielOptions(),
-      plugins: [firstProjector, secondProjector],
+      extensions: [
+        defineProjector({ name: 'memory', project: () => [] }),
+        defineProjector({ name: 'memory', project: () => [] }),
+      ],
     }),
-  ).toThrow('Agent projector "memory" is provided by both plugin "memory" and plugin "memory"');
+  ).toThrow('Agent projector "memory" is provided by both');
 });
 
-test('模块 setup 必须同步且完成后不能继续注册能力', () => {
-  const asyncPlugin = createPlugin({
-    name: 'async-plugin',
-    async setup() {},
-  });
-  expect(() =>
-    defineCiel({
-      ...createCielOptions(),
-      plugins: [asyncPlugin],
-    }),
-  ).toThrow(
-    'Ciel plugin "async-plugin" setup must be synchronous; register async work with onStart()',
-  );
-
-  let register!: () => void;
-  const latePlugin = createPlugin({
-    name: 'late-plugin',
-    setup(ctx) {
-      register = () => ctx.provide({ tools: [] });
-    },
-  });
-  defineCiel({
-    ...createCielOptions(),
-    plugins: [latePlugin],
-  });
-
-  expect(register).toThrow('Ciel plugin "late-plugin" cannot register capabilities after setup');
-});
-
-test('emitSignal 只在 Ciel 运行期间可用', async () => {
-  const signal = defineSignal({ name: 'lifecycle-event' });
-  let emit!: () => Promise<void>;
-  const plugin = createPlugin({
-    name: 'source',
-    setup(ctx) {
-      emit = () => ctx.emitSignal(signal.create(undefined, instant));
-    },
-  });
-  const ciel = defineCiel({ ...createCielOptions(), plugins: [plugin] });
-
-  await expect(emit()).rejects.toThrow(
-    'Ciel plugin "source" cannot emit while Ciel is not running',
-  );
-  await ciel.start();
-  await expect(emit()).resolves.toBeUndefined();
-  await ciel.stop();
-  await expect(emit()).rejects.toThrow(
-    'Ciel plugin "source" cannot emit while Ciel is not running',
-  );
-});
-
-test('模块解释 Signal 后写入 Percept 并异步触发 Agent', async () => {
+test('Sensu 以独立输入输出流聚合多个 Signal，并先写入 Percept 再触发 Cue', async () => {
   const signal = defineSignal<number>({ name: 'number' });
-  const percept = definePercept({ name: 'number' });
-  const frames: number[][] = [];
-  const sensu = createPlugin({
-    name: 'reader',
-    setup(ctx) {
-      ctx.sensu(signal, current => ({
-        percepts: percept.create({
-          source: current,
-          contents: [{ type: 'text', text: String(current.payload) }],
-          temporal: current.temporal,
-        }),
-        cues: cueDefinition.create(current.temporal),
-      }));
+  const percept = definePercept({ name: 'numbers' });
+  const frames: string[][] = [];
+  const createBatchSensu = defineSensu(() => ({
+    name: 'batch-numbers',
+    signal,
+    create({ output }) {
+      const inputs: ReturnType<typeof signal.create>[] = [];
+      return {
+        async write(current) {
+          inputs.push(current);
+          if (inputs.length < 2) return;
+          await output.write({
+            percepts: percept.create({
+              origin: signal,
+              causes: inputs.map(input => referenceSignal(input)),
+              contents: [{ type: 'text', text: inputs.map(input => input.payload).join(',') }],
+              temporal: current.temporal,
+            }),
+            cues: cueDefinition.create(current.temporal),
+          });
+        },
+        close() {},
+      };
     },
-  });
-  const stimulus = createPlugin({
+  }));
+  const createSource = definePlugin(() => ({
     name: 'source',
-    setup(ctx) {
-      ctx.onStart(() => ctx.emitSignal(signal.create(42, instant)));
+    create() {
+      return {
+        async activate({ emitSignal }) {
+          await emitSignal(signal.create(1, instant));
+          await emitSignal(signal.create(2, instant));
+        },
+      };
     },
-  });
+  }));
   const ciel = defineCiel({
     ...createCielOptions(),
-    plugins: [stimulus, sensu],
+    extensions: [createBatchSensu(), createSource()],
     prompt(frame) {
-      frames.push(frame.delta.map(entry => entry.value.source.payload as number));
+      frames.push(
+        frame.delta.flatMap(entry =>
+          entry.value.contents.flatMap(content => (content.type === 'text' ? [content.text] : [])),
+        ),
+      );
       return { role: 'user', content: 'think', timestamp: 1 };
     },
   });
 
   await ciel.start();
-  await vi.waitFor(() => expect(frames).toEqual([[42]]));
+  await vi.waitFor(() => expect(frames).toEqual([['1,2']]));
   expect(ciel.engram.size).toBe(1);
+  expect(ciel.engram.all()[0]?.value.causes).toHaveLength(2);
   await ciel.stop();
+});
+
+test('停止时先停输入，再允许 Sensu close 刷新输出，最后释放 Plugin', async () => {
+  const calls: string[] = [];
+  const signal = defineSignal<string>({ name: 'buffered' });
+  const percept = definePercept({ name: 'flushed' });
+  let last: ReturnType<typeof signal.create> | undefined;
+  const createBufferedSensu = defineSensu(() => ({
+    name: 'buffered',
+    signal,
+    create({ output }) {
+      return {
+        write(current) {
+          last = current;
+        },
+        async close() {
+          calls.push('sensu:close');
+          if (!last) return;
+          await output.write({
+            percepts: percept.create({
+              origin: signal,
+              causes: [referenceSignal(last)],
+              contents: [{ type: 'text', text: last.payload }],
+              temporal: last.temporal,
+            }),
+          });
+        },
+      };
+    },
+  }));
+  const createSource = definePlugin(() => ({
+    name: 'source',
+    create() {
+      return {
+        activate: ({ emitSignal }) => emitSignal(signal.create('final', instant)),
+        deactivate() {
+          calls.push('plugin:deactivate');
+        },
+        dispose() {
+          calls.push('plugin:dispose');
+        },
+      };
+    },
+  }));
+  const ciel = defineCiel({
+    ...createCielOptions(),
+    extensions: [createBufferedSensu(), createSource()],
+  });
+
+  await ciel.start();
+  await ciel.stop();
+  expect(calls).toEqual(['plugin:deactivate', 'sensu:close', 'plugin:dispose']);
+  expect(ciel.engram.all()[0]?.value.contents).toEqual([{ type: 'text', text: 'final' }]);
+});
+
+test('Sensu close 失败时仍排空已经接受的输出', async () => {
+  const signal = defineSignal<string>({ name: 'close-error-input' });
+  const percept = definePercept({ name: 'close-error-output' });
+  let last: ReturnType<typeof signal.create> | undefined;
+  const createFailingSensu = defineSensu(() => ({
+    name: 'close-error',
+    signal,
+    create({ output }) {
+      return {
+        write(current) {
+          last = current;
+        },
+        close() {
+          if (last) {
+            void output.write({
+              percepts: percept.create({
+                origin: signal,
+                causes: [referenceSignal(last)],
+                contents: [{ type: 'text', text: last.payload }],
+                temporal: last.temporal,
+              }),
+            });
+          }
+          throw new Error('close failed');
+        },
+      };
+    },
+  }));
+  const createSource = definePlugin(() => ({
+    name: 'close-error-source',
+    create: () => ({
+      activate: ({ emitSignal }) => emitSignal(signal.create('accepted', instant)),
+    }),
+  }));
+  const ciel = defineCiel({
+    ...createCielOptions(),
+    extensions: [createFailingSensu(), createSource()],
+  });
+
+  await ciel.start();
+  await expect(ciel.stop()).rejects.toThrow('close failed');
+  expect(ciel.engram.entries(percept)[0]?.value.contents).toEqual([
+    { type: 'text', text: 'accepted' },
+  ]);
 });
 
 test('同一个 Ciel 的 think 严格串行', async () => {
@@ -318,9 +395,8 @@ test('同一个 Ciel 的 think 严格串行', async () => {
     active -= 1;
     return streamResult();
   };
-  const ciel = defineCiel({ ...createCielOptions(stream), plugins: [] });
+  const ciel = defineCiel({ ...createCielOptions(stream), extensions: [] });
   await ciel.start();
-
   const first = ciel.think(cueDefinition.create(instant));
   const second = ciel.think(cueDefinition.create(instant));
   await vi.waitFor(() => expect(releases).toHaveLength(1));
@@ -329,7 +405,6 @@ test('同一个 Ciel 的 think 严格串行', async () => {
   await vi.waitFor(() => expect(releases).toHaveLength(1));
   releases.shift()!();
   await second;
-
   expect(maximum).toBe(1);
   await ciel.stop();
 });
@@ -339,9 +414,9 @@ test('使用 Ciel id 与 sessionId 隔离并恢复完整对话', async () => {
   const first = defineCiel({
     ...createCielOptions(),
     id: 'ciel-main',
-    sessionId: '2026-08-30',
+    sessionId: '2026-08-31',
     sessionStore,
-    plugins: [],
+    extensions: [],
   });
   await first.start();
   await first.think(cueDefinition.create(instant));
@@ -351,91 +426,23 @@ test('使用 Ciel id 与 sessionId 隔离并恢复完整对话', async () => {
   const restored = defineCiel({
     ...createCielOptions(),
     id: 'ciel-main',
-    sessionId: '2026-08-30',
+    sessionId: '2026-08-31',
     sessionStore,
-    plugins: [],
+    extensions: [],
   });
   await restored.start();
   expect(restored.messages).toEqual(persisted);
   await restored.stop();
-
-  const isolated = defineCiel({
-    ...createCielOptions(),
-    id: 'another-ciel',
-    sessionId: '2026-08-30',
-    sessionStore,
-    plugins: [],
-  });
-  await isolated.start();
-  expect(isolated.messages).toEqual([]);
-  await isolated.stop();
 });
 
-test('未提供 id 和 sessionId 时生成非空标识', () => {
-  const ciel = defineCiel({ ...createCielOptions(), plugins: [] });
-
-  expect(ciel.id).not.toBe('');
-  expect(ciel.sessionId).not.toBe('');
-});
-
-test('默认提示词只注入显式 Cue.prompt，不注入 Cue metadata 或 payload', async () => {
-  let serializedContext = '';
-  const stream: StreamFn = (_model, context) => {
-    serializedContext = JSON.stringify(context.messages);
-    return streamResult();
-  };
-  const privateCue = defineCue<{ secret: string }>({
-    name: 'private-control-cue',
-    description: 'must not reach the model',
-    prompt: 'Handle the current situation.',
-  });
-  const ciel = defineCiel({ ...createCielOptions(stream), plugins: [] });
-  await ciel.start();
-
-  await ciel.think(privateCue.create(instant, { secret: 'hidden-payload' }));
-
-  expect(serializedContext).toContain('Handle the current situation.');
-  expect(serializedContext).not.toContain('private-control-cue');
-  expect(serializedContext).not.toContain('must not reach the model');
-  expect(serializedContext).not.toContain('hidden-payload');
-  await ciel.stop();
-});
-
-test('失败的思考不提交 Engram checkout', async () => {
-  const signal = defineSignal({ name: 'event' });
-  const percept = definePercept({ name: 'event' });
-  const deltas: number[] = [];
-  let attempt = 0;
-  const stream: StreamFn = () =>
-    streamResult(attempt++ === 0 ? assistantMessage('failed', 'error') : assistantMessage());
-  const ciel = defineCiel({
-    ...createCielOptions(stream),
-    plugins: [],
-    prompt(frame) {
-      deltas.push(frame.delta.length);
-      return { role: 'user', content: 'retry', timestamp: 1 };
-    },
-  });
-  ciel.engram.append(
-    percept.create({ source: signal.create(undefined, instant), contents: [], temporal: instant }),
-  );
-  await ciel.start();
-
-  await expect(ciel.think(cueDefinition.create(instant))).rejects.toThrow('failed');
-  await ciel.think(cueDefinition.create(instant));
-
-  expect(deltas).toEqual([1, 1]);
-  await ciel.stop();
-});
-
-describe('Projector Plugin', () => {
-  test('直接放入 plugins 后生成 Agent 上下文', async () => {
+describe('Projector Extension', () => {
+  test('直接放入 extensions 后生成 Agent 上下文', async () => {
     const project = vi.fn(() => [{ type: 'text' as const, text: 'projected' }]);
     const projector = defineProjector({ name: 'recent', project });
     let projected: unknown;
     const ciel = defineCiel({
       ...createCielOptions(),
-      plugins: [projector],
+      extensions: [projector],
       prompt(frame) {
         projected = frame.context;
         return { role: 'user', content: 'think', timestamp: 1 };
@@ -443,7 +450,6 @@ describe('Projector Plugin', () => {
     });
     await ciel.start();
     await ciel.think(cueDefinition.create(instant));
-
     expect(projected).toEqual({ recent: [{ type: 'text', text: 'projected' }] });
     expect(project).toHaveBeenCalledOnce();
     await ciel.stop();

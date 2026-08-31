@@ -14,7 +14,10 @@ export type {
   SignalHandler,
   SignalListener,
   SignalOf,
+  SignalReference,
 } from './types.ts';
+
+import type { AnySignal, SignalReference } from './types.ts';
 
 export function defineSignal<TPayload = unknown>(
   options: DefineSignalOptions,
@@ -29,6 +32,7 @@ export function defineSignal<TPayload = unknown>(
     create(payload, temporal) {
       return {
         type: DataType.Signal,
+        id: createId(),
         definition,
         payload,
         temporal,
@@ -37,4 +41,12 @@ export function defineSignal<TPayload = unknown>(
   };
 
   return definition;
+}
+
+export function referenceSignal(signal: AnySignal): SignalReference {
+  return {
+    id: signal.id,
+    definition: signal.definition,
+    temporal: signal.temporal,
+  };
 }

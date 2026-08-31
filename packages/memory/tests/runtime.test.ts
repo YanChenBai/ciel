@@ -109,7 +109,7 @@ describe('Memory runtime', () => {
       model: testModel,
       stream: () => streamText('ok'),
       sessionStore: false,
-      plugins: [memory],
+      extensions: [memory],
     });
 
     await expect(ciel.start()).resolves.toBeUndefined();

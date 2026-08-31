@@ -15,11 +15,11 @@ export interface AgentFrame {
   readonly cue: AnyCue;
   readonly checkout: EngramCheckout;
   /**
-   * 本轮开始时的最近 Engram 快照。
+   * 本轮开始时的最近 Engram 快照
    */
   readonly engram: EngramView;
   /**
-   * 本轮尚未被 Agent 成功消费的增量条目。
+   * 本轮尚未被 Agent 成功消费的增量条目
    */
   readonly delta: readonly EngramEntry[];
   readonly context: AgentContext;
@@ -49,7 +49,7 @@ export interface AgentSessionStore {
 
 export interface CreateAgentSessionStoreOptions {
   /**
-   * 默认 `.ciel`。
+   * 默认 `.ciel`
    */
   readonly path?: string;
   readonly cwd?: string;
@@ -62,11 +62,11 @@ export interface CielAgentOptions extends Omit<
   readonly instructions: string;
   readonly model: Model<any>;
   /**
-   * 不传时由 defineCiel 为本次运行生成。传入日期即可按天恢复会话。
+   * 不传时由 defineCiel 为本次运行生成传入日期即可按天恢复会话
    */
   readonly sessionId?: string;
   /**
-   * 默认使用 `.ciel` 下的 Pi JSONL Session；传 `false` 禁用持久化。
+   * 默认使用 `.ciel` 下的 Pi JSONL Session；传 `false` 禁用持久化
    */
   readonly sessionStore?: AgentSessionStore | false;
   readonly stream?: StreamFn;
@@ -76,11 +76,11 @@ export interface CielAgentOptions extends Omit<
 }
 
 /**
- * 可由内部子 Agent 继承的主 Agent 配置。
+ * 可由内部子 Agent 继承的主 Agent 配置
  */
 export type AgentConfig = Omit<
   CielAgentOptions,
-  'instructions' | 'prompt' | 'sessionId' | 'sessionStore'
+  'instructions' | 'prompt' | 'sessionId' | 'sessionStore' | 'tools'
 >;
 
 export type AgentRuntimeStatus = 'idle' | 'running' | 'stopping';

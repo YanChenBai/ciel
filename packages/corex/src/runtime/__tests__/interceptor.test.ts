@@ -7,6 +7,7 @@ import {
   CielOperationName,
   defineCiel,
   defineCue,
+  defineInterceptor,
   definePlugin,
   defineProjector,
   type InstrumentContext,
@@ -17,25 +18,20 @@ import { assistantMessage, streamResult, testModel } from './helpers.ts';
 const cue = defineCue({ name: 'instrument', prompt: 'Run the instrumented agent.' });
 const instant = { kind: 'instant', at: 1 } as const;
 
-test('插装 Agent prompt、每次模型生成、Plugin Tool 和 Projector 执行', async () => {
+test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async () => {
   const calls: InstrumentContext[] = [];
-  const defineInterceptor = definePlugin((options: { readonly name: string }) => ({
-    ...options,
-    interceptors: [
-      {
-        intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
-          if (!context) throw new Error('Expected instrument context');
-          return next =>
-            ((...args: Parameters<T>) => {
-              calls.push(context);
-              return next(...args);
-            }) as T;
-        },
-      },
-    ],
-  }));
-  const interceptor = defineInterceptor({
+  const observer = defineInterceptor({
     name: 'agent-observer',
+    interceptor: {
+      intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
+        if (!context) throw new Error('Expected instrument context');
+        return next =>
+          ((...args: Parameters<T>) => {
+            calls.push(context);
+            return next(...args);
+          }) as T;
+      },
+    },
   });
   const execute = vi.fn(async () => ({
     content: [{ type: 'text' as const, text: 'remembered' }],
@@ -53,14 +49,6 @@ test('插装 Agent prompt、每次模型生成、Plugin Tool 和 Projector 执�
     },
     execute,
   };
-  const toolPlugin = definePlugin((tools: readonly AgentTool<any>[]) => ({
-    name: 'tools',
-    tools,
-  }))([tool]);
-  const projector = defineProjector({
-    name: 'memory',
-    project: () => [{ type: 'text', text: 'projected memory' }],
-  });
   const generated: AssistantMessage[] = [
     {
       ...assistantMessage('', 'toolUse'),
@@ -76,106 +64,108 @@ test('插装 Agent prompt、每次模型生成、Plugin Tool 和 Projector 执�
     assistantMessage('done'),
   ];
   const stream: StreamFn = () => streamResult(generated.shift()!);
-  const onAgentEvent = vi.fn();
+  const projector = defineProjector({
+    name: 'memory',
+    project: () => [{ type: 'text', text: 'projected memory' }],
+  });
+  const createCapability = definePlugin(() => ({
+    name: 'capability',
+    create() {
+      return {
+        extensions: [projector],
+        tools: [tool],
+        initialize() {},
+        activate() {},
+        deactivate() {},
+        dispose() {},
+      };
+    },
+  }));
+  const capability = createCapability();
   const ciel = defineCiel({
     instructions: 'You are Ciel.',
     model: testModel,
     sessionStore: false,
     stream,
-    onAgentEvent,
-    plugins: [interceptor, toolPlugin, projector],
+    extensions: [observer, capability],
   });
 
   await ciel.start();
   await ciel.think(cue.create(instant));
   await ciel.stop();
 
-  expect(calls).toEqual([
-    { name: CielOperationName.AgentThink },
-    {
-      name: CielOperationName.ProjectorProject,
-      metadata: {
-        pluginId: projector.id,
-        pluginName: projector.name,
-        projectorKey: projector.name,
-        projectorName: projector.name,
-      },
-    },
-    { name: CielOperationName.AgentPrompt },
-    { name: CielOperationName.AgentGenerate },
-    {
-      name: CielOperationName.AgentToolExecute,
-      metadata: {
-        pluginId: toolPlugin.id,
-        pluginName: toolPlugin.name,
-        toolLabel: tool.label,
-        toolName: tool.name,
-      },
-    },
-    { name: CielOperationName.AgentGenerate },
+  expect(calls.map(context => context.name)).toEqual([
+    CielOperationName.PluginCreate,
+    CielOperationName.PluginInitialize,
+    CielOperationName.PluginActivate,
+    CielOperationName.AgentThink,
+    CielOperationName.ProjectorProject,
+    CielOperationName.AgentPrompt,
+    CielOperationName.AgentGenerate,
+    CielOperationName.AgentToolExecute,
+    CielOperationName.AgentGenerate,
+    CielOperationName.PluginDeactivate,
+    CielOperationName.PluginDispose,
   ]);
-  expect(execute).toHaveBeenCalledWith(
-    'memory-call',
-    { content: 'stable fact' },
-    undefined,
-    expect.any(Function),
-  );
-  expect(onAgentEvent).toHaveBeenCalledWith(
-    expect.objectContaining({ type: 'tool_execution_end', toolName: tool.name }),
-  );
+  expect(calls.find(context => context.name === CielOperationName.AgentToolExecute)).toEqual({
+    name: CielOperationName.AgentToolExecute,
+    metadata: {
+      pluginId: capability.id,
+      pluginName: capability.name,
+      toolLabel: tool.label,
+      toolName: tool.name,
+    },
+  });
 });
 
-test('Plugin 通过共享 instrumenter 插装内部操作并获得自身 metadata', async () => {
+test('Plugin 使用派生 instrument 合并身份与内部操作 metadata', () => {
   const calls: InstrumentContext[] = [];
-  const observer = definePlugin(() => ({
+  const observer = defineInterceptor({
     name: 'observer',
-    interceptors: [
-      {
-        intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
-          if (context?.name !== 'ciel.plugin.internal') return undefined;
-          return next =>
-            ((...args: Parameters<T>) => {
-              calls.push(context);
-              return next(...args);
-            }) as T;
-        },
+    interceptor: {
+      intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
+        if (context?.name !== 'ciel.plugin.internal') return undefined;
+        return next =>
+          ((...args: Parameters<T>) => {
+            calls.push(context);
+            return next(...args);
+          }) as T;
       },
-    ],
-  }))({});
+    },
+  });
   let run!: (value: number) => number;
-  const capability = definePlugin(() => ({
+  const createCapability = definePlugin(() => ({
     name: 'capability',
-    setup(ctx) {
-      run = ctx.instrument((value: number) => value * 2, {
+    create(context) {
+      const internal = context.instrument.with({
         name: 'ciel.plugin.internal',
         metadata: { capability: 'test' },
       });
+      run = internal((value: number) => value * 2, {
+        name: 'ciel.plugin.internal',
+        metadata: { pluginId: 'forged', operation: 'double' },
+      });
+      return {};
     },
-  }))({});
-  const ciel = defineCiel({
+  }));
+  const capability = createCapability();
+  defineCiel({
     instructions: 'You are Ciel.',
     model: testModel,
     sessionStore: false,
-    plugins: [observer, capability],
+    extensions: [observer, capability],
   });
 
-  expect(() => run(2)).toThrow(
-    'Ciel plugin "capability" cannot run instruments while Ciel is not running',
-  );
-  await ciel.start();
   expect(run(2)).toBe(4);
   expect(calls).toEqual([
     {
       name: 'ciel.plugin.internal',
       metadata: {
+        operation: 'double',
         capability: 'test',
         pluginId: capability.id,
         pluginName: capability.name,
       },
     },
   ]);
-  await ciel.stop();
-  expect(() => run(2)).toThrow(
-    'Ciel plugin "capability" cannot run instruments while Ciel is not running',
-  );
 });

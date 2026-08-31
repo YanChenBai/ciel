@@ -1,4 +1,4 @@
-import type { Signal } from 'corex';
+import { referenceSignal, type Signal } from 'corex';
 import sharp from 'sharp';
 
 import { Sight } from '../definitions.ts';
@@ -39,6 +39,10 @@ export class VisionRuntime {
     return current;
   }
 
+  close(): Promise<void> {
+    return this.processing;
+  }
+
   private async processFrame(
     signal: Signal<PhotonPayload>,
   ): Promise<ReturnType<typeof Sight.create> | undefined> {
@@ -57,7 +61,8 @@ export class VisionRuntime {
     const image = await sharp(signal.payload.data).jpeg({ quality: 85 }).toBuffer();
     difference.commit();
     return Sight.create({
-      source: signal,
+      origin: signal.definition,
+      causes: [referenceSignal(signal)],
       temporal: signal.temporal,
       contents: [{ type: 'image', data: image, mimeType: 'image/jpeg' }],
     });

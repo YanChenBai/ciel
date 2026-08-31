@@ -1,9 +1,9 @@
 // @env node
 
-import type { LLMContext, Percept, ProjectorOptions, Signal } from 'corex';
+import { defineProjector, type LLMContext, type Percept, type ProjectorExtension } from 'corex';
 
 import { Hearing, Sight } from './definitions.ts';
-import type { SensuProjectorOptions, SpeechResultPayload } from './types.ts';
+import type { SensuProjectorOptions } from './types.ts';
 import { composeVisionFrames } from './vision/composer.ts';
 
 const DEFAULT_HEARING_PROMPT = '以下是按时间排列的听觉转写，请结合来源与说话人理解。';
@@ -23,17 +23,12 @@ function selectFrames<T>(frames: readonly T[], limit: number): readonly T[] {
   );
 }
 
-function speechPayload(percept: Percept): SpeechResultPayload | undefined {
-  const payload: unknown = percept.source.payload;
-  if (
-    typeof payload !== 'object' ||
-    payload === null ||
-    !('origin' in payload) ||
-    !('result' in payload)
-  ) {
-    return undefined;
-  }
-  return payload as SpeechResultPayload;
+function temporalStart(percept: Percept): number {
+  return percept.temporal.kind === 'instant' ? percept.temporal.at : percept.temporal.start;
+}
+
+function textContent(percept: Percept): string | undefined {
+  return percept.contents.find(content => content.type === 'text')?.text;
 }
 
 function imageData(percept: Percept): Buffer | undefined {
@@ -45,13 +40,13 @@ function imageData(percept: Percept): Buffer | undefined {
 export function createSensuProjector(
   name: string,
   options: SensuProjectorOptions = {},
-): ProjectorOptions {
+): ProjectorExtension {
   const maxVisionFrames = options.maxVisionFrames ?? 9;
   if (!Number.isSafeInteger(maxVisionFrames) || maxVisionFrames < 1 || maxVisionFrames > 9) {
     throw new Error('projector.maxVisionFrames must be an integer between 1 and 9');
   }
 
-  return {
+  return defineProjector({
     name,
     description: '合并视觉变化帧与听觉转写。',
     async project({ engram }): Promise<LLMContext> {
@@ -59,12 +54,11 @@ export function createSensuProjector(
       const hearing = engram.entries(Hearing);
       if (hearing.length > 0) {
         const lines = hearing.flatMap(entry => {
-          const payload = speechPayload(entry.value);
-          if (!payload) return [];
-          const speaker = payload.result.speaker ? `[${payload.result.speaker}] ` : '';
+          const text = textContent(entry.value);
+          if (!text) return [];
           return [
-            `[${new Date(payload.result.startAt).toISOString()}] ` +
-              `[${payload.origin.name}] ${speaker}${payload.result.content}`,
+            `[${new Date(temporalStart(entry.value)).toISOString()}] ` +
+              `[${entry.value.origin.name}] ${text}`,
           ];
         });
         if (lines.length > 0) {
@@ -80,9 +74,8 @@ export function createSensuProjector(
       for (const entry of engram.entries(Sight)) {
         const data = imageData(entry.value);
         if (!data) continue;
-        const source = entry.value.source as Signal;
-        const key = source.definition.id;
-        const group = groups.get(key) ?? { name: source.definition.name, frames: [] };
+        const key = entry.value.origin.id;
+        const group = groups.get(key) ?? { name: entry.value.origin.name, frames: [] };
         group.frames.push({ data, recordedAt: entry.recordedAt });
         groups.set(key, group);
       }
@@ -105,5 +98,5 @@ export function createSensuProjector(
 
       return context;
     },
-  };
+  });
 }

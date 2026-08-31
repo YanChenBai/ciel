@@ -25,3 +25,8 @@ release. Add a tool name to select part of the graph. For example, run
 - [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
 
 <!--VITE PLUS END-->
+
+## Code Comments
+
+- Code comments must not use the Chinese full stop `。` or Chinese comma `，`
+- Keep comments concise and focused on intent, invariants, lifecycle boundaries, or non-obvious behavior

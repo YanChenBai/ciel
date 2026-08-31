@@ -1,19 +1,23 @@
 import type { CielData } from '#model/data.ts';
 import type { CielDefinition } from '#model/definition.ts';
 import type { LLMContext } from '#model/llm/index.ts';
-import type { Signal } from '#model/signal/index.ts';
+import type { AnySignalDefinition, SignalReference } from '#model/signal/index.ts';
 import type { Temporal } from '#shared';
 import type { CielMetadata } from '#shared/metadata.ts';
 
 export interface PerceptDefinition extends CielDefinition<'percept-definition'> {
-  create<TSource extends Signal<any>>(options: CreatePerceptOptions<TSource>): Percept<TSource>;
+  create(options: CreatePerceptOptions): Percept;
 }
 
-export interface CreatePerceptOptions<TSource extends Signal<any> = Signal<any>> {
+export interface CreatePerceptOptions {
   /**
-   * 产生该感知的原始 Signal
+   * 形成该感知的 Signal 定义
    */
-  source: TSource;
+  origin: AnySignalDefinition;
+  /**
+   * 精确因果已知时提供 未知时不伪造单一来源
+   */
+  causes?: readonly SignalReference[];
   /**
    * 供 LLM 直接消费的多模态内容
    */
@@ -28,9 +32,10 @@ export interface CreatePerceptOptions<TSource extends Signal<any> = Signal<any>>
   confidence?: number;
 }
 
-export interface Percept<TSource extends Signal<any> = Signal<any>> extends CielData<'percept'> {
+export interface Percept extends CielData<'percept'> {
   readonly definition: PerceptDefinition;
-  readonly source: TSource;
+  readonly origin: AnySignalDefinition;
+  readonly causes?: readonly SignalReference[];
   readonly contents: LLMContext;
   readonly temporal: Temporal;
   readonly confidence?: number;

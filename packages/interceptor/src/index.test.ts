@@ -172,4 +172,46 @@ describe('interceptor', () => {
     await expect(instrumentedAsync()).resolves.toBe(42);
     expect(caught).toBe(error);
   });
+
+  it('派生 Instrument 合并上下文并保护固定字段', () => {
+    const received: InstrumentContext[] = [];
+    const instrument = createInstrumenter([
+      {
+        intercept(_target, context) {
+          if (context) received.push(context);
+          return undefined;
+        },
+      },
+    ]);
+    const pluginInstrument = instrument.with({
+      metadata: { pluginId: 'trusted', pluginName: 'memory' },
+    });
+    const operationInstrument = pluginInstrument.with({
+      name: 'ciel.memory.search',
+      metadata: { capability: 'memory' },
+    });
+
+    operationInstrument(() => undefined, {
+      name: 'ciel.memory.search',
+      metadata: { pluginId: 'forged', query: 'hello' },
+    });
+
+    expect(received).toEqual([
+      {
+        name: 'ciel.memory.search',
+        metadata: {
+          query: 'hello',
+          capability: 'memory',
+          pluginId: 'trusted',
+          pluginName: 'memory',
+        },
+      },
+    ]);
+    expect(() => operationInstrument(() => undefined, { name: 'other' })).toThrow(
+      'Instrument name "ciel.memory.search" cannot be overridden with "other"',
+    );
+    expect(() => operationInstrument.with({ name: 'other' })).toThrow(
+      'Instrument name "ciel.memory.search" cannot be overridden with "other"',
+    );
+  });
 });

@@ -1,6 +1,12 @@
-import { definePercept, defineSignal, type DefineSignalOptions } from 'corex';
+import { defineCue, definePercept, defineSignal, type DefineSignalOptions } from 'corex';
 
-import type { EchoDefinition, EchoPayload, PhotonDefinition, PhotonPayload } from './types.ts';
+import type {
+  EchoDefinition,
+  EchoPayload,
+  PhotonDefinition,
+  PhotonPayload,
+  SpeechEndedPayload,
+} from './types.ts';
 
 export const Sight = definePercept({
   name: 'sight',
@@ -10,6 +16,12 @@ export const Sight = definePercept({
 export const Hearing = definePercept({
   name: 'hearing',
   description: '经 VAD、ASR 与说话人识别形成的听觉文本。',
+});
+
+export const SpeechEnded = defineCue<SpeechEndedPayload>({
+  name: 'speech-ended',
+  description: 'VAD 检测到一段语音结束。',
+  prompt: '一段语音刚刚结束，请结合最新听觉上下文作出判断。',
 });
 
 export function definePhoton(options: DefineSignalOptions): PhotonDefinition {

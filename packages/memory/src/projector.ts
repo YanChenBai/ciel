@@ -1,5 +1,5 @@
 import { defineProjector } from 'corex';
-import type { Projector } from 'corex';
+import type { ProjectorExtension } from 'corex';
 
 import type {
   DailyMemoryEntry,
@@ -73,7 +73,7 @@ export function createMemoryProjector(options: {
   readonly scope: () => MemoryScope | undefined;
   readonly now: () => number;
   readonly projector?: MemoryProjectorOptions;
-}): Projector {
+}): ProjectorExtension {
   const recentDays = options.projector?.recentDays ?? 3;
   const maxEntriesPerDay = options.projector?.maxEntriesPerDay ?? 20;
   const includeGlobalLongTerm = options.projector?.includeGlobalLongTerm ?? true;
@@ -85,7 +85,7 @@ export function createMemoryProjector(options: {
     async project() {
       const currentScope = options.scope();
 
-      // 投影是稳定快照，所有独立读取共享同一 Scope，并在渲染 Markdown 前全部完成
+      // 投影是稳定快照,所有独立读取共享同一 Scope,并在渲染 Markdown 前全部完成
       const [globalLongTerm, currentLongTerm, recent] = await Promise.all([
         includeGlobalLongTerm
           ? options.store.latestLongTerm(options.namespaceId, 'global')

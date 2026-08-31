@@ -1,6 +1,6 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type { EmbeddingModel } from 'ai';
-import type { AgentConfig, Projector } from 'corex';
+import type { AgentConfig, ProjectorExtension } from 'corex';
 
 /**
  * 用于隔离同一场景或主体记忆的稳定标识
@@ -99,7 +99,7 @@ export interface SearchMemoryInput {
 
 export interface MemoryStoreOptions {
   /**
-   * PGlite 数据目录，`:memory:` 创建纯内存数据库
+   * PGlite 数据目录,`:memory:` 创建纯内存数据库
    */
   readonly path: string;
 }
@@ -143,7 +143,7 @@ export interface PendingMemoryDate {
 }
 
 /**
- * 持久化边界，自定义 Store 可替换内置 PGlite Store
+ * 持久化边界,自定义 Store 可替换内置 PGlite Store
  */
 export interface MemoryStore {
   start(): Promise<void>;
@@ -235,7 +235,7 @@ export interface CreateMemoryOptions extends Omit<
  * 向 Plugin 和高级调用方暴露的运行时资源
  */
 export interface MemoryRuntime {
-  readonly projector: Projector;
+  readonly projector: ProjectorExtension;
   readonly tools: readonly AgentTool<any>[];
   start(): Promise<void>;
   flush(): Promise<void>;

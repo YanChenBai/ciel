@@ -1,6 +1,13 @@
 import { expect, expectTypeOf, test } from 'vite-plus/test';
 
-import { DataType, DefinitionType, defineCue, definePercept, defineSignal } from '#model';
+import {
+  DataType,
+  DefinitionType,
+  defineCue,
+  definePercept,
+  defineSignal,
+  referenceSignal,
+} from '#model';
 
 const instant = { kind: 'instant', at: 42 } as const;
 
@@ -18,12 +25,14 @@ test('创建保留定义、载荷和时间信息的 Signal 与 Cue', () => {
   const cuePayload = { word: 'Ciel' };
 
   expect(signalDefinition.create(signalPayload, instant)).toMatchObject({
+    id: expect.any(String),
     type: DataType.Signal,
     definition: signalDefinition,
     payload: signalPayload,
     temporal: instant,
   });
   expect(cueDefinition.create(instant, cuePayload)).toMatchObject({
+    id: expect.any(String),
     type: DataType.Cue,
     definition: cueDefinition,
     payload: cuePayload,
@@ -47,6 +56,7 @@ test('无载荷 Cue 保持可省略 payload 的调用契约', () => {
 
   expectTypeOf(definition.create).toBeCallableWith(instant);
   expect(definition.create(instant)).toMatchObject({
+    id: expect.any(String),
     type: DataType.Cue,
     definition,
     payload: undefined,
@@ -65,11 +75,19 @@ test('创建包含来源和可选置信度的多模态 Percept', () => {
   ] as const;
 
   expect(
-    definition.create({ source, contents: [...contents], temporal: instant, confidence: 0.75 }),
+    definition.create({
+      origin: signalDefinition,
+      causes: [referenceSignal(source)],
+      contents: [...contents],
+      temporal: instant,
+      confidence: 0.75,
+    }),
   ).toMatchObject({
+    id: expect.any(String),
     type: DataType.Percept,
     definition,
-    source,
+    origin: signalDefinition,
+    causes: [referenceSignal(source)],
     contents,
     temporal: instant,
     confidence: 0.75,
@@ -77,7 +95,7 @@ test('创建包含来源和可选置信度的多模态 Percept', () => {
   expect(definition).toMatchObject({ type: DefinitionType.Percept });
 });
 
-test('每个定义获得独立标识', () => {
+test('每个定义和数据实例获得独立标识', () => {
   const definitions = [
     defineSignal({ name: 'same-name' }),
     defineSignal({ name: 'same-name' }),
@@ -88,4 +106,8 @@ test('每个定义获得独立标识', () => {
 
   expect(ids).toEqual(ids.map(() => expect.any(String)));
   expect(new Set(ids).size).toBe(ids.length);
+
+  const signal = defineSignal({ name: 'instance' });
+  const instances = [signal.create(undefined, instant), signal.create(undefined, instant)];
+  expect(new Set(instances.map(instance => instance.id)).size).toBe(instances.length);
 });

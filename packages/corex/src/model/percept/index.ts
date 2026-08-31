@@ -1,6 +1,5 @@
 import { DataType } from '#model/data.ts';
 import { DefinitionType } from '#model/definition.ts';
-import type { Signal } from '#model/signal/index.ts';
 import { createId } from '#shared/id.ts';
 
 import type {
@@ -26,12 +25,14 @@ export function definePercept(options: DefinePerceptOptions): PerceptDefinition 
 
     id: createId(),
 
-    create<TSource extends Signal<any>>(options: CreatePerceptOptions<TSource>): Percept<TSource> {
+    create(options: CreatePerceptOptions): Percept {
       return {
         type: DataType.Percept,
+        id: createId(),
         definition,
         contents: options.contents,
-        source: options.source,
+        origin: options.origin,
+        causes: options.causes,
         temporal: options.temporal,
         confidence: options.confidence,
       };

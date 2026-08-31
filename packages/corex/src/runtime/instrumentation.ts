@@ -3,6 +3,7 @@ export type {
   AnyFunction,
   Instrument,
   InstrumentContext,
+  InstrumentPreset,
   InterceptorWrapper,
 } from '@ciels/interceptor';
 
@@ -11,9 +12,16 @@ export const CielOperationName = {
   AgentPrompt: 'ciel.agent.prompt',
   AgentThink: 'ciel.agent.think',
   AgentToolExecute: 'ciel.agent.tool.execute',
-  PluginStart: 'ciel.plugin.start',
+  PluginCreate: 'ciel.plugin.create',
+  PluginInitialize: 'ciel.plugin.initialize',
+  PluginActivate: 'ciel.plugin.activate',
+  PluginDeactivate: 'ciel.plugin.deactivate',
+  PluginDispose: 'ciel.plugin.dispose',
   ProjectorProject: 'ciel.projector.project',
-  Sensu: 'ciel.sensu',
+  SensuCreate: 'ciel.sensu.create',
+  SensuInput: 'ciel.sensu.input',
+  SensuOutput: 'ciel.sensu.output',
+  SensuClose: 'ciel.sensu.close',
   SignalEmit: 'ciel.signal.emit',
 } as const;
 

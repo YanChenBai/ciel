@@ -1,23 +1,21 @@
-import type { AgentMessage } from '@earendil-works/pi-agent-core';
+import type { AgentMessage, AgentTool } from '@earendil-works/pi-agent-core';
 
+import type { CielExtensionEntry } from '#extension';
 import type { AnyCue } from '#model/cue/index.ts';
 import type { Engram } from '#model/engram/index.ts';
-import type { CielPlugin } from '#plugin/types.ts';
 
 import type { CielAgentOptions } from './agent/index.ts';
 import type { LifecycleStatus } from './lifecycle/index.ts';
 
 export type Think = (cue: AnyCue) => Promise<readonly AgentMessage[]>;
 
-export type InstallableCielPlugin = CielPlugin;
-export type InstallableCielPluginEntry = InstallableCielPlugin | readonly InstallableCielPlugin[];
-
 export interface DefineCielOptions extends CielAgentOptions {
   /**
-   * 长期稳定的 Ciel/资源隔离标识；不传时生成 UUID。
+   * 长期稳定的 Ciel/资源隔离标识；不传时生成 UUID
    */
   readonly id?: string;
-  readonly plugins: readonly InstallableCielPluginEntry[];
+  readonly extensions: readonly CielExtensionEntry[];
+  readonly tools?: readonly AgentTool<any>[];
 }
 
 export type CielStatus = LifecycleStatus;

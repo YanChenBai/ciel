@@ -15,10 +15,9 @@ const perceptDefinition = definePercept({
 
 function createTestPercept(value: string, at: number): Percept {
   const temporal = { kind: 'instant', at } as const;
-  const source = signalDefinition.create(value, temporal);
 
   return perceptDefinition.create({
-    source,
+    origin: signalDefinition,
     contents: [{ type: 'text', text: value }],
     temporal,
   });
@@ -74,9 +73,8 @@ test('按照 Percept 定义筛选条目', () => {
   const engram = createEngram({ recentLimit: 10, now: () => 1_000 });
   const included = createTestPercept('included', 1);
   const temporal = { kind: 'instant', at: 2 } as const;
-  const source = signalDefinition.create('excluded', temporal);
   const excluded = otherPerceptDefinition.create({
-    source,
+    origin: signalDefinition,
     contents: [{ type: 'text', text: 'excluded' }],
     temporal,
   });
@@ -144,7 +142,7 @@ test('清理超过保留期限的条目', () => {
 
   expect(engram.prune()).toBe(1);
   expect(engram.size).toBe(1);
-  expect(engram.all().map(entry => entry.value)).toEqual([createTestPercept('boundary', 2)]);
+  expect(engram.all()[0]?.value.contents).toEqual([{ type: 'text', text: 'boundary' }]);
 
   engram.clear();
   expect(engram.all()).toEqual([]);

@@ -26,6 +26,7 @@ export function defineCue<TPayload = void>(options: DefineCueOptions): CueDefini
     create: ((temporal: Temporal, payload?: TPayload) => {
       return {
         type: DataType.Cue,
+        id: createId(),
         definition,
         payload,
         temporal,

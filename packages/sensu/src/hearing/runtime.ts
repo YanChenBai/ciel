@@ -1,17 +1,16 @@
 import { ASR, type ASROptions, type ASRResult } from '@ciels/asr';
 import type { Instrument } from '@ciels/interceptor';
-import type { EmitSignal, Signal, SignalDefinition } from 'corex';
+import type { Signal } from 'corex';
 
 import { SensuOperationName } from '../instrumentation.ts';
-import type { EchoDefinition, EchoPayload, SpeechResultPayload } from '../types.ts';
+import type { EchoDefinition, EchoPayload, SpeechSegment } from '../types.ts';
 
 export interface HearingRuntimeOptions {
   readonly asr?: ASROptions;
-  readonly emitSignal: EmitSignal;
   readonly instrument: Instrument;
+  readonly onSegment: (segment: SpeechSegment) => Promise<unknown>;
   readonly onError?: (error: Error) => void;
   readonly origin: EchoDefinition;
-  readonly speech: SignalDefinition<SpeechResultPayload>;
 }
 
 function toError(error: unknown): Error {
@@ -22,7 +21,9 @@ export class HearingRuntime {
   private readonly asr: ASR;
   private error?: Error;
   private readonly pending = new Set<Promise<void>>();
-  private readonly publishResult: (result: ASRResult) => Promise<SpeechResultPayload>;
+  private readonly publishSegment: (segment: SpeechSegment) => Promise<unknown>;
+  private result?: ASRResult;
+  private speechStartAt?: Date;
   private readonly unsubscribers: (() => void)[];
   private readonly write: ASR['write'];
 
@@ -37,24 +38,20 @@ export class HearingRuntime {
       name: SensuOperationName.ASRInput,
       metadata,
     });
-    this.publishResult = options.instrument(
-      async result => {
-        const payload = { origin: this.options.origin, result };
-        const temporal = {
-          kind: 'interval',
-          start: result.startAt.getTime(),
-          end: result.endAt.getTime(),
-        } as const;
-        await this.options.emitSignal(this.options.speech.create(payload, temporal));
-        return payload;
-      },
-      {
-        name: SensuOperationName.ASROutput,
-        metadata,
-      },
-    );
+    this.publishSegment = options.instrument(options.onSegment, {
+      name: SensuOperationName.ASROutput,
+      metadata,
+    });
     this.unsubscribers = [
-      this.asr.on('result', result => this.emitResult(result)),
+      this.asr.on('speechstart', at => {
+        // One VAD interval may aggregate PCM from many Echo Signals
+        this.speechStartAt = at;
+        this.result = undefined;
+      }),
+      this.asr.on('result', result => {
+        this.result = result;
+      }),
+      this.asr.on('speechend', at => this.emitSegment(at)),
       this.asr.on('error', error => this.captureError(error)),
     ];
   }
@@ -85,8 +82,18 @@ export class HearingRuntime {
     this.options.onError?.(normalized);
   }
 
-  private emitResult(result: ASRResult): void {
-    const pending = this.publishResult(result).then(
+  private emitSegment(endAt: Date): void {
+    // Speech end is meaningful even when recognition produced no text
+    const result = this.result;
+    const segment: SpeechSegment = {
+      origin: this.options.origin,
+      startAt: this.speechStartAt ?? result?.startAt ?? endAt,
+      endAt,
+      ...(result ? { result } : {}),
+    };
+    this.result = undefined;
+    this.speechStartAt = undefined;
+    const pending = this.publishSegment(segment).then(
       () => undefined,
       error => {
         this.captureError(error);

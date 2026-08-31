@@ -1,7 +1,7 @@
 import type { AgentTool, StreamFn } from '@earendil-works/pi-agent-core';
 
+import type { ResolvedTool } from '../extensions.ts';
 import { CielOperationName, type Instrument } from '../instrumentation.ts';
-import type { ResolvedTool } from '../plugins.ts';
 import type { AgentPrompt } from './types.ts';
 
 interface InstrumentAgentOperationsOptions {
@@ -20,7 +20,7 @@ export interface InstrumentedAgentOperations {
 function instrumentTools(
   tools: readonly ResolvedTool[] | undefined,
 ): readonly AgentTool<any>[] | undefined {
-  return tools?.map(({ instrument, value: tool }) => ({
+  return tools?.map(({ tool, instrument }) => ({
     ...tool,
     execute: instrument(tool.execute, {
       name: CielOperationName.AgentToolExecute,
@@ -33,7 +33,7 @@ function instrumentTools(
 }
 
 /**
- * 为 Agent 自身拥有的 prompt、模型生成和工具执行边界统一插装。
+ * 为 Agent 自身拥有的 prompt、模型生成和工具执行边界统一插装
  */
 export function instrumentAgentOperations(
   options: InstrumentAgentOperationsOptions,
