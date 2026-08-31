@@ -79,8 +79,8 @@ export interface TelemetryEventQuery {
 export type TelemetrySubscriber = (event: TelemetryEvent) => void;
 
 export interface Telemetry extends Interceptor {
+  (configuration: TelemetryConfiguration): void;
   readonly throughSequence: number;
-  configure(configuration: TelemetryConfiguration): void;
   deserialize<T = unknown>(value: string): T;
   /**
    * 当前异步调用链内正在执行的最内层 operation。

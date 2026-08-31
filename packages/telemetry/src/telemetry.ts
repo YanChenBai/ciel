@@ -294,7 +294,7 @@ function createTelemetry(): Telemetry {
     operations.clear();
   }
 
-  function configure(configuration: TelemetryConfiguration): void {
+  function applyConfiguration(configuration: TelemetryConfiguration): void {
     if (configuration.capture !== undefined) {
       capture = resolveCapture(configuration.capture);
     }
@@ -325,12 +325,9 @@ function createTelemetry(): Telemetry {
     return unsubscribe.bind(undefined, subscriber);
   }
 
-  const telemetry: Telemetry = {
-    get throughSequence() {
-      return getThroughSequence();
-    },
+  const telemetry = applyConfiguration as Telemetry;
+  Object.assign(telemetry, {
     clear,
-    configure,
     currentOperation,
     deserialize,
     events,
@@ -338,7 +335,11 @@ function createTelemetry(): Telemetry {
     operation,
     parentOf,
     subscribe,
-  };
+  });
+  Object.defineProperty(telemetry, 'throughSequence', {
+    enumerable: true,
+    get: getThroughSequence,
+  });
 
   return telemetry;
 }

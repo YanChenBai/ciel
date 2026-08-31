@@ -11,7 +11,7 @@ class Token {
 describe('Corex telemetry', () => {
   beforeEach(() => {
     telemetry.clear();
-    telemetry.configure({ capture: true });
+    telemetry({ capture: true });
   });
 
   test('记录嵌套 operation 并可查找父级', async () => {
@@ -123,7 +123,7 @@ describe('Corex telemetry', () => {
       deserialize: value => new Token(value),
     });
     const serializer = createSerializer([tokenTransformer]);
-    telemetry.configure({
+    telemetry({
       transformers: [tokenTransformer],
     });
     const instrument = createInstrumenter([telemetry]);

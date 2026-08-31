@@ -49,7 +49,7 @@ telemetry.subscribe(event => {
 默认不记录动态输入输出，避免 prompt、上下文和 Tool 参数意外进入遥测。需要本地调试时可以显式开启：
 
 ```ts
-telemetry.configure({
+telemetry({
   capture: true,
 });
 ```
@@ -59,7 +59,7 @@ telemetry.configure({
 ```ts
 import { defineTransformer, telemetry } from '@ciels/telemetry';
 
-telemetry.configure({
+telemetry({
   capture: true,
   transformers: [
     defineTransformer({
