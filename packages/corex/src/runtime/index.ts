@@ -68,6 +68,10 @@ function createInheritedAgentConfig(options: DefineCielOptions): AgentConfig {
   return Object.freeze(config) as AgentConfig;
 }
 
+function mergeInstructions(base: string, extensions: readonly string[]): string {
+  return [base.trim(), ...extensions].filter(Boolean).join('\n\n');
+}
+
 async function settle(actions: readonly (() => Promise<void>)[], errors: unknown[]): Promise<void> {
   for (const action of actions) {
     try {
@@ -111,6 +115,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     engram,
     hasProjectors: extensions.projectors.length > 0,
     instrument,
+    instructions: mergeInstructions(options.instructions, extensions.instructions),
     project,
     sessionId,
     sessionStore,

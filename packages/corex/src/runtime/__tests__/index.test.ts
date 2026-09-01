@@ -173,6 +173,28 @@ test('Plugin 继承 Agent 配置并分别提供 Tool 与 Projector Extension', a
   await ciel.stop();
 });
 
+test('Plugin 使用规则按声明顺序追加到主 Agent 系统提示词', async () => {
+  let systemPrompt: string | undefined;
+  const stream: StreamFn = (_model, context) => {
+    systemPrompt = context.systemPrompt;
+    return streamResult();
+  };
+  const createInstructions = definePlugin((instructions: string) => ({
+    name: instructions,
+    create: () => ({ instructions }),
+  }));
+  const ciel = defineCiel({
+    ...createCielOptions(stream),
+    extensions: [createInstructions('Use memory.'), createInstructions('Use hearing.')],
+  });
+
+  await ciel.start();
+  await ciel.think(cueDefinition.create(instant));
+
+  expect(systemPrompt).toBe('You are Ciel.\n\nUse memory.\n\nUse hearing.');
+  await ciel.stop();
+});
+
 test('顶层 tools 直接进入 Agent，不需要 Tool Extension', async () => {
   const execute = vi.fn(async () => ({ content: [], details: { direct: true } }));
   const tool: AgentTool<any> = {

@@ -40,6 +40,7 @@ export default defineConfig({
       dev: {
         command: 'evp dev',
         cache: false,
+        dependsOn: [{ task: 'build', from: 'dependencies' }],
       },
     },
   },

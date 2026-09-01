@@ -15,6 +15,16 @@ const BASE_INSTRUCTIONS = lines(
   '- 严格遵循任务的输出协议，不添加解释、标题或 Markdown 围栏。',
 );
 
+export const MEMORY_PLUGIN_INSTRUCTIONS = lines(
+  '# 记忆',
+  '',
+  '- 使用 memory_remember 主动保存真实发生、未来仍有价值的经历，不要依赖对话历史代替持久记忆。',
+  '- 使用 memory_update 更正或更新已经变化的长期事实。',
+  '- 当前上下文不足时，使用 memory_recall 按语义回忆；需要按日期、类型或关键词精确查找时使用 memory_search。',
+  '- current 只代表当前场景，global 代表跨场景事实；只有确实需要跨场景检索时才使用 all。',
+  '- 已投影到上下文的记忆可以直接使用，不要为了确认已知内容重复调用工具。',
+);
+
 /**
  * 默认任务契约，每个提示词描述一项操作及其输出
  */

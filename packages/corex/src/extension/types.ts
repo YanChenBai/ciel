@@ -98,6 +98,10 @@ export interface PluginRuntimeContext {
 
 export interface PluginInstance {
   /**
+   * 追加到主 Agent 系统提示词的 Plugin 使用规则
+   */
+  readonly instructions?: string;
+  /**
    * 由 Plugin 拥有且共享 Plugin 身份的运行时扩展
    */
   readonly extensions?: readonly PluginCapability[];

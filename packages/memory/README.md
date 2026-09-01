@@ -56,6 +56,9 @@ await ciel.stop();
 Memory Agent 继承主 Ciel 的 model、stream 等模型配置，但不会继承 instructions、会话历史、主 Agent
 Tools 或 prompt。它拥有独立提示词和任务队列。
 
+Memory Plugin 还会把记忆工具的使用规则追加到主 Agent 系统提示词。主 Agent 负责判断何时保存、
+更新或检索记忆，独立 Memory Agent 只负责整理和筛选传入的记忆任务。
+
 ## 记忆如何流动
 
 ```mermaid

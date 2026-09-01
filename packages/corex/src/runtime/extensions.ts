@@ -36,6 +36,7 @@ export type ResolvedProjector = OwnedExtension<AnyProjectorExtension>;
 export type ResolvedSensu = OwnedExtension<SensuExtension>;
 
 export interface ResolvedExtensions {
+  readonly instructions: readonly string[];
   readonly plugins: readonly ResolvedPlugin[];
   readonly projectors: readonly ResolvedProjector[];
   readonly sensu: readonly ResolvedSensu[];
@@ -94,6 +95,7 @@ export function resolveExtensions(
   },
 ): ResolvedExtensions {
   const ids = new Set<string>();
+  const instructions: string[] = [];
   const plugins: ResolvedPlugin[] = [];
   const projectors: ResolvedProjector[] = [];
   const sensu: ResolvedSensu[] = [];
@@ -140,6 +142,9 @@ export function resolveExtensions(
     };
     plugins.push(plugin);
 
+    const pluginInstructions = plugin.instance.instructions?.trim();
+    if (pluginInstructions) instructions.push(pluginInstructions);
+
     for (const capability of plugin.instance.extensions ?? []) {
       addCapability(capability, plugin);
     }
@@ -150,7 +155,7 @@ export function resolveExtensions(
 
   assertUniqueNames(tools, value => value.tool.name, 'Agent tool');
   assertUniqueNames(projectors, value => value.extension.name, 'Agent projector');
-  return { plugins, projectors, sensu, tools };
+  return { instructions, plugins, projectors, sensu, tools };
 }
 
 function assertUniqueNames<T extends { readonly plugin?: ResolvedPlugin }>(

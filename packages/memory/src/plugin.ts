@@ -1,7 +1,11 @@
 import { definePlugin } from 'corex';
 import type { PluginCreateContext } from 'corex';
 
-import { createMemoryInstructions, resolveMemoryPrompts } from './prompts.ts';
+import {
+  createMemoryInstructions,
+  MEMORY_PLUGIN_INSTRUCTIONS,
+  resolveMemoryPrompts,
+} from './prompts.ts';
 import { createMemory } from './runtime.ts';
 import type { MemoryOptions } from './types.ts';
 
@@ -27,6 +31,7 @@ export const memoryPlugin = definePlugin((options: MemoryOptions) => {
 
       return {
         extensions: [runtime.projector],
+        instructions: MEMORY_PLUGIN_INSTRUCTIONS,
         tools: runtime.tools,
         initialize: () => runtime.start(),
         dispose: () => runtime.close(),
