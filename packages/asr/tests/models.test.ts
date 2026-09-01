@@ -25,4 +25,20 @@ describe('createAurisModelConfig', () => {
     });
     expect(config.vad.tenVad?.model).toMatch(/ten-vad\.int8\.onnx$/);
   });
+
+  it('在创建配置时读取最新的 CIEL_DATA_DIR', () => {
+    const previous = process.env.CIEL_DATA_DIR;
+    try {
+      process.env.CIEL_DATA_DIR = 'C:\\ciel-first';
+      const first = createAurisModelConfig();
+      process.env.CIEL_DATA_DIR = 'C:\\ciel-second';
+      const second = createAurisModelConfig();
+
+      expect(first.vad.tenVad?.model).toContain('ciel-first');
+      expect(second.vad.tenVad?.model).toContain('ciel-second');
+    } finally {
+      if (previous === undefined) delete process.env.CIEL_DATA_DIR;
+      else process.env.CIEL_DATA_DIR = previous;
+    }
+  });
 });

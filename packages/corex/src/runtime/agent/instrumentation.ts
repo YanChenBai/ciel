@@ -1,7 +1,7 @@
 import type { AgentTool, StreamFn } from '@earendil-works/pi-agent-core';
 
 import type { ResolvedTool } from '../extensions.ts';
-import { CielOperationName, type Instrument } from '../instrumentation.ts';
+import { cielOperation, CielOperationName, type Instrument } from '../instrumentation.ts';
 import type { AgentPrompt } from './types.ts';
 
 interface InstrumentAgentOperationsOptions {
@@ -22,13 +22,13 @@ function instrumentTools(
 ): readonly AgentTool<any>[] | undefined {
   return tools?.map(({ tool, instrument }) => ({
     ...tool,
-    execute: instrument(tool.execute, {
-      name: CielOperationName.AgentToolExecute,
-      metadata: {
+    execute: instrument(
+      tool.execute,
+      cielOperation(CielOperationName.AgentToolExecute, {
         toolLabel: tool.label,
         toolName: tool.name,
-      },
-    }),
+      }),
+    ),
   }));
 }
 
@@ -41,8 +41,8 @@ export function instrumentAgentOperations(
   const { instrument, prompt, stream, tools } = options;
 
   return {
-    prompt: instrument(prompt, { name: CielOperationName.AgentPrompt }),
-    stream: instrument(stream, { name: CielOperationName.AgentGenerate }),
+    prompt: instrument(prompt, cielOperation(CielOperationName.AgentPrompt)),
+    stream: instrument(stream, cielOperation(CielOperationName.AgentGenerate)),
     tools: instrumentTools(tools),
   };
 }

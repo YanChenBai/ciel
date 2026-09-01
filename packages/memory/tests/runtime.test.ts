@@ -4,7 +4,6 @@ import {
   type AssistantMessage,
   type Model,
 } from '@earendil-works/pi-ai';
-import { MockEmbeddingModelV4 } from 'ai/test';
 import { defineCiel } from 'corex';
 import { describe, expect, it } from 'vite-plus/test';
 
@@ -55,13 +54,12 @@ function streamText(text: string): ReturnType<StreamFn> {
   return stream;
 }
 
-const embedder = new MockEmbeddingModelV4({
-  doEmbed: {
-    embeddings: [[1, 0, 0]],
-    usage: { tokens: 1 },
-    warnings: [],
-  },
-});
+const embedder = {
+  doEmbed: () =>
+    Promise.resolve({
+      embeddings: [[1, 0, 0]],
+    }),
+};
 
 describe('Memory runtime', () => {
   it('通过 remember Tool 写入，并由只读 Projector 投影', async () => {

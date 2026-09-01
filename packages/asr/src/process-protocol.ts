@@ -7,6 +7,7 @@ export type ASRWorkerCommand =
   | { type: 'close' };
 
 export type ASRWorkerEvent =
+  | { type: 'ready' }
   | {
       type: 'result';
       data: {
@@ -19,4 +20,4 @@ export type ASRWorkerEvent =
       };
     }
   | { type: 'speechstart' | 'speechend'; at: string }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string; fatal?: boolean };

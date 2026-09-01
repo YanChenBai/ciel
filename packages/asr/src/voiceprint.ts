@@ -3,13 +3,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { AURIS_VOICEPRINTS_PATH } from './constants.ts';
+import { resolveAurisVoiceprintsPath } from './constants.ts';
 
 const VOICEPRINT_MAGIC = 'CIELVP01';
 const HEADER_SIZE = VOICEPRINT_MAGIC.length + Uint32Array.BYTES_PER_ELEMENT;
 
 export function resolveVoiceprintPath(file: string): string {
-  const root = path.resolve(AURIS_VOICEPRINTS_PATH);
+  const root = path.resolve(resolveAurisVoiceprintsPath());
   const target = path.resolve(root, file);
   const relative = path.relative(root, target);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {

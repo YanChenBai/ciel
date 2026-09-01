@@ -4,7 +4,7 @@ import type { AnySignal, SignalHandler } from '#model/signal/index.ts';
 
 import type { SignalBus } from './event-bus/index.ts';
 import type { ResolvedSensu } from './extensions.ts';
-import { CielOperationName } from './instrumentation.ts';
+import { cielOperation, CielOperationName } from './instrumentation.ts';
 import type { Think } from './types.ts';
 
 function normalizeMany<T>(value: T | readonly T[] | undefined): readonly T[] {
@@ -24,7 +24,7 @@ function createOutputRuntime(
   let open = true;
   // Serialize commits so independently produced outputs retain submission order
   let queue = Promise.resolve();
-  const commit = sensu.instrument.with({ name: CielOperationName.SensuOutput })(
+  const commit = sensu.instrument.with(cielOperation(CielOperationName.SensuOutput))(
     async (result: SensuResult): Promise<SensuOutputReceipt> => {
       const percepts = normalizeMany(result.percepts);
       const cues = normalizeMany(result.cues);
@@ -76,15 +76,15 @@ export async function installSensu(
 ): Promise<SensuRuntime> {
   // Input and output are separate instrumented boundaries by design
   const output = createOutputRuntime(sensu, services);
-  const create = sensu.instrument.with({ name: CielOperationName.SensuCreate })(
+  const create = sensu.instrument.with(cielOperation(CielOperationName.SensuCreate))(
     sensu.extension.create,
   );
   const processor: SensuProcessor = await create({
     instrument: sensu.instrument,
     output: output.output,
   });
-  const write = sensu.instrument.with({ name: CielOperationName.SensuInput })((signal: AnySignal) =>
-    processor.write(signal),
+  const write = sensu.instrument.with(cielOperation(CielOperationName.SensuInput))(
+    (signal: AnySignal) => processor.write(signal),
   );
   const handler: SignalHandler<typeof sensu.extension.signal> = signal => write(signal);
   const unsubscribe = services.signalBus.onSignal(sensu.extension.signal, handler);
@@ -98,7 +98,7 @@ export async function installSensu(
       } catch (error) {
         errors.push(error);
       }
-      const close = sensu.instrument.with({ name: CielOperationName.SensuClose })(() =>
+      const close = sensu.instrument.with(cielOperation(CielOperationName.SensuClose))(() =>
         processor.close(),
       );
       try {

@@ -37,6 +37,7 @@ export async function fetchAreas(): Promise<readonly LiveArea[]> {
 export async function fetchRoom(roomId: number): Promise<RoomInfo> {
   const room = await request<{
     area_name?: string;
+    description?: string;
     live_status?: number;
     parent_area_name?: string;
     room_id?: number;
@@ -51,6 +52,7 @@ export async function fetchRoom(roomId: number): Promise<RoomInfo> {
     : {};
   return {
     areaName: room.area_name ?? '未知',
+    description: room.description ?? '',
     live: room.live_status === 1,
     parentAreaName: room.parent_area_name ?? '未知',
     roomId: room.room_id ?? roomId,

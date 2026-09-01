@@ -15,9 +15,11 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.39",
+    "@ciels/asr": "workspace:*",
     "@ciels/devtool": "workspace:*",
     "@ciels/devtool-bridge": "workspace:*",
     "@ciels/devtool-protocol": "workspace:*",
+    "@ciels/interceptor": "workspace:*",
     "@ciels/memory": "workspace:*",
     "@ciels/sensu": "workspace:*",
     "@ciels/telemetry": "workspace:*",
@@ -25,7 +27,6 @@
     "@earendil-works/pi-ai": "0.84.3",
     "@lucide/vue": "^1.35.0",
     "@vuetify/v0": "^1.2.0",
-    "ai": "^7.0.83",
     "corex": "workspace:*",
     "typebox": "1.3.7",
     "vue": "rc"

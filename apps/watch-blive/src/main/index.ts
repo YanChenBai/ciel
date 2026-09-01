@@ -15,6 +15,8 @@ let controller: RuntimeController | undefined;
 let disposeIpc: (() => void) | undefined;
 
 loadEnvironment();
+configureUserDataPath();
+configureRemoteDebugging();
 
 async function createWindow(): Promise<void> {
   const window = new BrowserWindow({
@@ -38,34 +40,24 @@ async function createWindow(): Promise<void> {
   liveView = new LiveView(window);
   controller = new RuntimeController(liveView, app.getPath('userData'));
   disposeIpc = registerIpc(window, controller, liveView);
+  window.once('ready-to-show', () => window.show());
   if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL);
   else await window.loadFile(join(import.meta.dirname, '../renderer/index.html'));
-  window.once('ready-to-show', () => window.show());
   await controller.initialize();
   if (process.env.ELECTRON_VITE_PLUS_SMOKE === '1') {
     const layout = await window.webContents.executeJavaScript(`new Promise(resolve => {
       requestAnimationFrame(() => requestAnimationFrame(() => {
         const setup = document.querySelector('[data-view="setup"]');
         const setupRect = setup?.getBoundingClientRect();
-        const devtoolButton = [...document.querySelectorAll('button')]
-          .find(button => button.textContent?.includes('Devtool'));
-        devtoolButton?.click();
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          const devtool = document.querySelector('.embedded-devtool');
-          const devtoolRect = devtool?.getBoundingClientRect();
-          const targetHeader = document.querySelector('.embedded-devtool > .devtool > header');
-          resolve({
-            bridge: Boolean(window.watchBlive),
-            devtool: devtoolRect
-              ? { height: devtoolRect.height, top: devtoolRect.top, width: devtoolRect.width }
-              : undefined,
-            setup: setupRect
-              ? { height: setupRect.height, top: setupRect.top, width: setupRect.width }
-              : undefined,
-            targetHeaderDisplay: targetHeader ? getComputedStyle(targetHeader).display : undefined,
-            titlebar: Boolean(document.querySelector('.titlebar')),
-          });
-        }));
+        const formRect = setup?.querySelector('form')?.getBoundingClientRect();
+        resolve({
+          bridge: Boolean(window.watchBlive),
+          form: formRect ? { height: formRect.height, width: formRect.width } : undefined,
+          setup: setupRect
+            ? { height: setupRect.height, top: setupRect.top, width: setupRect.width }
+            : undefined,
+          titlebar: Boolean(document.querySelector('.titlebar')),
+        });
       }));
     })`);
     const visible = (rect?: { height: number; top: number; width: number }): boolean =>
@@ -74,8 +66,9 @@ async function createWindow(): Promise<void> {
       !layout.bridge ||
       !layout.titlebar ||
       !visible(layout.setup) ||
-      !visible(layout.devtool) ||
-      layout.targetHeaderDisplay !== 'none'
+      !layout.form ||
+      layout.form.width < 380 ||
+      layout.form.width > 420
     ) {
       throw new Error(`Electron renderer layout is invalid: ${JSON.stringify(layout)}`);
     }
@@ -115,10 +108,14 @@ app.on('before-quit', event => {
   disposeIpc = undefined;
   const active = controller;
   controller = undefined;
-  void active.close().finally(() => {
+  const finish = (): void => {
     liveView?.destroy();
     liveView = undefined;
     app.exit();
+  };
+  void active.close().then(finish, error => {
+    console.error('[watch-blive:shutdown]', error);
+    finish();
   });
 });
 
@@ -127,10 +124,24 @@ function loadEnvironment(): void {
   if (path) process.loadEnvFile(path);
 }
 
+function configureRemoteDebugging(): void {
+  if (app.isPackaged || process.env.ELECTRON_VITE_PLUS_SMOKE === '1') return;
+  const port = process.env.REMOTE_DEBUGGING_PORT?.trim() || '9334';
+  app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
+  app.commandLine.appendSwitch('remote-debugging-port', port);
+  app.commandLine.appendSwitch('remote-allow-origins', 'devtools://devtools');
+}
+
+function configureUserDataPath(): void {
+  const path = process.env.WATCH_BLIVE_USER_DATA_DIR?.trim();
+  if (path) app.setPath('userData', resolve(path));
+}
+
 function configureDataPath(): void {
   if (process.env.CIEL_DATA_DIR?.trim()) return;
-  const workspace = resolve(app.getAppPath(), '..', '..', '.ciel-data');
-  process.env.CIEL_DATA_DIR = existsSync(join(workspace, 'models'))
-    ? workspace
-    : join(app.getPath('userData'), '.ciel-data');
+  const workspaceRoot = resolve(app.getAppPath(), '..', '..');
+  const workspace = [join(workspaceRoot, '.ciel'), join(workspaceRoot, '.ciel-data')].find(path =>
+    existsSync(join(path, 'models')),
+  );
+  process.env.CIEL_DATA_DIR = workspace ?? join(app.getPath('userData'), '.ciel');
 }

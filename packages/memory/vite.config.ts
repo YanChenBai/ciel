@@ -5,9 +5,7 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   pack: {
-    dts: {
-      tsgo: true,
-    },
+    dts: true,
     exports: true,
   },
   lint: {

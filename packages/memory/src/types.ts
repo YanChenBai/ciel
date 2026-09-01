@@ -1,6 +1,9 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core';
-import type { EmbeddingModel } from 'ai';
 import type { AgentConfig, ProjectorExtension } from 'corex';
+
+export interface MemoryEmbeddingModel {
+  doEmbed(options: { values: string[] }): PromiseLike<{ embeddings: number[][] }>;
+}
 
 /**
  * 用于隔离同一场景或主体记忆的稳定标识
@@ -211,7 +214,7 @@ export interface MemoryOptions {
   readonly id?: string;
   readonly scope?: () => MemoryScope | undefined;
   readonly store: MemoryStoreOptions | MemoryStore;
-  readonly embedder: EmbeddingModel;
+  readonly embedder: MemoryEmbeddingModel;
   readonly instructions?: string;
   readonly prompts?: Partial<MemoryPrompts>;
   readonly agent?: Partial<AgentConfig>;

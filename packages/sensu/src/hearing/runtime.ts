@@ -100,7 +100,7 @@ export class HearingRuntime {
       },
     );
     this.pending.add(pending);
-    void pending.finally(() => this.pending.delete(pending));
+    void pending.then(() => this.pending.delete(pending));
   }
 
   private throwCapturedError(): void {

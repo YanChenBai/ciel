@@ -4,6 +4,7 @@ import { expect, test, vi } from 'vite-plus/test';
 
 import {
   type AnyFunction,
+  CielOperationCategoryAttribute,
   CielOperationName,
   defineCiel,
   defineCue,
@@ -112,6 +113,7 @@ test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async (
     metadata: {
       pluginId: capability.id,
       pluginName: capability.name,
+      [CielOperationCategoryAttribute]: 'tool',
       toolLabel: tool.label,
       toolName: tool.name,
     },

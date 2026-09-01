@@ -13,6 +13,7 @@ export function createRuntimeTools(options: {
   readonly autonomous: boolean;
   readonly listRooms: (page: number) => Promise<readonly RoomCandidate[]>;
   readonly openRoom: (roomId: number) => Promise<unknown>;
+  readonly onSent?: (content: string) => void;
   readonly sendDanmaku: (content: string) => Promise<void>;
   readonly simulate: boolean;
 }): readonly AgentTool[] {
@@ -31,6 +32,7 @@ export function createRuntimeTools(options: {
       if (request.action === 'defer') return result({ sent: false, reason: request.reason });
       if (!request.content.trim()) throw new Error('弹幕不能为空');
       if (!options.simulate) await options.sendDanmaku(request.content.trim());
+      if (!options.simulate) options.onSent?.(request.content.trim());
       return result({
         sent: !options.simulate,
         simulated: options.simulate,

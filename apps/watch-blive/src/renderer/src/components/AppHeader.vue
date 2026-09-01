@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bug, ChevronDown, LogIn, LogOut, Radio, Square } from '@lucide/vue';
+import { ChevronDown, LogIn, LogOut, Radio, Square } from '@lucide/vue';
 import {
   ButtonContent,
   ButtonRoot,
@@ -8,63 +8,66 @@ import {
   PopoverRoot,
 } from '@vuetify/v0/components';
 
-import type { AppState, AppView } from '../../../shared/types.ts';
+import type { AppState } from '../../../shared/types.ts';
 
-defineProps<{ activeView: AppView; pending: boolean; state?: AppState; title: string }>();
+defineProps<{ pending: boolean; state?: AppState; title: string }>();
 const emit = defineEmits<{
   login: [];
   logout: [];
   stop: [];
-  'update:activeView': [value: AppView];
 }>();
 </script>
 
 <template>
   <header class="titlebar">
-    <div v-if="state?.running" class="flex min-w-0 items-center gap-2">
-      <Radio class="text-primary size-4" /><strong class="truncate text-xs">{{ title }}</strong
-      ><span v-if="state?.running" class="pill">{{
-        state.mode === 'autonomous' ? '自主' : '标准'
-      }}</span>
+    <div v-if="state?.running" class="no-drag flex min-w-0 flex-1 items-center gap-2">
+      <Radio class="text-primary size-[15px]" />
+      <strong class="truncate text-xs font-medium">{{ title }}</strong>
+      <span class="pill" :class="{ autonomous: state.mode === 'autonomous' }">
+        {{ state.mode === 'autonomous' ? '自主模式' : '标准模式' }}
+      </span>
+      <span class="pill">
+        {{ state.danmakuDelivery === 'live' ? '真实弹幕' : '测试弹幕' }}
+      </span>
     </div>
-    <nav class="no-drag ml-auto flex rounded-lg bg-white/5 p-0.5">
+    <div class="no-drag ml-auto flex shrink-0 items-center gap-1.5">
       <ButtonRoot
-        class="nav-button"
-        :class="{ active: activeView === 'watch' }"
-        @click="emit('update:activeView', 'watch')"
-        ><ButtonContent><Radio class="size-3.5" />观看</ButtonContent></ButtonRoot
+        v-if="state?.running"
+        class="danger-button titlebar-button"
+        :disabled="pending"
+        @click="emit('stop')"
+        ><ButtonContent class="titlebar-button-content"
+          ><Square class="size-2.5" />停止</ButtonContent
+        ></ButtonRoot
       >
+      <PopoverRoot v-if="state?.account">
+        <PopoverActivator class="account-button titlebar-button"
+          ><img
+            v-if="state.account.face"
+            :src="state.account.face"
+            :alt="state.account.name"
+            class="size-5 rounded-full" /><span class="text-[11px] leading-none">{{
+            state.account.name
+          }}</span
+          ><ChevronDown class="size-3"
+        /></PopoverActivator>
+        <PopoverContent class="account-popover"
+          ><ButtonRoot class="danger-menu" @click="emit('logout')"
+            ><ButtonContent class="text-xs leading-none"
+              ><LogOut class="size-3.5" />退出账号</ButtonContent
+            ></ButtonRoot
+          ></PopoverContent
+        >
+      </PopoverRoot>
       <ButtonRoot
-        class="nav-button"
-        :class="{ active: activeView === 'devtool' }"
-        @click="emit('update:activeView', 'devtool')"
-        ><ButtonContent><Bug class="size-3.5" />Devtool</ButtonContent></ButtonRoot
+        v-else
+        class="secondary-button titlebar-button"
+        :disabled="pending"
+        @click="emit('login')"
+        ><ButtonContent class="titlebar-button-content"
+          ><LogIn class="size-3" />登录</ButtonContent
+        ></ButtonRoot
       >
-    </nav>
-    <ButtonRoot
-      v-if="state?.running"
-      class="no-drag danger-button"
-      :disabled="pending"
-      @click="emit('stop')"
-      ><ButtonContent><Square class="size-3" />停止</ButtonContent></ButtonRoot
-    >
-    <PopoverRoot v-if="state?.account">
-      <PopoverActivator class="no-drag account-button"
-        ><img
-          v-if="state.account.face"
-          :src="state.account.face"
-          :alt="state.account.name"
-          class="size-5 rounded-full" /><span>{{ state.account.name }}</span
-        ><ChevronDown class="size-3"
-      /></PopoverActivator>
-      <PopoverContent class="account-popover"
-        ><ButtonRoot class="danger-menu" @click="emit('logout')"
-          ><ButtonContent><LogOut class="size-3.5" />退出账号</ButtonContent></ButtonRoot
-        ></PopoverContent
-      >
-    </PopoverRoot>
-    <ButtonRoot v-else class="no-drag secondary-button" :disabled="pending" @click="emit('login')"
-      ><ButtonContent><LogIn class="size-3.5" />登录</ButtonContent></ButtonRoot
-    >
+    </div>
   </header>
 </template>

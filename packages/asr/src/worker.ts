@@ -7,10 +7,25 @@ let asr: NativeASR | undefined;
 
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
 input.on('line', line => {
+  let command: ASRWorkerCommand;
   try {
-    handle(JSON.parse(line) as ASRWorkerCommand);
+    command = JSON.parse(line) as ASRWorkerCommand;
   } catch (error) {
-    send({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+    send({
+      type: 'error',
+      message: error instanceof Error ? error.message : String(error),
+      fatal: true,
+    });
+    return;
+  }
+  try {
+    handle(command);
+  } catch (error) {
+    send({
+      type: 'error',
+      message: error instanceof Error ? error.message : String(error),
+      ...(command.type === 'init' ? { fatal: true } : {}),
+    });
   }
 });
 
@@ -35,16 +50,18 @@ function handle(command: ASRWorkerCommand): void {
     asr.on('speechstart', at => send({ type: 'speechstart', at: at.toISOString() }));
     asr.on('speechend', at => send({ type: 'speechend', at: at.toISOString() }));
     asr.on('error', error => send({ type: 'error', message: error.message }));
+    send({ type: 'ready' });
     return;
   }
-  if (!asr) throw new Error('ASR worker is not initialized');
+  if (command.type === 'close') {
+    asr?.flush();
+    process.exit(0);
+  }
+  if (!asr) return;
   if (command.type === 'write') {
     asr.write({ data: Buffer.from(command.data, 'base64'), startAt: new Date(command.startAt) });
-  } else if (command.type === 'flush') {
-    asr.flush();
   } else {
     asr.flush();
-    process.exit(0);
   }
 }
 

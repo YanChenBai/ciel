@@ -1,5 +1,3 @@
-import { embedMany } from 'ai';
-
 import { MemoryAgent } from './agent.ts';
 import { createMemoryProjector } from './projector.ts';
 import { PGliteMemoryStore } from './store/index.ts';
@@ -79,7 +77,7 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
   let status: 'idle' | 'running' | 'closing' | 'closed' = 'idle';
 
   async function embed(content: string): Promise<readonly number[]> {
-    const result = await embedMany({ model: options.embedder, values: [content] });
+    const result = await options.embedder.doEmbed({ values: [content] });
     const embedding = result.embeddings[0];
 
     if (!embedding) throw new Error('Embedding model did not return an embedding');

@@ -26,7 +26,9 @@ export class LiveView {
     host.contentView.addChildView(this.view);
     this.view.setVisible(false);
     this.view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    this.view.webContents.on('did-finish-load', () => void this.preparePage());
+    this.view.webContents.on('did-finish-load', () => {
+      void this.preparePage().catch(error => console.error('[watch-blive:live-view]', error));
+    });
   }
 
   async open(roomId: number): Promise<void> {

@@ -1,13 +1,13 @@
 // @env node
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import type { MemoryEmbeddingModel } from '@ciels/memory';
 import type { StreamFn } from '@earendil-works/pi-agent-core';
 import type { Model } from '@earendil-works/pi-ai';
 import { streamSimple } from '@earendil-works/pi-ai/compat';
-import type { EmbeddingModel } from 'ai';
 
 export interface WatchBliveAI {
-  readonly embedder: Exclude<EmbeddingModel, string>;
+  readonly embedder: MemoryEmbeddingModel;
   readonly model: Model<'openai-completions'>;
   readonly stream: StreamFn;
 }

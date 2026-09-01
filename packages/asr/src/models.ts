@@ -1,11 +1,27 @@
 // @env node
 
+import { access } from 'node:fs/promises';
 import path from 'node:path';
 
-import { AURIS_MODEL_PATHS, AURIS_SAMPLE_RATE } from './constants.ts';
+import {
+  AURIS_SAMPLE_RATE,
+  resolveAurisModelPaths,
+  resolveAurisModelsPath,
+  resolveDataPath,
+} from './constants.ts';
 import type { AurisModelConfig } from './types.ts';
 
+const TOKENIZER_FILES = ['merges.txt', 'tokenizer_config.json', 'vocab.json'] as const;
+
+export interface AurisConfigurationCheck {
+  readonly dataPath: string;
+  readonly modelsPath: string;
+  readonly missingFiles: readonly string[];
+  readonly valid: boolean;
+}
+
 export function createAurisModelConfig(): AurisModelConfig {
+  const paths = resolveAurisModelPaths();
   return {
     recognizer: {
       featConfig: {
@@ -14,10 +30,10 @@ export function createAurisModelConfig(): AurisModelConfig {
       },
       modelConfig: {
         qwen3Asr: {
-          convFrontend: path.join(AURIS_MODEL_PATHS.asr, 'conv_frontend.onnx'),
-          encoder: path.join(AURIS_MODEL_PATHS.asr, 'encoder.int8.onnx'),
-          decoder: path.join(AURIS_MODEL_PATHS.asr, 'decoder.int8.onnx'),
-          tokenizer: path.join(AURIS_MODEL_PATHS.asr, 'tokenizer'),
+          convFrontend: path.join(paths.asr, 'conv_frontend.onnx'),
+          encoder: path.join(paths.asr, 'encoder.int8.onnx'),
+          decoder: path.join(paths.asr, 'decoder.int8.onnx'),
+          tokenizer: path.join(paths.asr, 'tokenizer'),
           hotwords: '',
           maxTotalLen: 512,
           maxNewTokens: 256,
@@ -32,7 +48,7 @@ export function createAurisModelConfig(): AurisModelConfig {
     },
     vad: {
       tenVad: {
-        model: AURIS_MODEL_PATHS.vad,
+        model: paths.vad,
         threshold: 0.25,
         minSpeechDuration: 0.5,
         minSilenceDuration: 0.5,
@@ -44,9 +60,38 @@ export function createAurisModelConfig(): AurisModelConfig {
       provider: 'cpu',
     },
     speaker: {
-      model: AURIS_MODEL_PATHS.speaker,
+      model: paths.speaker,
       numThreads: 1,
       provider: 'cpu',
     },
   };
+}
+
+export async function checkAurisConfiguration(): Promise<AurisConfigurationCheck> {
+  const paths = resolveAurisModelPaths();
+  const required = [
+    path.join(paths.asr, 'conv_frontend.onnx'),
+    path.join(paths.asr, 'encoder.int8.onnx'),
+    path.join(paths.asr, 'decoder.int8.onnx'),
+    ...TOKENIZER_FILES.map(file => path.join(paths.asr, 'tokenizer', file)),
+    paths.vad,
+    paths.speaker,
+  ];
+  const present = await Promise.all(required.map(file => exists(file)));
+  const missingFiles = required.filter((_file, index) => !present[index]);
+  return {
+    dataPath: resolveDataPath(),
+    modelsPath: resolveAurisModelsPath(),
+    missingFiles,
+    valid: missingFiles.length === 0,
+  };
+}
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    await access(file);
+    return true;
+  } catch {
+    return false;
+  }
 }

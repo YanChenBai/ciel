@@ -18,12 +18,26 @@ export interface LiveArea {
 
 export interface RoomInfo {
   readonly areaName: string;
+  readonly description: string;
   readonly live: boolean;
   readonly parentAreaName: string;
   readonly roomId: number;
   readonly streamerName: string;
   readonly title: string;
   readonly uid: number;
+}
+
+export interface ConfigurationIssue {
+  readonly detail?: string;
+  readonly key: string;
+  readonly message: string;
+}
+
+export interface ConfigurationStatus {
+  readonly checkedAt: number;
+  readonly dataPath: string;
+  readonly issues: readonly ConfigurationIssue[];
+  readonly valid: boolean;
 }
 
 export type StartOptions =
@@ -40,6 +54,7 @@ export type StartOptions =
 
 export interface AppState {
   readonly account?: Account;
+  readonly configuration?: ConfigurationStatus;
   readonly danmakuDelivery: DanmakuDelivery;
   readonly error?: string;
   readonly mode: WatchMode;

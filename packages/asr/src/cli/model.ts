@@ -5,7 +5,7 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
 
-import { DATA_PATH } from '../constants.ts';
+import { resolveDataPath } from '../constants.ts';
 import { loading, progress } from './utils/index.ts';
 
 const RELEASE = 'https://github.com/k2-fsa/sherpa-onnx/releases/download';
@@ -47,7 +47,7 @@ export async function installModel(args: readonly string[]): Promise<void> {
 }
 
 async function installModels(force: boolean): Promise<void> {
-  const modelsDir = path.join(DATA_PATH, 'models');
+  const modelsDir = path.join(resolveDataPath(), 'models');
   const asrDir = path.join(modelsDir, 'asr', 'qwen3-asr-1.7b-int8');
   const vadFile = path.join(modelsDir, 'vad', 'ten-vad.int8.onnx');
   const speakerFile = path.join(modelsDir, 'speaker', 'model.onnx');

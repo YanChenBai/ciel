@@ -13,7 +13,7 @@ import { createEngramView, type Engram } from '#model/engram/index.ts';
 import type { LLMContent } from '#model/llm/index.ts';
 
 import type { ResolvedTool } from '../extensions.ts';
-import { CielOperationName, type Instrument } from '../instrumentation.ts';
+import { cielOperation, CielOperationName, type Instrument } from '../instrumentation.ts';
 import { instrumentAgentOperations } from './instrumentation.ts';
 import { createAgentSessionKey } from './session.ts';
 import type {
@@ -272,9 +272,7 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
     return thought;
   }
 
-  const think = instrument(enqueue, {
-    name: CielOperationName.AgentThink,
-  });
+  const think = instrument(enqueue, cielOperation(CielOperationName.AgentThink));
 
   async function stop(): Promise<void> {
     if (status === 'idle') {

@@ -54,14 +54,16 @@ export class AccountManager {
     return new Promise((resolve, reject) => {
       let settled = false;
       const timer = setInterval(() => {
-        void this.current().then(account => {
-          if (!account || settled) return;
-          settled = true;
-          clearInterval(timer);
-          this.loginWindow = undefined;
-          if (!window.isDestroyed()) window.close();
-          resolve(account);
-        });
+        void this.current()
+          .then(account => {
+            if (!account || settled) return;
+            settled = true;
+            clearInterval(timer);
+            this.loginWindow = undefined;
+            if (!window.isDestroyed()) window.close();
+            resolve(account);
+          })
+          .catch(() => {});
       }, 1_500);
       window.once('closed', () => {
         this.loginWindow = undefined;

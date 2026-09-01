@@ -10,7 +10,7 @@ const props = defineProps<{
   client: DevtoolClient;
 }>();
 
-const { error, events, snapshot, start, status, welcome } = useDevtoolSession(props.client);
+const { engramEntries, error, operations, start } = useDevtoolSession(props.client);
 
 onMounted(() => {
   void start().catch(() => undefined);
@@ -20,7 +20,7 @@ onMounted(() => {
 <template>
   <AlertRoot
     v-if="error"
-    class="devtool dx:grid dx:h-full dx:place-items-center dx:bg-[#111214] dx:p-8 dx:text-zinc-200"
+    class="devtool dx:grid dx:h-full dx:place-items-center dx:bg-background dx:p-8 dx:text-foreground"
   >
     <div class="dx:max-w-lg dx:rounded-lg dx:border dx:border-red-400/20 dx:bg-red-400/5 dx:p-5">
       <AlertTitle class="dx:text-sm dx:font-semibold dx:text-red-200">
@@ -31,11 +31,5 @@ onMounted(() => {
       </AlertDescription>
     </div>
   </AlertRoot>
-  <DevtoolShell
-    v-else
-    :events="events"
-    :snapshot="snapshot"
-    :status="status"
-    :target="welcome?.target"
-  />
+  <DevtoolShell v-else :entries="engramEntries" :operations="operations" />
 </template>

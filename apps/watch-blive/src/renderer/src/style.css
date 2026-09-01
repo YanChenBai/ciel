@@ -2,11 +2,32 @@
 
 :root {
   color-scheme: dark;
-  --background: #171819;
-  --foreground: #eeeeef;
-  --primary: #fb7299;
-  --primary-foreground: #241117;
-  --border: rgb(255 255 255 / 9%);
+  --background: var(--v0-background, #171819);
+  --foreground: var(--v0-foreground, #eeeeef);
+  --card: var(--v0-card, #222324);
+  --card-foreground: var(--v0-card-foreground, #eeeeef);
+  --popover: var(--v0-popover, #27282a);
+  --popover-foreground: var(--v0-popover-foreground, #eeeeef);
+  --primary: var(--v0-primary, #fb7299);
+  --primary-foreground: var(--v0-primary-foreground, #201217);
+  --secondary: var(--v0-secondary, #303134);
+  --secondary-foreground: var(--v0-secondary-foreground, #e4e4e7);
+  --muted: var(--v0-muted, #292a2c);
+  --muted-foreground: var(--v0-muted-foreground, #8a8a91);
+  --accent: var(--v0-accent, #343538);
+  --accent-foreground: var(--v0-accent-foreground, #fafafa);
+  --destructive: var(--v0-destructive, #f05b67);
+  --border: var(--v0-border, rgb(255 255 255 / 9%));
+  --input: var(--v0-input, rgb(255 255 255 / 12%));
+  --ring: var(--v0-ring, #fb7299);
+  --title-bar: var(--v0-title-bar, #1c1d1e);
+  --live-surface: var(--v0-live-surface, #0b0c0e);
+  --control-height-compact: 26px;
+  --radius-compact: 7px;
+  --radius-control: 10px;
+  --radius-popover: 9px;
+  --radius-pill: 999px;
+  --text-compact: 11px;
   background: var(--background);
   color: var(--foreground);
   font-family:
@@ -22,9 +43,23 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
   --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-live: var(--live-surface);
 }
 
 * {
@@ -61,7 +96,7 @@ input {
     align-items: center;
     gap: 8px;
     border-bottom: 1px solid var(--border);
-    background: #1c1d1e;
+    background: var(--title-bar);
     padding: 4px 150px 4px 14px;
   }
   .no-drag {
@@ -69,12 +104,16 @@ input {
   }
   .pill {
     border: 1px solid rgb(255 255 255 / 10%);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 2px 7px;
     color: #a1a1aa;
     font-size: 10px;
   }
-  .nav-button,
+  .pill.autonomous {
+    border-color: #3c6654;
+    background: #20382d;
+    color: #94d7b5;
+  }
   .secondary-button,
   .danger-button,
   .account-button,
@@ -84,14 +123,6 @@ input {
     border: 0;
     cursor: default;
   }
-  .nav-button {
-    border-radius: 6px;
-    background: transparent;
-    padding: 5px 9px;
-    color: #71717a;
-    font-size: 11px;
-  }
-  .nav-button > span,
   .secondary-button > span,
   .danger-button > span,
   .danger-menu > span,
@@ -101,20 +132,25 @@ input {
     justify-content: center;
     gap: 6px;
   }
-  .nav-button.active {
-    background: rgb(255 255 255 / 8%);
-    color: #f4f4f5;
-  }
   .secondary-button,
   .danger-button {
-    border-radius: 7px;
-    padding: 5px 9px;
-    font-size: 11px;
+    border-radius: var(--radius-compact);
+    font-size: var(--text-compact);
+  }
+  .titlebar-button {
+    height: var(--control-height-compact);
+    flex: none;
+    padding: 3px 7px;
+    line-height: 1;
+  }
+  .titlebar-button-content {
+    font-size: var(--text-compact);
+    line-height: 1;
   }
   .secondary-button {
-    border: 1px solid rgb(255 255 255 / 12%);
-    background: #26272a;
-    color: #e4e4e7;
+    border: 1px solid var(--input);
+    background: var(--secondary);
+    color: var(--secondary-foreground);
   }
   .danger-button {
     background: rgb(240 91 103 / 13%);
@@ -124,25 +160,24 @@ input {
     display: flex;
     align-items: center;
     gap: 6px;
-    border-radius: 7px;
+    border-radius: var(--radius-compact);
     background: transparent;
-    padding: 4px 6px;
-    color: #e4e4e7;
-    font-size: 11px;
+    color: var(--secondary-foreground);
+    font-size: var(--text-compact);
   }
   .account-popover {
     z-index: 100;
     margin-top: 8px;
     min-width: 140px;
     border: 1px solid var(--border);
-    border-radius: 9px;
-    background: #27282a;
+    border-radius: var(--radius-popover);
+    background: var(--popover);
     padding: 5px;
     box-shadow: 0 14px 40px rgb(0 0 0 / 45%);
   }
   .danger-menu {
     width: 100%;
-    border-radius: 6px;
+    border-radius: var(--radius-compact);
     background: transparent;
     padding: 7px 8px;
     color: #ff8d99;
@@ -153,15 +188,19 @@ input {
     font-size: 12px;
     font-weight: 500;
   }
+  .field-group {
+    display: grid;
+    gap: 7px;
+  }
   .field-control,
   .select-trigger {
     width: 100%;
     height: 39px;
-    border: 1px solid rgb(255 255 255 / 12%);
-    border-radius: 10px;
-    background: #1b1c1e;
+    border: 1px solid var(--input);
+    border-radius: var(--radius-control);
+    background: var(--background);
     padding: 0 11px;
-    color: #eeeeef;
+    color: var(--foreground);
     outline: none;
     font-size: 13px;
   }
@@ -171,7 +210,7 @@ input {
     box-shadow: 0 0 0 3px rgb(251 114 153 / 12%);
   }
   .field-help {
-    margin: 6px 0 0;
+    margin: 0;
     color: #71717a;
     font-size: 11px;
     line-height: 1.5;
@@ -183,15 +222,17 @@ input {
   }
   .select-content {
     z-index: 100;
+    width: anchor-size(width);
     min-width: 260px;
+    max-width: calc(100vw - 24px);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    background: #27282a;
+    border-radius: var(--radius-control);
+    background: var(--popover);
     padding: 5px;
     box-shadow: 0 14px 40px rgb(0 0 0 / 45%);
   }
   .select-item {
-    border-radius: 7px;
+    border-radius: var(--radius-compact);
     padding: 7px 9px;
     color: #d4d4d8;
     font-size: 12px;
@@ -204,7 +245,7 @@ input {
   .primary-button {
     height: 42px;
     width: 100%;
-    border-radius: 10px;
+    border-radius: var(--radius-control);
     background: var(--primary);
     color: var(--primary-foreground);
     font-size: 13px;

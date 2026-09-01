@@ -3,6 +3,7 @@
 import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 
+import { createInstrumenter } from '@ciels/interceptor';
 import { memoryPlugin } from '@ciels/memory';
 import { sensuPlugin } from '@ciels/sensu';
 import { telemetry } from '@ciels/telemetry';
@@ -11,29 +12,35 @@ import { defineCiel, defineCue, defineInterceptor } from 'corex';
 import type { AgentFrame, Ciel, LLMContent } from 'corex';
 import type { BrowserWindow } from 'electron';
 
-import type { Account, AppState, RoomInfo, StartOptions } from '../shared/types.ts';
+import type {
+  Account,
+  AppState,
+  ConfigurationStatus,
+  RoomInfo,
+  StartOptions,
+} from '../shared/types.ts';
 import { AccountManager } from './account.ts';
 import { createWatchBliveAI } from './ai.ts';
 import { fetchRoom, fetchRooms } from './bilibili.ts';
+import { checkRuntimeConfiguration, configurationError } from './configuration.ts';
+import { devtoolTransformers } from './devtool.ts';
 import { LiveView } from './live-view.ts';
 import { LiveAudio, LiveMedia, liveMediaPlugin, LiveVideo } from './media.ts';
+import {
+  createInstructions,
+  createRoomContextMessage,
+  DANMAKU_PROMPT_HISTORY_LIMIT,
+  EXPLORE_LIVE_ROOMS_PROMPT,
+  ROOM_REVIEW_AFTER_MS,
+  type SentDanmaku,
+} from './prompts.ts';
+import { RoomScorePolicy } from './room-score-policy.ts';
 import { createRuntimeTools } from './tools.ts';
 
 const Explore = defineCue({
   name: 'blive.explore',
-  prompt: '先调用 list_live_rooms 获取真实候选，再调用 open_live_room 进入最值得观察的新直播间',
+  prompt: EXPLORE_LIVE_ROOMS_PROMPT,
 });
-
-const INSTRUCTIONS = `
-你正在实时观看 Bilibili 直播。结合听觉、视觉、直播间信息和记忆理解现场。
-
-每轮思考必须调用一次 send_danmaku。出现自然互动机会时发送简短口语化中文弹幕，没有机会时 defer。
-优先使用主播昵称，昵称不自然时省略称呼或使用“主播”，避免直接使用“你”。
-不得重复最近的表达，不得编造听到或看到的内容。模拟模式只记录工具结果，不操作网页。
-
-自主模式允许在持续缺乏兴趣时输出 JSON：{"action":"explore","reason":"具体原因"}。
-标准模式永远留在当前房间。自主探索必须通过 list_live_rooms 和 open_live_room 完成真实切换。
-`.trim();
 
 interface RuntimeEvents {
   state: [AppState];
@@ -41,15 +48,22 @@ interface RuntimeEvents {
 
 export class RuntimeController extends EventEmitter<RuntimeEvents> {
   private readonly accountManager = new AccountManager();
-  private readonly media = new LiveMedia();
+  private readonly media = new LiveMedia(error => {
+    this.fail(error);
+    void this.stop().catch(stopError => this.fail(stopError));
+  });
+  private readonly roomScorePolicy = new RoomScorePolicy();
+  private readonly danmakuHistory: SentDanmaku[] = [];
   private account?: Account;
   private areaId?: number;
   private candidates = new Set<number>();
   private ciel?: Ciel;
+  private configuration?: ConfigurationStatus;
   private delivery: StartOptions['danmakuDelivery'] = 'simulate';
   private error?: string;
   private mode: StartOptions['mode'] = 'standard';
   private room?: RoomInfo;
+  private roomStartedAt = 0;
 
   constructor(
     private readonly liveView: LiveView,
@@ -63,13 +77,17 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
   }
 
   async initialize(): Promise<void> {
-    this.account = await this.accountManager.current().catch(() => undefined);
+    [this.account, this.configuration] = await Promise.all([
+      this.accountManager.current().catch(() => undefined),
+      checkRuntimeConfiguration(),
+    ]);
     this.publish();
   }
 
   state(): AppState {
     return {
       ...(this.account ? { account: this.account } : {}),
+      ...(this.configuration ? { configuration: this.configuration } : {}),
       danmakuDelivery: this.delivery,
       ...(this.error ? { error: this.error } : {}),
       mode: this.mode,
@@ -96,19 +114,33 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
     this.delivery = options.danmakuDelivery;
     this.areaId = options.mode === 'autonomous' ? options.areaId : undefined;
     this.error = undefined;
+    this.configuration = await checkRuntimeConfiguration();
+    if (!this.configuration.valid) {
+      const error = configurationError(this.configuration);
+      this.fail(error);
+      throw error;
+    }
     const { embedder, model, stream } = createWatchBliveAI();
-    telemetry({ capture: { input: true, output: true } });
+    telemetry({ capture: { input: true, output: true }, transformers: devtoolTransformers });
     telemetry.clear();
+    const instrument = createInstrumenter([telemetry]);
+    const listRooms = instrument((page: number) => this.listRooms(page), {
+      name: 'watch-blive.room.list',
+    });
+    const openRoom = instrument((roomId: number) => this.openRoom(roomId), {
+      name: 'watch-blive.room.open',
+    });
     const tools = createRuntimeTools({
       autonomous: options.mode === 'autonomous',
-      listRooms: page => this.listRooms(page),
-      openRoom: roomId => this.openRoom(roomId),
+      listRooms,
+      openRoom,
       sendDanmaku: content => this.liveView.sendDanmaku(content),
       simulate: options.danmakuDelivery === 'simulate',
+      onSent: content => this.recordSentDanmaku(content),
     });
     const ciel = defineCiel({
       id: `watch-blive:${this.account?.uid ?? 'anonymous'}`,
-      instructions: `${INSTRUCTIONS}\n\n当前模式：${options.mode === 'autonomous' ? '自主模式' : '标准模式'}`,
+      instructions: createInstructions(options.mode),
       model,
       stream,
       sessionStore: false,
@@ -146,7 +178,7 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
       await ciel.start();
       this.ciel = ciel;
       this.publish();
-      if (options.mode === 'standard') await this.openRoom(options.roomId);
+      if (options.mode === 'standard') await openRoom(options.roomId);
       else await ciel.think(Explore.create({ kind: 'instant', at: Date.now() }));
     } catch (error) {
       await ciel.stop().catch(() => undefined);
@@ -159,8 +191,11 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
   async stop(): Promise<void> {
     const ciel = this.ciel;
     this.ciel = undefined;
+    await this.media.close().catch(error => this.fail(error));
     if (ciel) await ciel.stop().catch(error => this.fail(error));
     this.room = undefined;
+    this.roomStartedAt = 0;
+    this.roomScorePolicy.reset();
     this.candidates.clear();
     this.liveView.setVisible(false);
     this.publish();
@@ -189,6 +224,8 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
     await this.media.open(room.roomId);
     await this.liveView.open(room.roomId);
     this.room = room;
+    this.roomStartedAt = Date.now();
+    this.roomScorePolicy.reset();
     this.publish();
     return room;
   }
@@ -200,9 +237,7 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
     ]);
     content.push({
       type: 'text',
-      text: this.room
-        ? `当前直播间：${this.room.streamerName} / ${this.room.title} / 房间 ${this.room.roomId}`
-        : '当前尚未进入直播间',
+      text: this.room ? this.createDynamicContext(this.room) : '当前尚未进入直播间',
     });
     if (frame.cue.definition.prompt)
       content.push({ type: 'text', text: frame.cue.definition.prompt });
@@ -217,8 +252,41 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
       .filter(item => item.type === 'text')
       .map(item => item.text)
       .join('');
-    if (!/"action"\s*:\s*"explore"/u.test(text)) return;
-    setTimeout(() => void this.ciel?.think(Explore.create({ kind: 'instant', at: Date.now() })), 0);
+    const thought = parseRoomDecision(text);
+    if (!thought || Date.now() - this.roomStartedAt < ROOM_REVIEW_AFTER_MS) return;
+    const decision = this.roomScorePolicy.evaluate({ ...thought, evaluatedAt: Date.now() });
+    if (!decision.shouldSwitch) return;
+    queueMicrotask(() => {
+      void this.ciel
+        ?.think(Explore.create({ kind: 'instant', at: Date.now() }))
+        .catch(error => this.fail(error));
+    });
+  }
+
+  private createDynamicContext(room: RoomInfo): string {
+    return createRoomContextMessage({
+      canSwitch:
+        this.mode === 'autonomous' && Date.now() - this.roomStartedAt >= ROOM_REVIEW_AFTER_MS,
+      history: this.danmakuHistory
+        .filter(item => item.roomId === room.roomId)
+        .slice(-DANMAKU_PROMPT_HISTORY_LIMIT),
+      room,
+      startedAt: this.roomStartedAt,
+    });
+  }
+
+  private recordSentDanmaku(content: string): void {
+    const roomId = this.room?.roomId;
+    if (!roomId) return;
+    const normalized = content.trim();
+    if (!normalized) return;
+    const duplicate = this.danmakuHistory
+      .slice(-DANMAKU_PROMPT_HISTORY_LIMIT)
+      .some(item => item.roomId === roomId && item.content.trim() === normalized);
+    if (duplicate) return;
+    this.danmakuHistory.push({ content: normalized, roomId, sentAt: Date.now() });
+    if (this.danmakuHistory.length > 100)
+      this.danmakuHistory.splice(0, this.danmakuHistory.length - 100);
   }
 
   private fail(error: unknown): void {
@@ -228,6 +296,32 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
 
   private publish(): void {
     this.emit('state', this.state());
+  }
+}
+
+function parseRoomDecision(
+  text: string,
+):
+  | { readonly action: 'explore' | 'stay'; readonly confidence: number; readonly score: number }
+  | undefined {
+  try {
+    const value = JSON.parse(text.trim()) as Record<string, unknown>;
+    if (value.action !== 'explore' && value.action !== 'stay') return undefined;
+    if (
+      typeof value.confidence !== 'number' ||
+      !Number.isFinite(value.confidence) ||
+      value.confidence < 0 ||
+      value.confidence > 1 ||
+      typeof value.score !== 'number' ||
+      !Number.isFinite(value.score) ||
+      value.score < 0 ||
+      value.score > 100
+    ) {
+      return undefined;
+    }
+    return { action: value.action, confidence: value.confidence, score: value.score };
+  } catch {
+    return undefined;
   }
 }
 

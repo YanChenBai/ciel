@@ -136,7 +136,7 @@ interface MemoryOptions {
   readonly id?: string;
   readonly scope?: () => MemoryScope | undefined;
   readonly store: MemoryStoreOptions | MemoryStore;
-  readonly embedder: EmbeddingModel;
+  readonly embedder: MemoryEmbeddingModel;
   readonly instructions?: string;
   readonly prompts?: Partial<MemoryPrompts>;
   readonly agent?: Partial<AgentConfig>;

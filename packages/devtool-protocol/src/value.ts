@@ -21,7 +21,7 @@ export interface ProtocolErrorRecord {
 export type SerializedValue =
   | {
       readonly type: 'omitted';
-      readonly reason: 'capture-disabled' | 'redacted' | 'unsupported';
+      readonly reason: 'capture-disabled' | 'pending' | 'redacted' | 'unsupported';
     }
   | {
       readonly type: 'serialized';

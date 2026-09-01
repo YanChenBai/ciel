@@ -5,7 +5,7 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
   },
   pack: {
-    dts: {},
+    dts: true,
     exports: true,
   },
   lint: {

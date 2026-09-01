@@ -21,11 +21,11 @@ export function useAppState() {
 
   onMounted(async () => {
     try {
-      state.value = await window.watchBlive.state.get();
-      areas.value = await window.watchBlive.areas.list();
       unsubscribe = window.watchBlive.state.subscribe(value => {
         state.value = value;
       });
+      state.value = await window.watchBlive.state.get();
+      areas.value = await window.watchBlive.areas.list();
     } catch (reason) {
       error.value = message(reason);
     }
@@ -38,7 +38,9 @@ export function useAppState() {
       : 'Watch Blive',
   );
   const canStart = computed(
-    () => Number(mode.value === 'standard' ? roomId.value : areaId.value) > 0,
+    () =>
+      state.value?.configuration?.valid === true &&
+      Number(mode.value === 'standard' ? roomId.value : areaId.value) > 0,
   );
 
   async function run(action: () => Promise<void>): Promise<void> {
