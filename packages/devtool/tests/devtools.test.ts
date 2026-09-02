@@ -1,5 +1,5 @@
+import type { Ciel } from '@cieljs/core';
 import { DevtoolProtocol, type DevtoolConsumerMessage } from '@ciels/devtool-protocol';
-import type { Ciel } from 'corex';
 import { describe, expect, it } from 'vite-plus/test';
 
 import { devtools, type DevtoolsAdapter } from '../src/index.ts';
@@ -49,19 +49,18 @@ function createCiel(): Ciel {
     think: async () => [],
     start: async () => undefined,
     stop: async () => undefined,
+    dispatchSignal: async () => undefined,
   } as unknown as Ciel;
 }
 
 describe('devtools', () => {
   it('作为 Plugin 接管适配器连接和协议握手', async () => {
     const connection = createAdapter();
-    const extension = devtools({ adapter: connection.adapter, name: 'Ciel Test' });
-    const instance = extension.create({} as never);
+    const plugin = devtools({ adapter: connection.adapter, name: 'Ciel Test' });
 
-    expect(extension.kind).toBe('plugin');
-    expect(extension.interceptors).toHaveLength(1);
+    expect(plugin.interceptors).toHaveLength(1);
 
-    await instance.activate?.({ ciel: createCiel(), emitSignal: async () => undefined });
+    await plugin.activate?.({ ciel: createCiel() });
     await connection.push({
       protocol: DevtoolProtocol.Name,
       version: DevtoolProtocol.Version,
@@ -78,7 +77,7 @@ describe('devtools', () => {
       }),
     ]);
 
-    await instance.deactivate?.();
+    await plugin.deactivate?.();
     expect(connection.closed).toBe(true);
     await expect(connection.push({} as DevtoolConsumerMessage)).rejects.toThrow(
       'Adapter is not active',

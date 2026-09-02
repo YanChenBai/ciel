@@ -1,4 +1,4 @@
-import type { Operation } from 'corex';
+import type { Operation } from '@cieljs/core';
 
 import type { JsonValue, ProtocolErrorRecord, SerializedValue } from './value.ts';
 

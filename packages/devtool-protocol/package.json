@@ -22,7 +22,7 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "corex": "workspace:*"
+    "@cieljs/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

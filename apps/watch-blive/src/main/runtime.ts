@@ -3,13 +3,13 @@
 import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 
+import { cielOperation, defineCiel, defineCue, definePlugin } from '@cieljs/core';
+import type { AgentFrame, Ciel, LLMContent } from '@cieljs/core';
 import { createInstrumenter } from '@cieljs/instrument';
 import { telemetry } from '@ciels/devtool';
 import { memoryPlugin } from '@ciels/memory';
 import { sensuPlugin } from '@ciels/sensu';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
-import { cielOperation, defineCiel, defineCue, defineInterceptor } from 'corex';
-import type { AgentFrame, Ciel, LLMContent } from 'corex';
 import type { BrowserWindow } from 'electron';
 
 import type {
@@ -24,7 +24,7 @@ import { createWatchBliveAI } from './ai.ts';
 import { fetchRoom, fetchRooms } from './bilibili.ts';
 import { checkRuntimeConfiguration, configurationError } from './configuration.ts';
 import { devtoolTransformers } from './devtool.ts';
-import { LiveAudio, LiveMedia, liveMediaPlugin, LiveVideo } from './media.ts';
+import { LiveAudio, LiveMedia, LiveVideo } from './media.ts';
 import {
   createInstructions,
   createRoomContextMessage,
@@ -62,6 +62,11 @@ interface RuntimeEvents {
   state: [AppState];
 }
 
+interface RoomDisplay {
+  close(): void;
+  open(roomId: number): Promise<void>;
+}
+
 export class RuntimeController extends EventEmitter<RuntimeEvents> {
   private readonly accountManager = new AccountManager();
   private readonly media = new LiveMedia(error => {
@@ -78,11 +83,13 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
   private delivery: StartOptions['danmakuDelivery'] = 'simulate';
   private error?: string;
   private mode: StartOptions['mode'] = 'standard';
-  private playbackUrl?: string;
   private room?: RoomInfo;
   private roomStartedAt = 0;
 
-  constructor(private readonly userDataPath: string) {
+  constructor(
+    private readonly userDataPath: string,
+    private readonly roomDisplay: RoomDisplay,
+  ) {
     super();
   }
 
@@ -106,7 +113,6 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
       ...(this.error ? { error: this.error } : {}),
       mode: this.mode,
       ...(this.room ? { room: this.room } : {}),
-      ...(this.playbackUrl ? { playbackUrl: this.playbackUrl } : {}),
       running: this.ciel?.status === 'running',
     };
   }
@@ -166,8 +172,8 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
       sessionStore: false,
       toolExecution: 'sequential',
       tools,
-      extensions: [
-        defineInterceptor({ name: 'telemetry', interceptor: telemetry }),
+      plugins: [
+        definePlugin(() => ({ name: 'telemetry', interceptors: [telemetry] }))(),
         sensuPlugin({
           name: 'blive-sensu',
           vision: { signals: [LiveVideo], differenceThreshold: 0.03, sampleInterval: 0 },
@@ -187,13 +193,13 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
           projector: { recentDays: 3, maxEntriesPerDay: 20 },
           tools: { defaultRecallRange: 'all' },
         }),
-        liveMediaPlugin(this.media),
       ],
       prompt: frame => this.prompt(frame),
       onAgentEvent: event => {
         if (event.type === 'agent_end') this.inspectDecision(event.messages);
       },
     });
+    this.media.bind(signal => ciel.dispatchSignal(signal));
     try {
       await ciel.start();
       this.ciel = ciel;
@@ -211,10 +217,11 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
   async stop(): Promise<void> {
     const ciel = this.ciel;
     this.ciel = undefined;
+    this.media.unbind();
     await this.media.close().catch(error => this.fail(error));
+    this.roomDisplay.close();
     if (ciel) await ciel.stop().catch(error => this.fail(error));
     this.room = undefined;
-    this.playbackUrl = undefined;
     this.roomStartedAt = 0;
     this.roomScorePolicy.reset();
     this.candidates.clear();
@@ -224,10 +231,6 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
   async close(): Promise<void> {
     await this.stop();
     this.removeAllListeners();
-  }
-
-  handlePlayback(request: Request): Response {
-    return this.media.handlePlayback(request);
   }
 
   private async listRooms(page: number) {
@@ -245,7 +248,8 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
     const room = await fetchRoom(roomId);
     if (!room.live) throw new Error(`直播间 ${room.roomId} 当前未开播`);
     this.ciel?.engram.clear();
-    this.playbackUrl = await this.media.open(room.roomId);
+    await this.media.open(room.roomId);
+    await this.roomDisplay.open(room.roomId);
     this.room = room;
     this.roomStartedAt = Date.now();
     this.roomScorePolicy.reset();

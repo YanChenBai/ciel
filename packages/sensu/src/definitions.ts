@@ -1,4 +1,4 @@
-import { defineCue, definePercept, defineSignal, type DefineSignalOptions } from 'corex';
+import { defineCue, definePercept, defineSignal, type DefineSignalOptions } from '@cieljs/core';
 
 import type {
   EchoDefinition,

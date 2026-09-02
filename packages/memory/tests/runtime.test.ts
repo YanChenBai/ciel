@@ -1,17 +1,17 @@
+import {
+  type AnyFunction,
+  CielOperation,
+  defineCiel,
+  defineCue,
+  definePlugin,
+  type InstrumentContext,
+} from '@cieljs/core';
 import type { StreamFn } from '@earendil-works/pi-agent-core';
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
   type Model,
 } from '@earendil-works/pi-ai';
-import {
-  type AnyFunction,
-  CielOperation,
-  defineCiel,
-  defineCue,
-  defineInterceptor,
-  type InstrumentContext,
-} from 'corex';
 import { describe, expect, it } from 'vite-plus/test';
 
 import { memoryPlugin } from '../src/plugin.ts';
@@ -185,7 +185,7 @@ describe('Memory runtime', () => {
         return streamText('ok');
       },
       sessionStore: false,
-      extensions: [memory],
+      plugins: [memory],
     });
 
     await expect(ciel.start()).resolves.toBeUndefined();
@@ -197,19 +197,21 @@ describe('Memory runtime', () => {
 
   it('主 Agent 调用 memory_remember 时保留 Plugin 插桩上下文', async () => {
     const operations: InstrumentContext[] = [];
-    const observer = defineInterceptor({
+    const observer = definePlugin(() => ({
       name: 'memory-observer',
-      interceptor: {
-        intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
-          if (context?.name !== CielOperation.ToolExecute.name) return undefined;
-          return next =>
-            ((...args: Parameters<T>) => {
-              operations.push(context);
-              return next(...args);
-            }) as T;
+      interceptors: [
+        {
+          intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
+            if (context?.name !== CielOperation.ToolExecute.name) return undefined;
+            return next =>
+              ((...args: Parameters<T>) => {
+                operations.push(context);
+                return next(...args);
+              }) as T;
+          },
         },
-      },
-    });
+      ],
+    }))();
     const generated: AssistantMessage[] = [
       {
         ...assistantMessage('', 'toolUse'),
@@ -236,7 +238,7 @@ describe('Memory runtime', () => {
       model: testModel,
       stream: () => streamMessage(generated.shift()!),
       sessionStore: false,
-      extensions: [observer, memory],
+      plugins: [observer, memory],
     });
 
     await ciel.start();

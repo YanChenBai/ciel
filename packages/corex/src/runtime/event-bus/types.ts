@@ -1,4 +1,4 @@
-import type { EmitSignal, SignalListener } from '#model/signal/index.ts';
+import type { DispatchSignal, SignalListener } from '#model/signal/index.ts';
 import type { Dispose, MaybePromise } from '#shared/async.ts';
 
 export type EventHandler<T extends object> = (data: T) => MaybePromise<void>;
@@ -10,5 +10,5 @@ export interface AsyncEventEmitter<T extends object> {
 }
 
 export interface SignalBus extends SignalListener {
-  emitSignal: EmitSignal;
+  dispatchSignal: DispatchSignal;
 }

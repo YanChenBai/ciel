@@ -1,5 +1,5 @@
-import { defineProjector } from 'corex';
-import type { ProjectorExtension } from 'corex';
+import { defineProjector } from '@cieljs/core';
+import type { Projector } from '@cieljs/core';
 
 import type {
   DailyMemoryEntry,
@@ -67,13 +67,13 @@ function renderRecentMemory(
  * 创建注入主 Agent 上下文的只读视图
  */
 export function createMemoryProjector(options: {
-  readonly namespaceId: string;
+  readonly namespaceId: () => string;
   readonly name?: string;
   readonly store: MemoryStore;
   readonly scope: () => MemoryScope | undefined;
   readonly now: () => number;
   readonly projector?: MemoryProjectorOptions;
-}): ProjectorExtension {
+}): Projector {
   const recentDays = options.projector?.recentDays ?? 3;
   const maxEntriesPerDay = options.projector?.maxEntriesPerDay ?? 20;
   const includeGlobalLongTerm = options.projector?.includeGlobalLongTerm ?? true;
@@ -88,13 +88,13 @@ export function createMemoryProjector(options: {
       // 投影是稳定快照,所有独立读取共享同一 Scope,并在渲染 Markdown 前全部完成
       const [globalLongTerm, currentLongTerm, recent] = await Promise.all([
         includeGlobalLongTerm
-          ? options.store.latestLongTerm(options.namespaceId, 'global')
+          ? options.store.latestLongTerm(options.namespaceId(), 'global')
           : undefined,
         includeCurrentLongTerm && currentScope
-          ? options.store.latestLongTerm(options.namespaceId, currentScope)
+          ? options.store.latestLongTerm(options.namespaceId(), currentScope)
           : undefined,
         currentScope
-          ? options.store.listDaily(options.namespaceId, currentScope, {
+          ? options.store.listDaily(options.namespaceId(), currentScope, {
               dates: recentDateKeys(options.now(), recentDays),
               limit: recentDays * maxEntriesPerDay,
             })

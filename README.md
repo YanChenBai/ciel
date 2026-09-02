@@ -6,7 +6,7 @@ Ciel 是一个持续感知型 AI Agent 运行时。当前实现以 Corex 为核�
 
 | Workspace                   | 职责                                                     |
 | --------------------------- | -------------------------------------------------------- |
-| `packages/corex`            | Agent 运行时、扩展模型、感知记录与统一 operation 协议    |
+| `packages/corex`            | `@cieljs/core` Agent 运行时、感知记录与 Plugin 模型      |
 | `packages/asr`              | VAD、ASR、时间戳与说话人识别                             |
 | `packages/sensu`            | 视觉和听觉感知插件                                       |
 | `packages/memory`           | 长期记忆、经历归档与语义召回                             |

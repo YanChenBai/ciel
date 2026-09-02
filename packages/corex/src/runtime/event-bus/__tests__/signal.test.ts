@@ -17,8 +17,8 @@ test('按 Signal 定义路由并等待异步处理器', async () => {
     received.push(signal.payload);
   });
 
-  await signalBus.emitSignal(ignored.create('ignored', instant));
-  await signalBus.emitSignal(selected.create('accepted', instant));
+  await signalBus.dispatchSignal(ignored.create('ignored', instant));
+  await signalBus.dispatchSignal(selected.create('accepted', instant));
 
   expect(received).toEqual(['accepted']);
 });
@@ -31,9 +31,9 @@ test('处理器被释放后停止路由 Signal', async () => {
     handled += 1;
   });
 
-  await signalBus.emitSignal(definition.create(undefined, instant));
+  await signalBus.dispatchSignal(definition.create(undefined, instant));
   await dispose();
-  await signalBus.emitSignal(definition.create(undefined, instant));
+  await signalBus.dispatchSignal(definition.create(undefined, instant));
 
   expect(handled).toBe(1);
 });
@@ -48,7 +48,7 @@ test('等待处理器并传播聚合错误', async () => {
   });
 
   const emittedError = await signalBus
-    .emitSignal(definition.create(undefined, instant))
+    .dispatchSignal(definition.create(undefined, instant))
     .catch((caught: unknown) => caught);
   expect(emittedError).toBeInstanceOf(AggregateError);
   expect((emittedError as AggregateError).errors).toEqual([error]);
@@ -65,7 +65,7 @@ test('同一个处理器重复订阅同一事件时只执行一次', async () =>
   signalBus.onSignal(definition, handler);
   signalBus.onSignal(definition, handler);
 
-  await signalBus.emitSignal(definition.create(undefined, instant));
+  await signalBus.dispatchSignal(definition.create(undefined, instant));
 
   expect(handled).toBe(1);
 });

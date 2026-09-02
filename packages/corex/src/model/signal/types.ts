@@ -23,7 +23,7 @@ export interface SignalReference<TDefinition extends AnySignalDefinition = AnySi
 
 export type AnySignalDefinition = SignalDefinition<any>;
 export type AnySignal = Signal<any>;
-export type EmitSignal = (signal: AnySignal) => Promise<void>;
+export type DispatchSignal = (signal: AnySignal) => Promise<void>;
 export type SignalOf<TDefinition extends AnySignalDefinition> =
   TDefinition extends SignalDefinition<infer TPayload> ? Signal<TPayload> : never;
 

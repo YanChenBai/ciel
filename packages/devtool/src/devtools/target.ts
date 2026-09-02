@@ -1,3 +1,4 @@
+import type { AgentMessage, Ciel, EngramEntry } from '@cieljs/core';
 import {
   DevtoolEventName,
   type AgentMessageRecord,
@@ -5,7 +6,6 @@ import {
   type OperationRecord,
   type SerializedValue,
 } from '@ciels/devtool-protocol';
-import type { AgentMessage, Ciel, EngramEntry } from 'corex';
 
 import type { DevtoolTarget, DevtoolTargetEvent } from '../bridge/index.ts';
 import type { Telemetry, TelemetryEvent } from '../types.ts';

@@ -1,4 +1,4 @@
-import { referenceSignal, type Signal } from 'corex';
+import { referenceSignal, type Signal } from '@cieljs/core';
 import sharp from 'sharp';
 
 import { Sight } from '../definitions.ts';

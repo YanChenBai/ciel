@@ -1,7 +1,7 @@
 import type { AgentTool, StreamFn } from '@earendil-works/pi-agent-core';
 
-import type { ResolvedTool } from '../extensions.ts';
 import { cielOperation, CielOperation, type Instrument } from '../instrumentation.ts';
+import type { ResolvedTool } from '../plugins.ts';
 import type { AgentPrompt } from './types.ts';
 
 interface InstrumentAgentOperationsOptions {

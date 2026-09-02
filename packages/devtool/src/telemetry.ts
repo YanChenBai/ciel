@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 
+import { CielOperation, type CielOperationMetadata } from '@cieljs/core';
 import {
   type AnyFunction,
   type InstrumentContext,
@@ -8,7 +9,6 @@ import {
 } from '@cieljs/instrument';
 import { context as otelContext, metrics, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { Attributes, Counter, Histogram, Span } from '@opentelemetry/api';
-import { CielOperation, type CielOperationMetadata } from 'corex';
 
 import { captureError, captureValue } from './capture.ts';
 import { createSerializer } from './serializer.ts';

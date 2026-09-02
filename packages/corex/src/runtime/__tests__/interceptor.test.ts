@@ -4,11 +4,9 @@ import { expect, test, vi } from 'vite-plus/test';
 
 import {
   type AnyFunction,
-  cielOperation,
   CielOperation,
   defineCiel,
   defineCue,
-  defineInterceptor,
   definePlugin,
   defineProjector,
   type InstrumentContext,
@@ -18,32 +16,23 @@ import { assistantMessage, streamResult, testModel } from './helpers.ts';
 
 const cue = defineCue({ name: 'instrument', prompt: 'Run the instrumented agent.' });
 const instant = { kind: 'instant', at: 1 } as const;
-const InternalOperationTag = {
-  Plugin: 'PLUGIN',
-} as const;
-const InternalOperation = {
-  Run: {
-    name: 'ciel.plugin.internal',
-    label: 'Plugin Internal',
-    tag: InternalOperationTag.Plugin,
-  },
-} as const;
-
 test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async () => {
   const calls: InstrumentContext[] = [];
-  const observer = defineInterceptor({
+  const observer = definePlugin(() => ({
     name: 'agent-observer',
-    interceptor: {
-      intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
-        if (!context) throw new Error('Expected instrument context');
-        return next =>
-          ((...args: Parameters<T>) => {
-            calls.push(context);
-            return next(...args);
-          }) as T;
+    interceptors: [
+      {
+        intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
+          if (!context) throw new Error('Expected instrument context');
+          return next =>
+            ((...args: Parameters<T>) => {
+              calls.push(context);
+              return next(...args);
+            }) as T;
+        },
       },
-    },
-  });
+    ],
+  }))();
   const execute = vi.fn(async () => ({
     content: [{ type: 'text' as const, text: 'remembered' }],
     details: { stored: true },
@@ -81,16 +70,12 @@ test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async (
   });
   const createCapability = definePlugin(() => ({
     name: 'capability',
-    create() {
-      return {
-        extensions: [projector],
-        tools: [tool],
-        initialize() {},
-        activate() {},
-        deactivate() {},
-        dispose() {},
-      };
-    },
+    projectors: [projector],
+    tools: [tool],
+    initialize() {},
+    activate() {},
+    deactivate() {},
+    dispose() {},
   }));
   const capability = createCapability();
   const ciel = defineCiel({
@@ -98,7 +83,7 @@ test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async (
     model: testModel,
     sessionStore: false,
     stream,
-    extensions: [observer, capability],
+    plugins: [observer, capability],
   });
 
   await ciel.start();
@@ -106,7 +91,6 @@ test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async (
   await ciel.stop();
 
   expect(calls.map(context => context.name)).toEqual([
-    CielOperation.PluginCreate.name,
     CielOperation.PluginInitialize.name,
     CielOperation.PluginActivate.name,
     CielOperation.CueSubmit.name,
@@ -150,56 +134,4 @@ test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async (
       tag: CielOperation.AgentRun.tag,
     },
   });
-});
-
-test('Plugin 使用派生 instrument 合并身份与内部操作 metadata', () => {
-  const calls: InstrumentContext[] = [];
-  const observer = defineInterceptor({
-    name: 'observer',
-    interceptor: {
-      intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
-        if (context?.name !== InternalOperation.Run.name) return undefined;
-        return next =>
-          ((...args: Parameters<T>) => {
-            calls.push(context);
-            return next(...args);
-          }) as T;
-      },
-    },
-  });
-  let run!: (value: number) => number;
-  const createCapability = definePlugin(() => ({
-    name: 'capability',
-    create(context) {
-      const internal = context.instrument.with(
-        cielOperation(InternalOperation.Run, { capability: 'test' }),
-      );
-      run = internal((value: number) => value * 2, {
-        metadata: { pluginId: 'forged', operation: 'double' },
-      });
-      return {};
-    },
-  }));
-  const capability = createCapability();
-  defineCiel({
-    instructions: 'You are Ciel.',
-    model: testModel,
-    sessionStore: false,
-    extensions: [observer, capability],
-  });
-
-  expect(run(2)).toBe(4);
-  expect(calls).toEqual([
-    {
-      name: InternalOperation.Run.name,
-      metadata: {
-        operation: 'double',
-        capability: 'test',
-        label: InternalOperation.Run.label,
-        pluginId: capability.id,
-        pluginName: capability.name,
-        tag: InternalOperation.Run.tag,
-      },
-    },
-  ]);
 });

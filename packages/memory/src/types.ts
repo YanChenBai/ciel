@@ -1,5 +1,5 @@
+import type { AgentConfig, Projector } from '@cieljs/core';
 import type { AgentTool } from '@earendil-works/pi-agent-core';
-import type { AgentConfig, ProjectorExtension } from 'corex';
 
 export interface MemoryEmbeddingModel {
   doEmbed(options: { values: string[] }): PromiseLike<{ embeddings: number[][] }>;
@@ -230,15 +230,15 @@ export interface CreateMemoryOptions extends Omit<
   MemoryOptions,
   'agent' | 'description' | 'id' | 'name'
 > {
-  readonly id: string;
-  readonly agent: MemoryAgentOptions;
+  readonly id: string | (() => string);
+  readonly agent: MemoryAgentOptions | (() => MemoryAgentOptions);
 }
 
 /**
  * 向 Plugin 和高级调用方暴露的运行时资源
  */
 export interface MemoryRuntime {
-  readonly projector: ProjectorExtension;
+  readonly projector: Projector;
   readonly tools: readonly AgentTool<any>[];
   start(): Promise<void>;
   flush(): Promise<void>;

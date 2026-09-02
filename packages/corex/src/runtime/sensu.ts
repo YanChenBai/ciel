@@ -1,10 +1,15 @@
-import type { SensuOutput, SensuOutputReceipt, SensuProcessor, SensuResult } from '#extension';
 import type { Engram } from '#model/engram/index.ts';
 import type { AnySignal, SignalHandler } from '#model/signal/index.ts';
+import type {
+  SensuOutput,
+  SensuOutputReceipt,
+  SensuProcessor,
+  SensuResult,
+} from '#plugin/index.ts';
 
 import type { SignalBus } from './event-bus/index.ts';
-import type { ResolvedSensu } from './extensions.ts';
 import { cielOperation, CielOperation } from './instrumentation.ts';
+import type { ResolvedSensu } from './plugins.ts';
 import type { Think } from './types.ts';
 
 function normalizeMany<T>(value: T | readonly T[] | undefined): readonly T[] {
@@ -29,7 +34,7 @@ function createOutputRuntime(
       const percepts = normalizeMany(result.percepts);
       const cues = normalizeMany(result.cues);
       if (percepts.length === 0 && cues.length === 0) {
-        throw new TypeError(`Sensu "${sensu.extension.name}" cannot write an empty result`);
+        throw new TypeError(`Sensu "${sensu.primitive.name}" cannot write an empty result`);
       }
 
       // A Cue must never observe its own batch before the Percepts are committed
@@ -43,7 +48,7 @@ function createOutputRuntime(
     output: {
       write(result) {
         if (!open) {
-          return Promise.reject(new Error(`Sensu "${sensu.extension.name}" output is closed`));
+          return Promise.reject(new Error(`Sensu "${sensu.primitive.name}" output is closed`));
         }
         const written = queue.then(() => commit(result));
         queue = written.then(
@@ -77,7 +82,7 @@ export async function installSensu(
   // Input and output are separate instrumented boundaries by design
   const output = createOutputRuntime(sensu, services);
   const create = sensu.instrument.with(cielOperation(CielOperation.SensuCreate))(
-    sensu.extension.create,
+    sensu.primitive.create,
   );
   const processor: SensuProcessor = await create({
     instrument: sensu.instrument,
@@ -86,8 +91,8 @@ export async function installSensu(
   const write = sensu.instrument.with(cielOperation(CielOperation.SensuInput))(
     (signal: AnySignal) => processor.write(signal),
   );
-  const handler: SignalHandler<typeof sensu.extension.signal> = signal => write(signal);
-  const unsubscribe = services.signalBus.onSignal(sensu.extension.signal, handler);
+  const handler: SignalHandler<typeof sensu.primitive.signal> = signal => write(signal);
+  const unsubscribe = services.signalBus.onSignal(sensu.primitive.signal, handler);
 
   return {
     async close() {
@@ -116,7 +121,7 @@ export async function installSensu(
 
       if (errors.length === 1) throw errors[0];
       if (errors.length > 1) {
-        throw new AggregateError(errors, `Failed to close Sensu "${sensu.extension.name}"`);
+        throw new AggregateError(errors, `Failed to close Sensu "${sensu.primitive.name}"`);
       }
     },
   };

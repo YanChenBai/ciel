@@ -1,5 +1,5 @@
+import { cielOperation, CielOperation } from '@cieljs/core';
 import { createInstrumenter } from '@cieljs/instrument';
-import { cielOperation, CielOperation } from 'corex';
 import { beforeEach, describe, expect, test } from 'vite-plus/test';
 
 import { createSerializer, defineTransformer, telemetry } from '../src/index.ts';

@@ -9,21 +9,18 @@ import {
   SplitterPanel,
   SplitterRoot,
 } from '@vuetify/v0/components';
-import { computed, defineAsyncComponent, onMounted, shallowRef, watch } from 'vue';
+import { computed, onMounted, shallowRef, watch } from 'vue';
 
 import { valueText } from '@/session/value.ts';
 
 import {
   type DevtoolTraceEntry,
   operationLabel,
-  operationLane,
   operationTag,
   resolveTraceEntry,
 } from './model.ts';
 import TraceInspector from './TraceInspector.vue';
 import TraceList from './TraceList.vue';
-
-const TraceTimeline = defineAsyncComponent(() => import('./TraceTimeline.vue'));
 
 const props = defineProps<{
   operations: readonly OperationRecord[];
@@ -71,7 +68,7 @@ const end = computed(() =>
   Math.max(...visible.value.map(operation => operation.completedAt ?? now.value), start.value + 1),
 );
 const toolCalls = computed(
-  () => visible.value.filter(operation => operationLane(operation).id === 'tool').length,
+  () => visible.value.filter(operation => operation.tag.toLocaleLowerCase() === 'tool').length,
 );
 const emptyLabel = computed(() => (visible.value.length ? '没有匹配的步骤' : '等待执行轨迹'));
 
@@ -127,57 +124,33 @@ function exportTrace(): void {
       </ButtonRoot>
     </header>
 
-    <SplitterRoot orientation="vertical" class="trace-workspace">
-      <SplitterPanel
-        :default-size="26"
-        :min-size="14"
-        :max-size="52"
-        class="dx:min-h-0 dx:overflow-hidden"
-      >
-        <TraceTimeline
-          v-if="visible.length"
-          :end="end"
-          :operations="visible"
-          :selected-id="selected?.id"
-          :start="start"
-          :trace="trace"
-          @select="selectOperation"
-        />
-        <div v-else class="trace-empty">Waiting for the first trace</div>
-      </SplitterPanel>
-      <SplitterHandle label="调整时间轴高度" class="trace-splitter trace-splitter-horizontal" />
-      <SplitterPanel
-        :default-size="74"
-        :min-size="40"
-        class="trace-detail-host dx:min-h-0 dx:overflow-hidden"
-      >
-        <SplitterRoot v-if="inspectorOpen" orientation="horizontal" class="trace-detail">
-          <SplitterPanel :default-size="62" :min-size="35">
-            <TraceList
-              :empty-label="emptyLabel"
-              :operations="filtered"
-              :selected-id="selected?.id"
-              :total="visible.length"
-              :trace="trace"
-              @select="selectOperation"
-            />
-          </SplitterPanel>
-          <SplitterHandle label="调整检查器宽度" class="trace-splitter trace-splitter-vertical" />
-          <SplitterPanel :default-size="38" :min-size="28">
-            <TraceInspector :operation="selected" :trace="trace" @close="inspectorOpen = false" />
-          </SplitterPanel>
-        </SplitterRoot>
-        <TraceList
-          v-else
-          :empty-label="emptyLabel"
-          :operations="filtered"
-          :selected-id="selected?.id"
-          :total="visible.length"
-          :trace="trace"
-          @select="selectOperation"
-        />
-      </SplitterPanel>
-    </SplitterRoot>
+    <div class="trace-detail-host">
+      <SplitterRoot v-if="inspectorOpen" orientation="horizontal" class="trace-detail">
+        <SplitterPanel :default-size="62" :min-size="35">
+          <TraceList
+            :empty-label="emptyLabel"
+            :operations="filtered"
+            :selected-id="selected?.id"
+            :total="visible.length"
+            :trace="trace"
+            @select="selectOperation"
+          />
+        </SplitterPanel>
+        <SplitterHandle label="调整检查器宽度" class="trace-splitter trace-splitter-vertical" />
+        <SplitterPanel :default-size="38" :min-size="28">
+          <TraceInspector :operation="selected" :trace="trace" @close="inspectorOpen = false" />
+        </SplitterPanel>
+      </SplitterRoot>
+      <TraceList
+        v-else
+        :empty-label="emptyLabel"
+        :operations="filtered"
+        :selected-id="selected?.id"
+        :total="visible.length"
+        :trace="trace"
+        @select="selectOperation"
+      />
+    </div>
   </section>
 </template>
 
@@ -247,7 +220,6 @@ function exportTrace(): void {
   border-color: color-mix(in srgb, var(--primary) 55%, transparent);
 }
 
-.trace-workspace,
 .trace-detail {
   width: 100%;
   min-width: 0;
@@ -258,6 +230,9 @@ function exportTrace(): void {
 
 .trace-detail-host {
   display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .trace-detail-host > .trace-detail,
@@ -278,23 +253,8 @@ function exportTrace(): void {
   background: var(--primary);
 }
 
-.trace-splitter-horizontal {
-  width: 100%;
-  height: 1px;
-}
-
 .trace-splitter-vertical {
   width: 1px;
   height: 100%;
-}
-
-.trace-empty {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  place-items: center;
-  background: #292a2b;
-  color: #52525b;
-  font-size: 12px;
 }
 </style>

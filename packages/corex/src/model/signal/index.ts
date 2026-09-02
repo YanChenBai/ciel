@@ -8,7 +8,7 @@ export type {
   AnySignal,
   AnySignalDefinition,
   DefineSignalOptions,
-  EmitSignal,
+  DispatchSignal,
   Signal,
   SignalDefinition,
   SignalHandler,

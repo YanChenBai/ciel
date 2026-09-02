@@ -1,6 +1,6 @@
+import { cielOperation, type Signal } from '@cieljs/core';
 import type { Instrument } from '@cieljs/instrument';
 import { ASR, type ASROptions, type ASRResult } from '@ciels/asr';
-import { cielOperation, type Signal } from 'corex';
 
 import { SensuOperation } from '../instrumentation.ts';
 import type { EchoDefinition, EchoPayload, SpeechSegment } from '../types.ts';

@@ -1,5 +1,6 @@
 // @env node
 
+import { type CielAgentOptions, defineCiel, definePlugin } from '@cieljs/core';
 import type { AnyFunction, InstrumentContext } from '@cieljs/instrument';
 import type { ASROptions, ASRResult } from '@ciels/asr';
 import {
@@ -7,7 +8,6 @@ import {
   type AssistantMessage,
   type Model,
 } from '@earendil-works/pi-ai';
-import { type CielAgentOptions, defineCiel, definePlugin, type PluginRuntimeContext } from 'corex';
 import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
@@ -147,23 +147,6 @@ describe('sensuPlugin', () => {
           },
         },
       ],
-      create: () => ({}),
-    }))();
-    const source = definePlugin(() => ({
-      name: 'source',
-      create() {
-        return {
-          async activate(ctx: PluginRuntimeContext) {
-            await ctx.emitSignal(screen.create({ data: image }, { kind: 'instant', at: 1_000 }));
-            await ctx.emitSignal(
-              microphone.create(
-                { data: Buffer.alloc(3_200) },
-                { kind: 'interval', start: 1_000, end: 1_100 },
-              ),
-            );
-          },
-        };
-      },
     }))();
     const stream: NonNullable<CielAgentOptions['stream']> = () => testStream();
     const ciel = defineCiel({
@@ -171,10 +154,17 @@ describe('sensuPlugin', () => {
       model: testModel,
       sessionStore: false,
       stream,
-      extensions: [observer, sensu, source],
+      plugins: [observer, sensu],
     });
 
     await ciel.start();
+    await ciel.dispatchSignal(screen.create({ data: image }, { kind: 'instant', at: 1_000 }));
+    await ciel.dispatchSignal(
+      microphone.create(
+        { data: Buffer.alloc(3_200) },
+        { kind: 'interval', start: 1_000, end: 1_100 },
+      ),
+    );
     await vi.waitFor(() => {
       expect(ciel.engram.entries(Sight)).toHaveLength(1);
       expect(ciel.engram.entries(Hearing)).toHaveLength(1);
@@ -191,8 +181,7 @@ describe('sensuPlugin', () => {
           label: SensuOperation.ASRInput.label,
           pluginId: sensu.id,
           pluginName: sensu.name,
-          extensionKind: 'sensu',
-          extensionName: 'microphone.hearing',
+          sensuName: 'microphone.hearing',
           signalDefinitionId: microphone.id,
           signalDefinitionName: microphone.name,
           tag: SensuOperation.ASRInput.tag,
@@ -218,8 +207,7 @@ describe('sensuPlugin', () => {
           label: SensuOperation.ASROutput.label,
           pluginId: sensu.id,
           pluginName: sensu.name,
-          extensionKind: 'sensu',
-          extensionName: 'microphone.hearing',
+          sensuName: 'microphone.hearing',
           signalDefinitionId: microphone.id,
           signalDefinitionName: microphone.name,
           tag: SensuOperation.ASROutput.tag,
@@ -240,30 +228,24 @@ describe('sensuPlugin', () => {
   it('没有 ASR 文本时仍由 speech-end 发出 Cue', async () => {
     const microphone = defineEcho({ name: 'silent-speech' });
     const sensu = sensuPlugin({ name: 'sensu-cue', hearing: { signals: [microphone] } });
-    const source = definePlugin(() => ({
-      name: 'cue-source',
-      create: () => ({
-        activate: ({ emitSignal }: PluginRuntimeContext) =>
-          emitSignal(
-            microphone.create(
-              { data: Buffer.alloc(3_200) },
-              { kind: 'interval', start: 3_000, end: 3_100 },
-            ),
-          ),
-      }),
-    }))();
     const ciel = defineCiel({
       instructions: 'You are Ciel.',
       model: testModel,
       sessionStore: false,
       stream: () => testStream(),
-      extensions: [sensu, source],
+      plugins: [sensu],
     });
 
     asr.emitResult = false;
     try {
       expect(SpeechEnded.coalesce).toBe(true);
       await ciel.start();
+      await ciel.dispatchSignal(
+        microphone.create(
+          { data: Buffer.alloc(3_200) },
+          { kind: 'interval', start: 3_000, end: 3_100 },
+        ),
+      );
       await vi.waitFor(() => expect(ciel.messages).toHaveLength(2));
       expect(ciel.engram.entries(Hearing)).toHaveLength(0);
     } finally {

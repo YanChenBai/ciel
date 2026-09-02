@@ -22,7 +22,7 @@
 ## 快速开始
 
 ```ts
-import { defineCiel, definePlugin } from 'corex';
+import { defineCiel } from '@cieljs/core';
 import { defineEcho, definePhoton, sensuPlugin } from '@ciels/sensu';
 
 const screen = definePhoton({
@@ -58,28 +58,19 @@ const sensu = sensuPlugin({
   },
 });
 
-const input = definePlugin(() => ({
-  name: 'desktop-input',
-  create() {
-    return {
-      async activate({ emitSignal }) {
-        await emitSignal(screen.create({ data: imageBuffer }, { kind: 'instant', at: Date.now() }));
-        await emitSignal(
-          microphone.create(
-            { data: pcmBuffer },
-            { kind: 'interval', start: startedAt, end: endedAt },
-          ),
-        );
-      },
-    };
-  },
-}))();
-
 const ciel = defineCiel({
   model,
   instructions: '你是夏尔',
-  extensions: [sensu, input],
+  plugins: [sensu],
 });
+
+await ciel.start();
+await ciel.dispatchSignal(
+  screen.create({ data: imageBuffer }, { kind: 'instant', at: Date.now() }),
+);
+await ciel.dispatchSignal(
+  microphone.create({ data: pcmBuffer }, { kind: 'interval', start: startedAt, end: endedAt }),
+);
 ```
 
 ## 感知流
@@ -131,7 +122,7 @@ Percept 一一对应。没有 ASR 文本时仍会发出 `SpeechEnded`，因此 A
 | `ciel.sensu.asr.input`  | PCM 与开始时间      | ASR write 结果       |
 | `ciel.sensu.asr.output` | 完整 speech segment | `SensuOutputReceipt` |
 
-Corex 自动附加 Plugin 与 Extension 身份。Sensu 再附加 Signal Definition 信息，因此可以从一次 ASR
+Corex 自动附加 Plugin 与 Sensu 身份。Sensu 再附加 Signal Definition 信息，因此可以从一次 ASR
 输出追踪到实际写入的 Engram entries 与 Cue 数量。
 
 ## 开发

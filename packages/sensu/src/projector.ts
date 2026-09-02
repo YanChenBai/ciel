@@ -1,6 +1,6 @@
 // @env node
 
-import { defineProjector, type LLMContext, type Percept, type ProjectorExtension } from 'corex';
+import { defineProjector, type LLMContext, type Percept, type Projector } from '@cieljs/core';
 
 import { Hearing, Sight } from './definitions.ts';
 import type { SensuProjectorOptions } from './types.ts';
@@ -37,10 +37,7 @@ function imageData(percept: Percept): Buffer | undefined {
   return Buffer.from(image.data);
 }
 
-export function createSensuProjector(
-  name: string,
-  options: SensuProjectorOptions = {},
-): ProjectorExtension {
+export function createSensuProjector(name: string, options: SensuProjectorOptions = {}): Projector {
   const maxVisionFrames = options.maxVisionFrames ?? 9;
   if (!Number.isSafeInteger(maxVisionFrames) || maxVisionFrames < 1 || maxVisionFrames > 9) {
     throw new Error('projector.maxVisionFrames must be an integer between 1 and 9');

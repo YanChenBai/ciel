@@ -31,10 +31,10 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
+    "@cieljs/core": "workspace:*",
     "@cieljs/instrument": "^0.0.1",
     "@ciels/devtool-protocol": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
-    "corex": "workspace:*",
     "superjson": "^2.2.6"
   },
   "devDependencies": {

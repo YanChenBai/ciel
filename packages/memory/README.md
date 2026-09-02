@@ -24,7 +24,7 @@
 
 ```ts
 import { memoryPlugin } from '@ciels/memory';
-import { defineCiel } from 'corex';
+import { defineCiel } from '@cieljs/core';
 
 const memory = memoryPlugin({
   name: 'memory',
@@ -46,7 +46,7 @@ const ciel = defineCiel({
   id: 'blive-main',
   instructions,
   model,
-  extensions: [memory],
+  plugins: [memory],
 });
 
 await ciel.start();
@@ -109,7 +109,7 @@ PGlite
 
 ## Tools
 
-Memory Plugin 直接向主 Agent 贡献原生 Tools，不使用 Tool Extension。
+Memory Plugin 直接向主 Agent 贡献原生 Tools。
 
 | Tool              | 作用                              |
 | ----------------- | --------------------------------- |

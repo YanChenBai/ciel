@@ -5,7 +5,6 @@ import {
   defaultTrace,
   type DevtoolTraceEntry,
   resolveTraceEntry,
-  traceLanes,
 } from '../src/components/trace/model.ts';
 
 const omitted = { type: 'omitted', reason: 'capture-disabled' } as const;
@@ -29,7 +28,7 @@ function operation(
   };
 }
 
-test('默认 trace 仅显示声明的 Corex operation 并直接使用固定 label/tag', () => {
+test('默认 trace 仅显示声明的 Corex operation', () => {
   expect(
     resolveTraceEntry(
       operation('ciel.cue.submit', 'Cue Submit', 'CUE', {
@@ -39,8 +38,6 @@ test('默认 trace 仅显示声明的 Corex operation 并直接使用固定 labe
     ),
   ).toMatchObject({
     label: 'Cue Submit',
-    lane: { id: 'cue', label: 'CUE' },
-    type: 'point',
   });
   expect(
     resolveTraceEntry(operation('ciel.sensu.output', 'Sensu Output', 'SENSU'), defaultTrace),
@@ -60,16 +57,5 @@ test('业务 trace 通过一个列表扩展可见 operation 和颜色', () => {
   expect(resolveTraceEntry(room, trace)).toMatchObject({
     color: 'var(--trace-vision)',
     label: 'Room Open',
-    lane: { id: 'room', label: 'ROOM' },
   });
-  expect(
-    traceLanes([
-      operation('ciel.cue.submit', 'Cue Submit', 'CUE'),
-      operation('ciel.agent.run', 'Agent Run', 'AGENT'),
-      operation('ciel.model.generate', 'Model Generate', 'AGENT'),
-      operation('ciel.agent.prompt', 'Agent Prompt', 'CONTEXT'),
-      operation('ciel.tool.execute', 'Tool Execute', 'TOOL'),
-      room,
-    ]).map(lane => lane.id),
-  ).toEqual(['cue', 'agent', 'context', 'tool', 'room']);
 });

@@ -1,5 +1,6 @@
 // @env node
 
+import type { EngramEntry } from '@cieljs/core';
 import { defineTransformer, telemetry } from '@ciels/devtool';
 import type { DevtoolTarget, DevtoolTargetEvent, TelemetryEvent } from '@ciels/devtool';
 import type {
@@ -10,7 +11,6 @@ import type {
 } from '@ciels/devtool-protocol';
 import { DevtoolEventName } from '@ciels/devtool-protocol';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
-import type { EngramEntry } from 'corex';
 
 import type { RuntimeController } from './runtime.ts';
 

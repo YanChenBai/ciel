@@ -58,7 +58,6 @@ export interface AppState {
   readonly danmakuDelivery: DanmakuDelivery;
   readonly error?: string;
   readonly mode: WatchMode;
-  readonly playbackUrl?: string;
   readonly room?: RoomInfo;
   readonly running: boolean;
 }

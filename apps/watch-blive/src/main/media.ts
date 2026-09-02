@@ -4,12 +4,10 @@ import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import type { Readable } from 'node:stream';
 
+import type { AnySignal, DispatchSignal } from '@cieljs/core';
 import { defineEcho, definePhoton } from '@ciels/sensu';
-import { definePlugin } from 'corex';
-import type { AnySignal, EmitSignal } from 'corex';
 
 import { fetchFlvUrl } from './bilibili.ts';
-import { LivePlayback } from './playback.ts';
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -23,8 +21,7 @@ export const LiveVideo = definePhoton({ name: 'blive.video', description: 'ç›´æ’
 
 export class LiveMedia {
   private process?: ChildProcess;
-  private readonly playback = new LivePlayback();
-  private emit?: EmitSignal;
+  private dispatchSignal?: DispatchSignal;
   private startedAt = 0;
   private samples = 0;
   private jpegBuffer = Buffer.alloc(0);
@@ -32,16 +29,19 @@ export class LiveMedia {
 
   constructor(private readonly onError?: (error: Error) => void) {}
 
-  bind(emit: EmitSignal): void {
-    this.emit = emit;
+  bind(dispatchSignal: DispatchSignal): void {
+    this.dispatchSignal = dispatchSignal;
   }
 
-  async open(roomId: number): Promise<string> {
+  unbind(): void {
+    this.dispatchSignal = undefined;
+  }
+
+  async open(roomId: number): Promise<void> {
     await this.close();
     const url = await fetchFlvUrl(roomId);
-    const playbackUrl = this.playback.open();
     const child = spawn(process.env.FFMPEG_PATH?.trim() || 'ffmpeg', ffmpegArgs(roomId, url), {
-      stdio: ['ignore', 'pipe', 'pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
     });
     this.process = child;
     this.startedAt = Date.now();
@@ -53,10 +53,6 @@ export class LiveMedia {
     const images = child.stdio[3] as Readable | null;
     images?.on('data', chunk => {
       if (this.process === child) this.images(Buffer.from(chunk));
-    });
-    const playback = child.stdio[4] as Readable | null;
-    playback?.on('data', chunk => {
-      if (this.process === child) this.playback.write(Buffer.from(chunk));
     });
     child.stderr?.on('data', chunk => {
       const text = Buffer.from(chunk)
@@ -81,11 +77,6 @@ export class LiveMedia {
         ),
       );
     });
-    return playbackUrl;
-  }
-
-  handlePlayback(request: Request): Response {
-    return this.playback.handle(request);
   }
 
   async close(): Promise<void> {
@@ -94,7 +85,6 @@ export class LiveMedia {
     if (process && !process.killed) process.kill('SIGTERM');
     await Promise.allSettled(this.pending);
     this.jpegBuffer = Buffer.alloc(0);
-    this.playback.close();
   }
 
   private audio(data: Buffer): void {
@@ -125,26 +115,14 @@ export class LiveMedia {
   }
 
   private publish(signal: AnySignal): void {
-    if (!this.emit) return;
-    const pending = Promise.resolve(this.emit(signal)).catch(error => {
+    if (!this.dispatchSignal) return;
+    const pending = Promise.resolve(this.dispatchSignal(signal)).catch(error => {
       console.error('[watch-blive:media]', error);
     });
     this.pending.add(pending);
     void pending.then(() => this.pending.delete(pending));
   }
 }
-
-export const liveMediaPlugin = definePlugin((media: LiveMedia) => ({
-  name: 'blive-media-source',
-  create() {
-    return {
-      activate(context: { emitSignal: EmitSignal }) {
-        media.bind(context.emitSignal);
-      },
-      deactivate: () => media.close(),
-    };
-  },
-}));
 
 export function ffmpegArgs(roomId: number, url: string): string[] {
   return [
@@ -195,20 +173,5 @@ export function ffmpegArgs(roomId: number, url: string): string[] {
     '-vcodec',
     'mjpeg',
     'pipe:3',
-    '-map',
-    '0:v:0?',
-    '-map',
-    '0:a:0?',
-    '-c:v',
-    'copy',
-    '-c:a',
-    'copy',
-    '-avoid_negative_ts',
-    'make_zero',
-    '-movflags',
-    'frag_keyframe+empty_moov+default_base_moof',
-    '-f',
-    'mp4',
-    'pipe:4',
   ];
 }

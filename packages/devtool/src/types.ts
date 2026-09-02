@@ -1,5 +1,5 @@
+import type { CielOperationMetadata, Operation } from '@cieljs/core';
 import type { Interceptor } from '@cieljs/instrument';
-import type { CielOperationMetadata, Operation } from 'corex';
 import type { SuperJSONValue } from 'superjson';
 
 export interface Transformer<T = unknown, Serialized = SuperJSONValue> {

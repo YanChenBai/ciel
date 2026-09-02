@@ -1,19 +1,35 @@
-import { runAgentLoop } from '@earendil-works/pi-agent-core';
+import {
+  convertToLlm as defaultConvertToLlm,
+  runAgentLoop,
+  runAgentLoopContinue,
+} from '@earendil-works/pi-agent-core';
 import type {
   AgentLoopConfig,
   AgentMessage,
   AgentTool,
   StreamFn,
 } from '@earendil-works/pi-agent-core';
-import type { AssistantMessage, ImageContent, Message, TextContent } from '@earendil-works/pi-ai';
+import {
+  isContextOverflow,
+  type AssistantMessage,
+  type ImageContent,
+  type TextContent,
+} from '@earendil-works/pi-ai';
 import { streamSimple as defaultStream } from '@earendil-works/pi-ai/compat';
 
 import type { AnyCue } from '#model/cue/index.ts';
 import { createEngramView, type Engram } from '#model/engram/index.ts';
 import type { LLMContent } from '#model/llm/index.ts';
 
-import type { ResolvedTool } from '../extensions.ts';
 import { cielOperation, CielOperation, type Instrument } from '../instrumentation.ts';
+import type { ResolvedTool } from '../plugins.ts';
+import {
+  compactProjectedContext,
+  countContextTokens,
+  readLastContextTokens,
+  resolveCompactionOptions,
+  type ResolvedCompactionOptions,
+} from './compaction.ts';
 import { instrumentAgentOperations } from './instrumentation.ts';
 import { createAgentSessionKey } from './session.ts';
 import type {
@@ -40,6 +56,7 @@ interface CreateAgentRuntimeOptions extends Omit<CielAgentOptions, 'sessionId'> 
 }
 
 interface ResolvedAgentRuntimeOptions {
+  readonly compaction: ResolvedCompactionOptions | undefined;
   readonly engram: Engram;
   readonly instrument: Instrument;
   readonly loopConfig: AgentLoopConfig;
@@ -63,6 +80,7 @@ function resolveAgentRuntimeOptions(
 ): ResolvedAgentRuntimeOptions {
   const {
     convertToLlm: customConvertToLlm,
+    compaction,
     cielId,
     engram,
     hasProjectors,
@@ -78,8 +96,7 @@ function resolveAgentRuntimeOptions(
     tools,
     ...loopOptions
   } = options;
-  const convertToLlm: AgentMessageConverter =
-    customConvertToLlm ?? (messages => messages as Message[]);
+  const convertToLlm: AgentMessageConverter = customConvertToLlm ?? defaultConvertToLlm;
   const operations = instrumentAgentOperations({
     instrument,
     prompt: prompt ?? (frame => createDefaultPrompt(frame, hasProjectors)),
@@ -87,6 +104,7 @@ function resolveAgentRuntimeOptions(
     tools,
   });
   const sessionAddress = { cielId, sessionId };
+  const compactionOptions = resolveCompactionOptions(compaction, model);
 
   return {
     engram,
@@ -105,6 +123,7 @@ function resolveAgentRuntimeOptions(
     stream: operations.stream,
     instructions,
     tools: operations.tools,
+    compaction: compactionOptions,
   };
 }
 
@@ -162,18 +181,34 @@ function createDefaultPrompt(frame: AgentFrame, useProjectors: boolean): AgentMe
   };
 }
 
-function assertSuccessful(messages: readonly AgentMessage[]): void {
+function assertSuccessful(messages: readonly AgentMessage[], contextWindow: number): void {
   const assistant = messages.findLast(
     (message): message is AssistantMessage => message.role === 'assistant',
   );
+
+  if (assistant && isContextOverflow(assistant, contextWindow)) {
+    throw new Error(assistant.errorMessage ?? 'Agent context still overflows after compaction');
+  }
 
   if (assistant?.stopReason === 'error' || assistant?.stopReason === 'aborted') {
     throw new Error(assistant.errorMessage ?? `Agent stopped with ${assistant.stopReason}`);
   }
 }
 
+function overflowMessage(
+  messages: readonly AgentMessage[],
+  contextWindow: number,
+): AssistantMessage | undefined {
+  const assistant = messages.findLast(
+    (message): message is AssistantMessage => message.role === 'assistant',
+  );
+
+  return assistant && isContextOverflow(assistant, contextWindow) ? assistant : undefined;
+}
+
 export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRuntime {
   const {
+    compaction,
     engram,
     instrument,
     instructions,
@@ -191,10 +226,12 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
   let status: AgentRuntimeStatus = 'idle';
   let queue = Promise.resolve();
   let history: AgentMessage[] = [];
+  let contextTokens = 0;
 
   async function loadHistory(): Promise<void> {
     if (!sessionStore) return;
     history = [...(await sessionStore.load(sessionAddress))];
+    contextTokens = readLastContextTokens(history) ?? 0;
   }
 
   async function persist(messages: readonly AgentMessage[]): Promise<void> {
@@ -219,24 +256,91 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
     };
     const produced = await prompt(frame);
     const prompts = Array.isArray(produced) ? [...produced] : [produced as AgentMessage];
-    const newMessages = await runAgentLoop(
-      prompts,
-      {
-        systemPrompt: instructions,
-        messages: [...history],
-        tools: tools ? [...tools] : undefined,
-      },
-      loopConfig,
-      async event => onAgentEvent?.(event),
-      undefined,
-      stream,
-    );
 
-    assertSuccessful(newMessages);
-    await persist(newMessages);
+    if (compaction) {
+      const compacted = await compactProjectedContext({
+        convertToLlm: loopConfig.convertToLlm,
+        fallbackTokens: contextTokens,
+        instructions,
+        messages: history,
+        model: loopConfig.model,
+        options: compaction,
+        pendingMessages: prompts,
+        stream,
+        tools,
+      });
+      history = compacted.messages;
+      contextTokens = compacted.tokens;
+    }
+
+    const run = () =>
+      runAgentLoop(
+        prompts,
+        {
+          systemPrompt: instructions,
+          messages: [...history],
+          tools: tools ? [...tools] : undefined,
+        },
+        loopConfig,
+        async event => onAgentEvent?.(event),
+        undefined,
+        stream,
+      );
+    let newMessages = await run();
+    let persistedMessages = newMessages;
+    const overflow = overflowMessage(newMessages, loopConfig.model.contextWindow);
+
+    if (overflow && compaction) {
+      const messagesBeforeOverflow = newMessages.slice(0, -1);
+      const recovered = await compactProjectedContext({
+        convertToLlm: loopConfig.convertToLlm,
+        fallbackTokens: Math.max(contextTokens, loopConfig.model.contextWindow),
+        force: true,
+        instructions,
+        messages: [...history, ...messagesBeforeOverflow],
+        model: loopConfig.model,
+        options: compaction,
+        pendingMessages: [],
+        stream,
+        tools,
+      });
+
+      if (recovered.compacted) {
+        history = recovered.messages;
+        contextTokens = recovered.tokens;
+        newMessages = await runAgentLoopContinue(
+          {
+            systemPrompt: instructions,
+            messages: [...history],
+            tools: tools ? [...tools] : undefined,
+          },
+          loopConfig,
+          async event => onAgentEvent?.(event),
+          undefined,
+          stream,
+        );
+        persistedMessages = [...messagesBeforeOverflow, ...newMessages];
+      }
+    }
+
+    assertSuccessful(newMessages, loopConfig.model.contextWindow);
+    await persist(persistedMessages);
     history = [...history, ...newMessages];
+    contextTokens =
+      readLastContextTokens(history) ??
+      (compaction
+        ? await countContextTokens({
+            convertToLlm: loopConfig.convertToLlm,
+            fallbackTokens: contextTokens,
+            instructions,
+            messages: history,
+            model: loopConfig.model,
+            options: compaction,
+            tools,
+          })
+        : contextTokens);
     consumer.commit(checkout);
-    return newMessages;
+    return persistedMessages;
   }
 
   function readStatus(): AgentRuntimeStatus {
@@ -245,6 +349,10 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
 
   function readMessages(): readonly AgentMessage[] {
     return [...history];
+  }
+
+  function readContextTokens(): number {
+    return contextTokens;
   }
 
   async function start(): Promise<void> {
@@ -330,6 +438,9 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
 
     get messages() {
       return readMessages();
+    },
+    get contextTokens() {
+      return readContextTokens();
     },
     start,
     think,

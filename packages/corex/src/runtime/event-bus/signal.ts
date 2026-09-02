@@ -17,12 +17,12 @@ export function createSignalBus(): SignalBus {
     return emitter.on(definition.id, signalHandler);
   }
 
-  async function emitSignal(signal: AnySignal): Promise<void> {
+  async function dispatchSignal(signal: AnySignal): Promise<void> {
     await emitter.emit(signal.definition.id, signal);
   }
 
   return {
-    emitSignal,
+    dispatchSignal,
     onSignal,
   };
 }

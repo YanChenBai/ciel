@@ -43,9 +43,9 @@ export const CielOperation = {
     label: 'Tool Execute',
     tag: CielOperationTag.Tool,
   },
-  PluginCreate: {
-    name: 'ciel.plugin.create',
-    label: 'Plugin Create',
+  PluginConfigResolved: {
+    name: 'ciel.plugin.config-resolved',
+    label: 'Plugin Config Resolved',
     tag: CielOperationTag.Plugin,
   },
   PluginInitialize: {
@@ -93,9 +93,9 @@ export const CielOperation = {
     label: 'Sensu Close',
     tag: CielOperationTag.Sensu,
   },
-  SignalEmit: {
-    name: 'ciel.signal.emit',
-    label: 'Signal Emit',
+  SignalDispatch: {
+    name: 'ciel.signal.dispatch',
+    label: 'Signal Dispatch',
     tag: CielOperationTag.Signal,
   },
 } as const satisfies Readonly<Record<string, Operation>>;
@@ -110,15 +110,15 @@ export interface CielOperationMetadata {
   readonly cueAt?: number;
   readonly cueDefinitionId?: string;
   readonly cueDefinitionName?: string;
-  readonly extensionId?: string;
-  readonly extensionKind?: string;
-  readonly extensionName?: string;
   readonly pluginId?: string;
   readonly pluginName?: string;
+  readonly projectorId?: string;
   readonly projectorKey?: string;
   readonly projectorName?: string;
   readonly signalDefinitionId?: string;
   readonly signalDefinitionName?: string;
+  readonly sensuId?: string;
+  readonly sensuName?: string;
   readonly toolLabel?: string;
   readonly toolName?: string;
 }

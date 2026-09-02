@@ -2,16 +2,16 @@
 
 Corex Devtools 扩展。
 
-应用只需提供负责收发协议消息的 adapter，并把 `devtools()` 放入 `extensions`：
+应用只需提供负责收发协议消息的 adapter，并把 `devtools()` 放入 `plugins`：
 
 ```ts
 import { devtools } from '@ciels/devtool';
-import { defineCiel } from 'corex';
+import { defineCiel } from '@cieljs/core';
 
 const ciel = defineCiel({
   instructions,
   model,
-  extensions: [devtools({ adapter, capture: true })],
+  plugins: [devtools({ adapter, capture: true })],
 });
 ```
 

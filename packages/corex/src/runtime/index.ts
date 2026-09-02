@@ -2,17 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import { createEngram } from '#model/engram/index.ts';
 import type { AnySignal } from '#model/signal/index.ts';
+import type { ResolvedCielConfig } from '#plugin/index.ts';
 
 import { createAgentRuntime } from './agent/runtime.ts';
 import { createAgentSessionStore } from './agent/session.ts';
 import type { AgentConfig } from './agent/types.ts';
 import { createSignalBus } from './event-bus/index.ts';
-import {
-  collectInterceptors,
-  flattenExtensionEntries,
-  resolveExtensions,
-  type ResolvedPlugin,
-} from './extensions.ts';
 import {
   cielOperation,
   CielOperation,
@@ -20,6 +15,12 @@ import {
   type CielOperation as CielOperationDescriptor,
 } from './instrumentation.ts';
 import { createLifecycle } from './lifecycle/index.ts';
+import {
+  collectInterceptors,
+  flattenPluginOptions,
+  resolvePlugins,
+  type ResolvedPlugin,
+} from './plugins.ts';
 import { createProjectorRunner } from './projector.ts';
 import { installSensu, type SensuRuntime } from './sensu.ts';
 import type { Ciel, DefineCielOptions } from './types.ts';
@@ -29,7 +30,10 @@ export { cielOperation, CielOperation, CielOperationTag } from './instrumentatio
 export type { CielOperationMetadata, CielOperationName } from './instrumentation.ts';
 export type { Operation } from './operation.ts';
 export type {
+  AgentCompactionOptions,
   AgentConfig,
+  AgentContextTokenCounter,
+  AgentContextTokenCounterInput,
   AgentContext,
   AgentContextBuilder,
   AgentEventHandler,
@@ -61,9 +65,9 @@ function normalizeId(value: string, name: string): string {
 function createInheritedAgentConfig(options: DefineCielOptions): AgentConfig {
   const config = { ...options } as Record<string, unknown>;
   for (const key of [
-    'extensions',
     'id',
     'instructions',
+    'plugins',
     'prompt',
     'sessionId',
     'sessionStore',
@@ -74,8 +78,8 @@ function createInheritedAgentConfig(options: DefineCielOptions): AgentConfig {
   return Object.freeze(config) as AgentConfig;
 }
 
-function mergeInstructions(base: string, extensions: readonly string[]): string {
-  return [base.trim(), ...extensions].filter(Boolean).join('\n\n');
+function mergeInstructions(base: string, plugins: readonly string[]): string {
+  return [base.trim(), ...plugins].filter(Boolean).join('\n\n');
 }
 
 async function settle(actions: readonly (() => Promise<void>)[], errors: unknown[]): Promise<void> {
@@ -103,51 +107,69 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     options.sessionStore === false
       ? undefined
       : (options.sessionStore ?? createAgentSessionStore());
-  const extensionEntries = flattenExtensionEntries(options.extensions);
-  const instrument = createInstrumenter(...collectInterceptors(extensionEntries));
-  const extensions = resolveExtensions(extensionEntries, {
-    agent: createInheritedAgentConfig(options),
-    cielId: id,
-    instrument,
-    tools: options.tools,
-  });
+  const pluginDefinitions = flattenPluginOptions(options.plugins ?? []);
+  const instrument = createInstrumenter(...collectInterceptors(pluginDefinitions));
+  const plugins = resolvePlugins(pluginDefinitions, { instrument, tools: options.tools });
   const engram = createEngram({ recentLimit: 100 });
   const signalBus = createSignalBus();
-  const project = createProjectorRunner(extensions.projectors);
-  const { extensions: _extensions, id: _id, tools: _tools, ...agentOptions } = options;
+  const project = createProjectorRunner(plugins.projectors);
+  const { id: _id, plugins: _plugins, tools: _tools, ...agentOptions } = options;
+  const instructions = mergeInstructions(options.instructions, plugins.instructions);
+  const agentConfig = createInheritedAgentConfig(options);
+  const resolvedConfig: ResolvedCielConfig = Object.freeze({
+    id,
+    sessionId,
+    model: options.model,
+    instructions,
+    plugins: Object.freeze([...pluginDefinitions]),
+    tools: Object.freeze(plugins.tools.map(value => value.tool)),
+    agent: agentConfig,
+    ...(sessionStore ? { sessionStore } : {}),
+  });
   const agent = createAgentRuntime({
     ...agentOptions,
     cielId: id,
     engram,
-    hasProjectors: extensions.projectors.length > 0,
+    hasProjectors: plugins.projectors.length > 0,
     instrument,
-    instructions: mergeInstructions(options.instructions, extensions.instructions),
+    instructions,
     project,
     sessionId,
     sessionStore,
-    tools: extensions.tools.length > 0 ? extensions.tools : undefined,
+    tools: plugins.tools.length > 0 ? plugins.tools : undefined,
   });
   const initialized: ResolvedPlugin[] = [];
   const activated: ResolvedPlugin[] = [];
   const sensuRuntimes: SensuRuntime[] = [];
   let agentStarted = false;
   let acceptSignals = false;
+  let configWasResolved = false;
 
   const lifecycle = createLifecycle({
     name: 'Ciel',
     async setup() {
-      // Phase 1 prepares Plugin resources without allowing Signal emission
-      for (const plugin of extensions.plugins) {
+      if (!configWasResolved) {
+        for (const plugin of plugins.plugins) {
+          if (!plugin.definition.configResolved) continue;
+          await lifecycleOperation(plugin, CielOperation.PluginConfigResolved, () =>
+            plugin.definition.configResolved!(resolvedConfig),
+          )();
+        }
+        configWasResolved = true;
+      }
+
+      // Phase 1 prepares Plugin resources without accepting Signal input
+      for (const plugin of plugins.plugins) {
         initialized.push(plugin);
-        if (plugin.instance.initialize) {
+        if (plugin.definition.initialize) {
           await lifecycleOperation(plugin, CielOperation.PluginInitialize, () =>
-            plugin.instance.initialize!(),
+            plugin.definition.initialize!(),
           )();
         }
       }
 
       // Phase 2 installs every consumer before sources are activated
-      for (const sensu of extensions.sensu) {
+      for (const sensu of plugins.sensu) {
         sensuRuntimes.push(await installSensu(sensu, { engram, signalBus, think: agent.think }));
       }
 
@@ -155,27 +177,18 @@ export function defineCiel(options: DefineCielOptions): Ciel {
       agentStarted = true;
       acceptSignals = true;
 
-      // Phase 3 activates sources after Agent and Sensu are ready
-      for (const plugin of extensions.plugins) {
+      // Phase 3 activates internal Runtime integrations after Agent and Sensu are ready
+      for (const plugin of plugins.plugins) {
         activated.push(plugin);
-        if (!plugin.instance.activate) continue;
-        const emitSignal = plugin.instrument.with(cielOperation(CielOperation.SignalEmit))(
-          async (signal: AnySignal) => {
-            if (!acceptSignals) {
-              throw new Error(
-                `Ciel plugin "${plugin.definition.name}" cannot emit while Ciel is not running`,
-              );
-            }
-            await signalBus.emitSignal(signal);
-          },
-        );
+        if (!plugin.definition.activate) continue;
         await lifecycleOperation(plugin, CielOperation.PluginActivate, () =>
-          plugin.instance.activate!({ ciel, emitSignal }),
+          plugin.definition.activate!({ ciel }),
         )();
       }
     },
     async dispose() {
       const errors: unknown[] = [];
+      acceptSignals = false;
 
       // Phase 4 stops producers before draining Sensu and Agent queues
       await settle(
@@ -183,16 +196,14 @@ export function defineCiel(options: DefineCielOptions): Ciel {
           .splice(0)
           .reverse()
           .map(plugin => async () => {
-            if (plugin.instance.deactivate) {
+            if (plugin.definition.deactivate) {
               await lifecycleOperation(plugin, CielOperation.PluginDeactivate, () =>
-                plugin.instance.deactivate!(),
+                plugin.definition.deactivate!(),
               )();
             }
           }),
         errors,
       );
-      acceptSignals = false;
-
       await settle(
         sensuRuntimes
           .splice(0)
@@ -211,9 +222,9 @@ export function defineCiel(options: DefineCielOptions): Ciel {
           .splice(0)
           .reverse()
           .map(plugin => async () => {
-            if (plugin.instance.dispose) {
+            if (plugin.definition.dispose) {
               await lifecycleOperation(plugin, CielOperation.PluginDispose, () =>
-                plugin.instance.dispose!(),
+                plugin.definition.dispose!(),
               )();
             }
           }),
@@ -232,12 +243,21 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     get messages() {
       return agent.messages;
     },
+    get contextTokens() {
+      return agent.contextTokens;
+    },
     id,
     sessionId,
     engram,
     think: agent.think,
     start: () => lifecycle.start(),
     stop: () => lifecycle.stop(),
+    dispatchSignal: instrument.with(cielOperation(CielOperation.SignalDispatch))(
+      async (signal: AnySignal) => {
+        if (!acceptSignals) throw new Error('Ciel cannot dispatch Signal while it is not running');
+        await signalBus.dispatchSignal(signal);
+      },
+    ),
   };
 
   return ciel;

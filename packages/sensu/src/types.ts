@@ -1,5 +1,5 @@
+import type { CielMetadata, SignalDefinition } from '@cieljs/core';
 import type { ASROptions, ASRResult } from '@ciels/asr';
-import type { CielMetadata, SignalDefinition } from 'corex';
 
 export interface PhotonPayload {
   /**

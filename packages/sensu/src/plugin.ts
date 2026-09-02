@@ -1,11 +1,10 @@
 import {
   definePlugin,
   defineSensu,
-  type PluginCreateContext,
   type SensuCreateContext,
   type SensuOutput,
   type Signal,
-} from 'corex';
+} from '@cieljs/core';
 
 import { Hearing, SpeechEnded } from './definitions.ts';
 import { HearingRuntime } from './hearing/runtime.ts';
@@ -119,23 +118,18 @@ export const sensuPlugin = definePlugin((options: SensuPluginOptions) => {
   return {
     name: options.name,
     description: options.description,
-    create(_context: PluginCreateContext) {
-      return {
-        extensions: [
-          projector,
-          ...(options.vision?.signals.map(definition =>
-            createVisionSensu({ definition, vision: options.vision! }),
-          ) ?? []),
-          ...(options.hearing?.signals.map(definition =>
-            createHearingSensu({
-              definition,
-              hearing: options.hearing!,
-              onError: error =>
-                options.onError?.(error, { capability: 'hearing', signal: definition }),
-            }),
-          ) ?? []),
-        ],
-      };
-    },
+    projectors: [projector],
+    sensu: [
+      ...(options.vision?.signals.map(definition =>
+        createVisionSensu({ definition, vision: options.vision! }),
+      ) ?? []),
+      ...(options.hearing?.signals.map(definition =>
+        createHearingSensu({
+          definition,
+          hearing: options.hearing!,
+          onError: error => options.onError?.(error, { capability: 'hearing', signal: definition }),
+        }),
+      ) ?? []),
+    ],
   };
 });

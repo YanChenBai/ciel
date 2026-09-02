@@ -70,11 +70,17 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
   const now = options.now ?? Date.now;
   const getCurrentScope = options.scope ?? (() => undefined);
   const store = isMemoryStore(options.store) ? options.store : new PGliteMemoryStore(options.store);
-  const agent = new MemoryAgent(options.agent);
+  const namespaceId = () => (typeof options.id === 'function' ? options.id() : options.id);
+  let agent: MemoryAgent | undefined;
 
   // 同一 Scope 的写入按顺序执行，不同 Scope 彼此独立并可并发推进
   const queues = new Map<string, Promise<void>>();
   let status: 'idle' | 'running' | 'closing' | 'closed' = 'idle';
+
+  function memoryAgent(): MemoryAgent {
+    if (!agent) throw new Error('Memory Agent is not initialized');
+    return agent;
+  }
 
   async function embed(content: string): Promise<readonly number[] | undefined> {
     if (!options.embedder) return undefined;
@@ -114,13 +120,13 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
    * 每个 Scope 的每个已结束自然日只整合一次
    */
   async function consolidate(beforeDate: string): Promise<void> {
-    const pending = await store.listPendingDates(options.id, beforeDate);
+    const pending = await store.listPendingDates(namespaceId(), beforeDate);
 
     await Promise.all(
       pending.map(item =>
         enqueue(item.scope, async () => {
           // 等待期间其他排队任务可能已经完成该日期的结算
-          const stillPending = await store.listPendingDates(options.id, beforeDate);
+          const stillPending = await store.listPendingDates(namespaceId(), beforeDate);
           if (
             !stillPending.some(
               candidate =>
@@ -130,17 +136,17 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
             return;
           }
 
-          const entries = await store.listDaily(options.id, item.scope, {
+          const entries = await store.listDaily(namespaceId(), item.scope, {
             dates: [item.date],
             limit: 100,
           });
-          const current = await store.latestLongTerm(options.id, item.scope);
-          const content = await agent.consolidateLongTerm(current, item.date, entries);
+          const current = await store.latestLongTerm(namespaceId(), item.scope);
+          const content = await memoryAgent().consolidateLongTerm(current, item.date, entries);
 
           if (content && content !== current?.content) {
             const embedding = await embed(content);
             await store.commitLongTerm({
-              namespaceId: options.id,
+              namespaceId: namespaceId(),
               scope: item.scope,
               content,
               ...(embedding ? { embedding } : {}),
@@ -150,7 +156,7 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
           }
 
           // 即使当天没有长期事实也要标记，避免 Agent 重复处理
-          await store.markDateConsolidated(options.id, item.scope, item.date);
+          await store.markDateConsolidated(namespaceId(), item.scope, item.date);
         }),
       ),
     );
@@ -168,14 +174,14 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
       await consolidate(date);
 
       return enqueue(scope, async () => {
-        const summarized = await agent.summarizeDaily(
+        const summarized = await memoryAgent().summarizeDaily(
           normalizeContent(input.content, 'memory_remember.content'),
         );
         if (!summarized) return undefined;
 
         const embedding = await embed(summarized);
         return store.appendDaily({
-          namespaceId: options.id,
+          namespaceId: namespaceId(),
           scope,
           date,
           content: summarized,
@@ -192,11 +198,11 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
       const scope = requireScope(input.scope, getCurrentScope());
       await enqueue(scope, async () => {
         const [current, evidence] = await Promise.all([
-          store.latestLongTerm(options.id, scope),
-          store.listDaily(options.id, scope, { limit: 100 }),
+          store.latestLongTerm(namespaceId(), scope),
+          store.listDaily(namespaceId(), scope, { limit: 100 }),
         ]);
 
-        const content = await agent.reviseLongTerm(
+        const content = await memoryAgent().reviseLongTerm(
           normalizeContent(input.instruction, 'memory_update.instruction'),
           current,
           evidence,
@@ -205,7 +211,7 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
 
         const embedding = await embed(content);
         await store.commitLongTerm({
-          namespaceId: options.id,
+          namespaceId: namespaceId(),
           scope,
           content,
           ...(embedding ? { embedding } : {}),
@@ -225,7 +231,7 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
       const embedding = await embed(query);
       const candidates = embedding
         ? await store.recall({
-            namespaceId: options.id,
+            namespaceId: namespaceId(),
             currentScope: getCurrentScope(),
             embedding,
             scope,
@@ -233,14 +239,14 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
           })
         : await recallWithoutEmbedding(query, scope, candidateLimit);
 
-      return agent.recall(query, candidates, limit);
+      return memoryAgent().recall(query, candidates, limit);
     },
 
     async search(input) {
       assertRunning();
       return store.search({
         ...input,
-        namespaceId: options.id,
+        namespaceId: namespaceId(),
         currentScope: getCurrentScope(),
         scope: input.scope ?? 'current',
         limit: input.limit ?? options.tools?.searchLimit ?? 20,
@@ -254,7 +260,7 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
     limit: number,
   ): Promise<readonly MemoryRecall[]> {
     const searchOptions = {
-      namespaceId: options.id,
+      namespaceId: namespaceId(),
       currentScope: getCurrentScope(),
       scope,
       limit,
@@ -282,7 +288,7 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
   }
 
   const projector = createMemoryProjector({
-    namespaceId: options.id,
+    namespaceId,
     store,
     scope: getCurrentScope,
     now,
@@ -294,6 +300,8 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
     if (status === 'running') return;
     if (status !== 'idle') throw new Error(`Cannot start Memory runtime while it is ${status}`);
 
+    const agentOptions = typeof options.agent === 'function' ? options.agent() : options.agent;
+    agent = new MemoryAgent(agentOptions);
     await store.start();
     agent.start();
     status = 'running';
@@ -330,7 +338,7 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
     }
 
     try {
-      await agent.stop();
+      await memoryAgent().stop();
     } catch (error) {
       errors.push(error);
     }

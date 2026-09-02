@@ -3,10 +3,10 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { app, BrowserWindow, dialog, protocol } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 
 import { registerIpc } from './ipc.ts';
-import { LIVE_MEDIA_SCHEME } from './playback.ts';
+import { LiveRoomWindow } from './live-room-window.ts';
 import { RuntimeController } from './runtime.ts';
 
 let mainWindow: BrowserWindow | undefined;
@@ -16,18 +16,6 @@ let disposeIpc: (() => void) | undefined;
 loadEnvironment();
 configureUserDataPath();
 configureRemoteDebugging();
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: LIVE_MEDIA_SCHEME,
-    privileges: {
-      corsEnabled: true,
-      secure: true,
-      standard: true,
-      stream: true,
-      supportFetchAPI: true,
-    },
-  },
-]);
 
 async function createWindow(): Promise<void> {
   const window = new BrowserWindow({
@@ -48,7 +36,7 @@ async function createWindow(): Promise<void> {
   });
   mainWindow = window;
   window.setMenuBarVisibility(false);
-  controller = new RuntimeController(app.getPath('userData'));
+  controller = new RuntimeController(app.getPath('userData'), new LiveRoomWindow(window));
   disposeIpc = registerIpc(window, controller);
   window.once('ready-to-show', () => window.show());
   if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -95,11 +83,6 @@ void app
   .whenReady()
   .then(async () => {
     configureDataPath();
-    protocol.handle(LIVE_MEDIA_SCHEME, request => {
-      return (
-        controller?.handlePlayback(request) ?? new Response('Runtime is not ready', { status: 503 })
-      );
-    });
     await createWindow();
     app.on('activate', () => {
       if (!mainWindow) void createWindow();
