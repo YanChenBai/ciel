@@ -1,7 +1,7 @@
 // @env node
 
-import { EventEmitter, toError } from '@ciels/event';
-import type { Unsubscribe } from '@ciels/event';
+import { EventEmitter } from 'node:events';
+
 import sherpaOnnx from 'sherpa-onnx-node';
 import type {
   CircularBuffer as CircularBufferInstance,
@@ -21,7 +21,7 @@ import {
 import { createAurisModelConfig } from './models.ts';
 import { ProcessASR } from './process-asr.ts';
 import { SpeakerTracker } from './speaker.ts';
-import type { ASREventMap, ASROptions, ASRSegment } from './types.ts';
+import type { ASREventMap, ASROptions, ASRSegment, Unsubscribe } from './types.ts';
 
 const { CircularBuffer, OfflineRecognizer, SpeakerEmbeddingExtractor, Vad } = sherpaOnnx;
 const QWEN3_ASR_TEXT_MARKER = '<asr_text>';
@@ -29,7 +29,7 @@ const MAX_TRANSCRIPTION_RETRY_DEPTH = 2;
 const MIN_TRANSCRIPTION_RETRY_SAMPLES = AURIS_SAMPLE_RATE * 4;
 
 export class NativeASR {
-  private readonly emitter = new EventEmitter<ASREventMap>();
+  private readonly emitter = new EventEmitter();
   private readonly buffer: CircularBufferInstance;
   private readonly bufferCapacity: number;
   private readonly maxNewTokens: number;
@@ -92,7 +92,9 @@ export class NativeASR {
   }
 
   on<K extends keyof ASREventMap>(event: K, callback: ASREventMap[K]): Unsubscribe {
-    return this.emitter.on(event, callback);
+    this.emitter.on(event, callback);
+
+    return () => this.emitter.off(event, callback);
   }
 
   private emit<K extends keyof ASREventMap>(event: K, ...args: Parameters<ASREventMap[K]>): void {
@@ -174,8 +176,8 @@ export class NativeASR {
 }
 
 /**
- * 在普通 Node 中直接使用原生 sherpa；Electron 的 V8 memory cage 不允许
- * sherpa 返回堆外 ArrayBuffer，因此自动将识别工作移入独立 Node ESM 进程。
+ * 在普通 Node 中直接使用原生 sherpa；Electron 的 V8 memory cage 不允许 sherpa 返回堆外 ArrayBuffer，因此自动将识别工作移入独立 Node
+ * ESM 进程。
  */
 export class ASR {
   private readonly backend: NativeASR | ProcessASR;
@@ -257,6 +259,10 @@ function addSamples(at: Date, samples: number): Date {
 
 function addSeconds(at: Date, seconds: number): Date {
   return new Date(at.getTime() + seconds * 1_000);
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function validateOptions(options: ASROptions): void {

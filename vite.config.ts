@@ -5,7 +5,7 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   fmt: {
-    ignorePatterns: ['AGENTS.md', 'CLAUDE.md', 'apps/blive-desktop/out/**'],
+    ignorePatterns: ['AGENTS.md', 'CLAUDE.md'],
     singleQuote: true,
     sortImports: true,
     sortTailwindcss: true,
@@ -21,7 +21,6 @@ export default defineConfig({
     projects: ['./apps/*', './packages/*'],
   },
   lint: {
-    ignorePatterns: ['apps/blive-desktop/out/**'],
     jsPlugins: [
       {
         name: 'vite-plus',

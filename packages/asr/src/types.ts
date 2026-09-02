@@ -4,6 +4,8 @@ import type {
   VadConfig,
 } from 'sherpa-onnx-node';
 
+export type Unsubscribe = () => void;
+
 export interface SpeakerProfile {
   name: string;
   file: string;

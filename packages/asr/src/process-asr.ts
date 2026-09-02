@@ -1,15 +1,13 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
-import { EventEmitter, toError } from '@ciels/event';
-import type { Unsubscribe } from '@ciels/event';
-
 import type { ASRWorkerCommand, ASRWorkerEvent } from './process-protocol.ts';
-import type { ASREventMap, ASROptions, ASRResult, ASRSegment } from './types.ts';
+import type { ASREventMap, ASROptions, ASRResult, ASRSegment, Unsubscribe } from './types.ts';
 
 export class ProcessASR {
-  private readonly emitter = new EventEmitter<ASREventMap>();
+  private readonly emitter = new EventEmitter();
   private readonly process: ChildProcessWithoutNullStreams;
   private output = '';
   private closing = false;
@@ -60,7 +58,9 @@ export class ProcessASR {
   }
 
   on<K extends keyof ASREventMap>(event: K, callback: ASREventMap[K]): Unsubscribe {
-    return this.emitter.on(event, callback);
+    this.emitter.on(event, callback);
+
+    return () => this.emitter.off(event, callback);
   }
 
   async close(): Promise<void> {
@@ -140,4 +140,8 @@ export class ProcessASR {
   private emit<K extends keyof ASREventMap>(event: K, ...args: Parameters<ASREventMap[K]>): void {
     this.emitter.emit(event, ...args);
   }
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }

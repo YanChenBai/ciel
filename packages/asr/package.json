@@ -23,7 +23,6 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "@ciels/event": "workspace:*",
     "sherpa-onnx-node": "^1.13.6"
   },
   "devDependencies": {
