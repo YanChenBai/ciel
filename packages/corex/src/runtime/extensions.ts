@@ -1,4 +1,4 @@
-import type { Instrument, Interceptor } from '@ciels/interceptor';
+import type { Instrument, Interceptor } from '@cieljs/instrument';
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 
 import type {

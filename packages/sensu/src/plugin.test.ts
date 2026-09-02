@@ -1,7 +1,7 @@
 // @env node
 
+import type { AnyFunction, InstrumentContext } from '@cieljs/instrument';
 import type { ASROptions, ASRResult } from '@ciels/asr';
-import type { AnyFunction, InstrumentContext } from '@ciels/interceptor';
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -186,14 +186,16 @@ describe('sensuPlugin', () => {
     expect(operations[0]).toMatchObject({
       args: [{ data: Buffer.alloc(3_200), startAt: new Date(1_000) }],
       context: {
-        ...SensuOperation.ASRInput,
+        name: SensuOperation.ASRInput.name,
         metadata: {
+          label: SensuOperation.ASRInput.label,
           pluginId: sensu.id,
           pluginName: sensu.name,
           extensionKind: 'sensu',
           extensionName: 'microphone.hearing',
           signalDefinitionId: microphone.id,
           signalDefinitionName: microphone.name,
+          tag: SensuOperation.ASRInput.tag,
         },
       },
       output: undefined,
@@ -211,14 +213,16 @@ describe('sensuPlugin', () => {
         },
       ],
       context: {
-        ...SensuOperation.ASROutput,
+        name: SensuOperation.ASROutput.name,
         metadata: {
+          label: SensuOperation.ASROutput.label,
           pluginId: sensu.id,
           pluginName: sensu.name,
           extensionKind: 'sensu',
           extensionName: 'microphone.hearing',
           signalDefinitionId: microphone.id,
           signalDefinitionName: microphone.name,
+          tag: SensuOperation.ASROutput.tag,
         },
       },
       output: { cueCount: 1, entries: [expect.any(Object)] },

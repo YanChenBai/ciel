@@ -244,10 +244,12 @@ describe('Memory runtime', () => {
 
     expect(operations).toHaveLength(1);
     expect(operations[0]).toMatchObject({
-      ...CielOperation.ToolExecute,
+      name: CielOperation.ToolExecute.name,
       metadata: {
+        label: CielOperation.ToolExecute.label,
         pluginId: memory.id,
         pluginName: memory.name,
+        tag: CielOperation.ToolExecute.tag,
         toolLabel: 'Remember memory',
         toolName: 'memory_remember',
       },

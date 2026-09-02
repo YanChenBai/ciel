@@ -1,4 +1,4 @@
-import { defaultTrace, type DevtoolTraceEntry } from '@ciels/devtool';
+import { defaultTrace, type DevtoolTraceEntry } from '@ciels/devtool-client';
 
 export const watchBliveTrace: readonly DevtoolTraceEntry[] = [
   ...defaultTrace,

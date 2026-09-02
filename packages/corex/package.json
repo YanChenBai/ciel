@@ -31,7 +31,7 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "@ciels/interceptor": "workspace:*",
+    "@cieljs/instrument": "^0.0.1",
     "@earendil-works/pi-agent-core": "0.84.3",
     "@earendil-works/pi-ai": "0.84.3",
     "@opentelemetry/api": "^1.9.1",

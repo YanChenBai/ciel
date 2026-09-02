@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CielDevtool, createDevtoolClient } from '@ciels/devtool';
+import { CielDevtool, createDevtoolClient } from '@ciels/devtool-client';
 
 import { watchBliveTrace } from '../devtool-trace.ts';
 

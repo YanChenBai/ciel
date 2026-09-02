@@ -1,37 +1,38 @@
 # @ciels/devtool
 
-Ciel 下一代 Devtool 的渐进式实现。
+Corex 的层级 operation telemetry 与传输无关 Devtool bridge。
 
-当前边界：
+本包提供：
 
-- 使用 `@ciels/devtool-protocol`，不读取 Corex 或 Vigilia 内部类型。
-- `createDevtoolClient` 只消费外部 `DevtoolConnection`，不实现 WebSocket、IPC 或其他传输。
-- Vue 组件启用 Vapor Mode，界面基于 `@vuetify/v0` 与 Tailwind CSS。
-- bootstrap 快照与实时事件通过协议 Cursor 合并，UI 不直接管理连接竞态。
+- 基于 `@cieljs/instrument` 的 telemetry interceptor
+- 输入输出捕获与 SuperJSON transformer
+- OpenTelemetry span、counter 和 histogram 投影
+- Devtool target、peer 和 bridge 协议适配
 
 ```ts
-import {
-  CielDevtool,
-  createDevtoolClient,
-  defaultTrace,
-  type DevtoolTraceEntry,
-} from '@ciels/devtool';
+import { createDevtoolBridge, telemetry } from '@ciels/devtool';
+import { defineCiel, defineInterceptor } from 'corex';
 
-const client = createDevtoolClient({
-  connection,
-  createId: crypto.randomUUID,
-  client: { name: 'my-devtool-host' },
+telemetry({ capture: true });
+
+const ciel = defineCiel({
+  instructions,
+  model,
+  extensions: [
+    defineInterceptor({
+      name: 'devtool',
+      interceptor: telemetry,
+    }),
+  ],
 });
 
-const trace: readonly DevtoolTraceEntry[] = [
-  ...defaultTrace,
-  {
-    match: operation => operation.name.startsWith('my-app.room.'),
-    lane: { id: 'room', label: 'Room', color: '#f472b6' },
-    label: operation => operation.name,
-  },
-];
+const bridge = createDevtoolBridge({
+  createId: crypto.randomUUID,
+  epoch: crypto.randomUUID(),
+  target,
+});
 ```
 
-`connection` 由宿主实现；本包不会提供具体传输 Adapter。将 `trace` 传给
-`<CielDevtool :client="client" :trace="trace" />`；列表中未匹配的 operation 不会显示。
+`currentOperation()` 返回当前异步调用链内最深的 operation。`operation(id)`、`parentOf(id)` 和 `events()` 用于查询已记录数据。Bridge 不绑定 WebSocket、IPC 或其他具体传输。
+
+默认不捕获动态输入输出。只有本地调试明确需要时才启用 `capture`。

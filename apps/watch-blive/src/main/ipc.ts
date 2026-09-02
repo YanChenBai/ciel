@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { createDevtoolBridge } from '@ciels/devtool-bridge';
+import { createDevtoolBridge } from '@ciels/devtool';
 import type { DevtoolConsumerMessage } from '@ciels/devtool-protocol';
 import { ipcMain } from 'electron';
 import type { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron';

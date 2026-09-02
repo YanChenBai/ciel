@@ -25,8 +25,9 @@ import { installSensu, type SensuRuntime } from './sensu.ts';
 import type { Ciel, DefineCielOptions } from './types.ts';
 
 export type { Ciel, CielStatus, DefineCielOptions, Think } from './types.ts';
-export { CielOperation, CielOperationTag } from './instrumentation.ts';
-export type { CielOperationMetadata } from './instrumentation.ts';
+export { cielOperation, CielOperation, CielOperationTag } from './instrumentation.ts';
+export type { CielOperationMetadata, CielOperationName } from './instrumentation.ts';
+export type { Operation } from './operation.ts';
 export type {
   AgentConfig,
   AgentContext,
@@ -103,7 +104,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
       ? undefined
       : (options.sessionStore ?? createAgentSessionStore());
   const extensionEntries = flattenExtensionEntries(options.extensions);
-  const instrument = createInstrumenter(collectInterceptors(extensionEntries));
+  const instrument = createInstrumenter(...collectInterceptors(extensionEntries));
   const extensions = resolveExtensions(extensionEntries, {
     agent: createInheritedAgentConfig(options),
     cielId: id,

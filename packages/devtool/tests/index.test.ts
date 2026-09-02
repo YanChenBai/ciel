@@ -1,5 +1,5 @@
-import { createInstrumenter } from '@ciels/interceptor';
-import { CielOperation } from 'corex';
+import { createInstrumenter } from '@cieljs/instrument';
+import { cielOperation, CielOperation } from 'corex';
 import { beforeEach, describe, expect, test } from 'vite-plus/test';
 
 import { createSerializer, defineTransformer, telemetry } from '../src/index.ts';
@@ -24,17 +24,19 @@ describe('Corex telemetry', () => {
   });
 
   test('记录嵌套 operation 并可查找父级', async () => {
-    const instrument = createInstrumenter([telemetry]);
-    const generate = instrument(async () => 'generated', CielOperation.ModelGenerate);
+    const instrument = createInstrumenter(telemetry);
+    const generate = instrument(
+      async () => 'generated',
+      cielOperation(CielOperation.ModelGenerate),
+    );
     const executeTool = instrument(async () => 'remembered', {
-      ...CielOperation.ToolExecute,
-      metadata: { toolName: 'memory_remember' },
+      ...cielOperation(CielOperation.ToolExecute, { toolName: 'memory_remember' }),
     });
     const think = instrument(async () => {
       expect(telemetry.currentOperation()?.name).toBe(CielOperation.AgentRun.name);
       await generate();
       await executeTool();
-    }, CielOperation.AgentRun);
+    }, cielOperation(CielOperation.AgentRun));
 
     await think();
 
@@ -56,8 +58,11 @@ describe('Corex telemetry', () => {
   });
 
   test('AgentGenerate 等待模型事件流的最终结果再完成', async () => {
-    const instrument = createInstrumenter([telemetry]);
-    const executeTool = instrument(async () => 'tool result', CielOperation.ToolExecute);
+    const instrument = createInstrumenter(telemetry);
+    const executeTool = instrument(
+      async () => 'tool result',
+      cielOperation(CielOperation.ToolExecute),
+    );
     let finish!: (value: unknown) => void;
     const result = new Promise<unknown>(resolve => {
       finish = resolve;
@@ -80,7 +85,7 @@ describe('Corex telemetry', () => {
           return result;
         },
       }),
-      CielOperation.ModelGenerate,
+      cielOperation(CielOperation.ModelGenerate),
     );
 
     generate();
@@ -101,11 +106,14 @@ describe('Corex telemetry', () => {
   });
 
   test('隔离 subscriber 错误并支持序号游标查询', () => {
-    const instrument = createInstrumenter([telemetry]);
+    const instrument = createInstrumenter(telemetry);
     const unsubscribe = telemetry.subscribe(() => {
       throw new Error('subscriber failed');
     });
-    const observed = instrument((value: number) => value * 2, TestOperation.Calculate);
+    const observed = instrument(
+      (value: number) => value * 2,
+      cielOperation(TestOperation.Calculate),
+    );
     const after = telemetry.throughSequence;
 
     expect(observed(2)).toBe(4);
@@ -128,8 +136,8 @@ describe('Corex telemetry', () => {
     telemetry({
       transformers: [tokenTransformer],
     });
-    const instrument = createInstrumenter([telemetry]);
-    const readToken = instrument(() => new Token('ciel'), TestOperation.Token);
+    const instrument = createInstrumenter(telemetry);
+    const readToken = instrument(() => new Token('ciel'), cielOperation(TestOperation.Token));
 
     readToken();
 

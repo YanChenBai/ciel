@@ -22,8 +22,8 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
+    "@cieljs/instrument": "^0.0.1",
     "@ciels/asr": "workspace:*",
-    "@ciels/interceptor": "workspace:*",
     "corex": "workspace:*",
     "sharp": "^0.35.4"
   },

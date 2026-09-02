@@ -1,4 +1,4 @@
-import { createSerializer } from '@ciels/telemetry';
+import { createSerializer } from '@ciels/devtool';
 import { describe, expect, it } from 'vite-plus/test';
 
 import { devtoolTransformers, sanitizeDevtoolValue } from './devtool.ts';

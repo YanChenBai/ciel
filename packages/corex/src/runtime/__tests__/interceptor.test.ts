@@ -4,6 +4,7 @@ import { expect, test, vi } from 'vite-plus/test';
 
 import {
   type AnyFunction,
+  cielOperation,
   CielOperation,
   defineCiel,
   defineCue,
@@ -119,28 +120,34 @@ test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async (
     CielOperation.PluginDispose.name,
   ]);
   expect(calls.find(context => context.name === CielOperation.ToolExecute.name)).toEqual({
-    ...CielOperation.ToolExecute,
+    name: CielOperation.ToolExecute.name,
     metadata: {
+      label: CielOperation.ToolExecute.label,
       pluginId: capability.id,
       pluginName: capability.name,
+      tag: CielOperation.ToolExecute.tag,
       toolLabel: tool.label,
       toolName: tool.name,
     },
   });
   expect(calls.find(context => context.name === CielOperation.CueSubmit.name)).toEqual({
-    ...CielOperation.CueSubmit,
+    name: CielOperation.CueSubmit.name,
     metadata: {
       cueAt: instant.at,
       cueDefinitionId: cue.id,
       cueDefinitionName: cue.name,
+      label: CielOperation.CueSubmit.label,
+      tag: CielOperation.CueSubmit.tag,
     },
   });
   expect(calls.find(context => context.name === CielOperation.AgentRun.name)).toEqual({
-    ...CielOperation.AgentRun,
+    name: CielOperation.AgentRun.name,
     metadata: {
       cueAt: instant.at,
       cueDefinitionId: cue.id,
       cueDefinitionName: cue.name,
+      label: CielOperation.AgentRun.label,
+      tag: CielOperation.AgentRun.tag,
     },
   });
 });
@@ -164,12 +171,10 @@ test('Plugin 使用派生 instrument 合并身份与内部操作 metadata', () =
   const createCapability = definePlugin(() => ({
     name: 'capability',
     create(context) {
-      const internal = context.instrument.with({
-        ...InternalOperation.Run,
-        metadata: { capability: 'test' },
-      });
+      const internal = context.instrument.with(
+        cielOperation(InternalOperation.Run, { capability: 'test' }),
+      );
       run = internal((value: number) => value * 2, {
-        ...InternalOperation.Run,
         metadata: { pluginId: 'forged', operation: 'double' },
       });
       return {};
@@ -186,12 +191,14 @@ test('Plugin 使用派生 instrument 合并身份与内部操作 metadata', () =
   expect(run(2)).toBe(4);
   expect(calls).toEqual([
     {
-      ...InternalOperation.Run,
+      name: InternalOperation.Run.name,
       metadata: {
         operation: 'double',
         capability: 'test',
+        label: InternalOperation.Run.label,
         pluginId: capability.id,
         pluginName: capability.name,
+        tag: InternalOperation.Run.tag,
       },
     },
   ]);

@@ -1,7 +1,9 @@
-import type { InstrumentContext } from '@ciels/interceptor';
+import type { InstrumentContext } from '@cieljs/instrument';
 
-export { createInstrumenter } from '@ciels/interceptor';
-export type { AnyFunction, InstrumentPreset, InterceptorWrapper } from '@ciels/interceptor';
+import type { Operation } from './operation.ts';
+
+export { createInstrumenter } from '@cieljs/instrument';
+export type { AnyFunction, InstrumentPreset, InterceptorWrapper } from '@cieljs/instrument';
 
 export const CielOperationTag = {
   Agent: 'AGENT',
@@ -16,8 +18,16 @@ export const CielOperationTag = {
 export type CielOperationTag = (typeof CielOperationTag)[keyof typeof CielOperationTag];
 
 export const CielOperation = {
-  CueSubmit: { name: 'ciel.cue.submit', label: 'Cue Submit', tag: CielOperationTag.Cue },
-  AgentRun: { name: 'ciel.agent.run', label: 'Agent Run', tag: CielOperationTag.Agent },
+  CueSubmit: {
+    name: 'ciel.cue.submit',
+    label: 'Cue Submit',
+    tag: CielOperationTag.Cue,
+  },
+  AgentRun: {
+    name: 'ciel.agent.run',
+    label: 'Agent Run',
+    tag: CielOperationTag.Agent,
+  },
   AgentPrompt: {
     name: 'ciel.agent.prompt',
     label: 'Agent Prompt',
@@ -88,11 +98,14 @@ export const CielOperation = {
     label: 'Signal Emit',
     tag: CielOperationTag.Signal,
   },
-} as const;
+} as const satisfies Readonly<Record<string, Operation>>;
 
 export type CielOperation = (typeof CielOperation)[keyof typeof CielOperation];
+export type CielOperationName = CielOperation['name'];
 
 export interface CielOperationMetadata {
+  readonly label: string;
+  readonly tag: string;
   readonly capability?: string;
   readonly cueAt?: number;
   readonly cueDefinitionId?: string;
@@ -110,16 +123,20 @@ export interface CielOperationMetadata {
   readonly toolName?: string;
 }
 
-export type Instrument = import('@ciels/interceptor').Instrument<CielOperationMetadata>;
-export type Interceptor = import('@ciels/interceptor').Interceptor<CielOperationMetadata>;
-export type { InstrumentContext } from '@ciels/interceptor';
+export type Instrument = import('@cieljs/instrument').Instrument<CielOperationMetadata>;
+export type Interceptor = import('@cieljs/instrument').Interceptor<CielOperationMetadata>;
+export type { InstrumentContext } from '@cieljs/instrument';
 
 export function cielOperation(
-  operation: CielOperation,
-  metadata?: Readonly<Partial<CielOperationMetadata>>,
+  operation: Operation,
+  metadata?: Readonly<Partial<Omit<CielOperationMetadata, 'label' | 'tag'>>>,
 ): InstrumentContext<CielOperationMetadata> {
   return {
-    ...operation,
-    ...(metadata ? { metadata } : {}),
+    name: operation.name,
+    metadata: {
+      ...metadata,
+      label: operation.label,
+      tag: operation.tag,
+    },
   };
 }

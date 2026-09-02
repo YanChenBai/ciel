@@ -1,5 +1,5 @@
-import type { Interceptor } from '@ciels/interceptor';
-import type { CielOperationMetadata } from 'corex';
+import type { Interceptor } from '@cieljs/instrument';
+import type { CielOperationMetadata, Operation } from 'corex';
 import type { SuperJSONValue } from 'superjson';
 
 export interface Transformer<T = unknown, Serialized = SuperJSONValue> {
@@ -11,11 +11,11 @@ export interface Transformer<T = unknown, Serialized = SuperJSONValue> {
 
 export interface TelemetryCaptureOptions {
   /**
-   * 默认关闭，避免把完整 prompt、模型上下文或工具参数意外写入遥测。
+   * 默认关闭 避免把完整 prompt 模型上下文或工具参数意外写入遥测
    */
   readonly input?: boolean;
   /**
-   * 默认关闭，避免把模型输出或工具结果意外写入遥测。
+   * 默认关闭 避免把模型输出或工具结果意外写入遥测
    */
   readonly output?: boolean;
 }
@@ -23,18 +23,15 @@ export interface TelemetryCaptureOptions {
 export interface TelemetryConfiguration {
   readonly capture?: boolean | TelemetryCaptureOptions;
   /**
-   * 注册到 telemetry 单例的 SuperJSON 自定义转换器。
+   * 注册到 telemetry 单例的 SuperJSON 自定义转换器
    */
   readonly transformers?: readonly Transformer[];
 }
 
-export interface TelemetryOperation {
+export interface TelemetryOperation extends Operation {
   readonly id: string;
-  readonly label: string;
-  readonly name: string;
   readonly parentOperationId?: string;
-  readonly tag: string;
-  readonly metadata?: Readonly<Partial<CielOperationMetadata>>;
+  readonly metadata?: Readonly<Partial<Omit<CielOperationMetadata, 'label' | 'tag'>>>;
 }
 
 export interface TelemetryError {
@@ -73,7 +70,7 @@ export type TelemetryEvent =
 
 export interface TelemetryEventQuery {
   /**
-   * 排除该 sequence 自身。
+   * 排除该 sequence 自身
    */
   readonly after?: number;
   readonly limit?: number;
@@ -86,7 +83,7 @@ export interface Telemetry extends Interceptor<CielOperationMetadata> {
   readonly throughSequence: number;
   deserialize<T = unknown>(value: string): T;
   /**
-   * 当前异步调用链内正在执行的最内层 operation。
+   * 当前异步调用链内正在执行的最内层 operation
    */
   currentOperation(): TelemetryOperation | undefined;
   events(query?: TelemetryEventQuery): readonly TelemetryEvent[];

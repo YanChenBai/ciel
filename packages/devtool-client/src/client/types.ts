@@ -14,7 +14,7 @@ export type MaybePromise<T> = T | PromiseLike<T>;
 export type Dispose = () => MaybePromise<void>;
 
 /**
- * 由宿主提供的传输连接。Devtoolx 不实现 WebSocket 或其他具体传输。
+ * 由宿主提供的传输连接 Devtool Client 不实现 WebSocket 或其他具体传输
  */
 export interface DevtoolConnection {
   send(message: DevtoolConsumerMessage): MaybePromise<void>;

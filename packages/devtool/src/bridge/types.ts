@@ -48,13 +48,13 @@ interface DevtoolTargetWithEvents {
 }
 
 /**
- * 由宿主实现的可调试目标。Bridge 不提供任何具体运行时适配实现。
+ * 由宿主实现的可调试目标 Bridge 不提供任何具体运行时适配实现
  */
 export type DevtoolTarget = DevtoolTargetBase &
   (DevtoolTargetWithoutEvents | DevtoolTargetWithEvents);
 
 /**
- * 由外部 Transport 实现的单个双向连接。
+ * 由外部 Transport 实现的单个双向连接
  */
 export interface DevtoolPeer {
   send(message: DevtoolProviderMessage): MaybePromise<void>;
@@ -65,11 +65,11 @@ export interface DevtoolPeer {
 export interface CreateDevtoolBridgeOptions {
   readonly target: DevtoolTarget;
   /**
-   * 标识当前 Bridge 事件流实例；运行时重建时必须变化。
+   * 标识当前 Bridge 事件流实例 运行时重建时必须变化
    */
   readonly epoch: string;
   /**
-   * 为 Welcome、Response 和 Event 生成唯一消息标识。
+   * 为 Welcome Response 和 Event 生成唯一消息标识
    */
   readonly createId: () => string;
 }

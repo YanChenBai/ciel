@@ -1,6 +1,7 @@
 // @env node
 
-import type { DevtoolTarget, DevtoolTargetEvent } from '@ciels/devtool-bridge';
+import { defineTransformer, telemetry } from '@ciels/devtool';
+import type { DevtoolTarget, DevtoolTargetEvent, TelemetryEvent } from '@ciels/devtool';
 import type {
   AgentMessageRecord,
   EngramEntryRecord,
@@ -8,8 +9,6 @@ import type {
   SerializedValue,
 } from '@ciels/devtool-protocol';
 import { DevtoolEventName } from '@ciels/devtool-protocol';
-import { defineTransformer, telemetry } from '@ciels/telemetry';
-import type { TelemetryEvent } from '@ciels/telemetry';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { EngramEntry } from 'corex';
 

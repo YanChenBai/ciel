@@ -5,7 +5,7 @@ import {
   type AnyFunction,
   type InstrumentContext,
   type InterceptorWrapper,
-} from '@ciels/interceptor';
+} from '@cieljs/instrument';
 import { context as otelContext, metrics, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { Attributes, Counter, Histogram, Span } from '@opentelemetry/api';
 import { CielOperation, type CielOperationMetadata } from 'corex';
@@ -103,8 +103,8 @@ function createTelemetry(): Telemetry {
   const bufferSize = 1_000;
   let capture = resolveCapture(undefined);
   const serializer = createSerializer();
-  const tracer = trace.getTracer('@ciels/telemetry');
-  const meter = metrics.getMeter('@ciels/telemetry');
+  const tracer = trace.getTracer('@ciels/devtool');
+  const meter = metrics.getMeter('@ciels/devtool');
   const telemetryMetrics: TelemetryMetrics = {
     duration: meter.createHistogram('ciel.operation.duration', {
       description: 'Corex operation duration',
@@ -132,7 +132,7 @@ function createTelemetry(): Telemetry {
       try {
         subscriber(recorded);
       } catch {
-        // 遥测消费者不能改变被观察运行时的结果。
+        // 遥测消费者不能改变被观察运行时的结果
       }
     }
   }
@@ -142,13 +142,18 @@ function createTelemetry(): Telemetry {
     args: readonly unknown[],
   ): ActiveOperation {
     const parent = storage.getStore();
+    const {
+      label = instrumentContext.name,
+      tag = 'OPERATION',
+      ...metadata
+    } = instrumentContext.metadata ?? {};
     const operation: TelemetryOperation = {
       id: randomUUID(),
-      label: instrumentContext.label,
+      label,
       name: instrumentContext.name,
-      tag: instrumentContext.tag,
+      tag,
       ...(parent ? { parentOperationId: parent.operation.id } : {}),
-      ...(instrumentContext.metadata ? { metadata: { ...instrumentContext.metadata } } : {}),
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     };
     const startedAt = Date.now();
     const parentContext = parent

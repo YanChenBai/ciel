@@ -1,4 +1,4 @@
-import '@ciels/devtool/style.css';
+import '@ciels/devtool-client/style.css';
 import './style.css';
 import { createApp } from 'vue';
 

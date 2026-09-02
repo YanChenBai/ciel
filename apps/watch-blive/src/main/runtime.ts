@@ -3,12 +3,12 @@
 import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 
-import { createInstrumenter } from '@ciels/interceptor';
+import { createInstrumenter } from '@cieljs/instrument';
+import { telemetry } from '@ciels/devtool';
 import { memoryPlugin } from '@ciels/memory';
 import { sensuPlugin } from '@ciels/sensu';
-import { telemetry } from '@ciels/telemetry';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
-import { defineCiel, defineCue, defineInterceptor } from 'corex';
+import { cielOperation, defineCiel, defineCue, defineInterceptor } from 'corex';
 import type { AgentFrame, Ciel, LLMContent } from 'corex';
 import type { BrowserWindow } from 'electron';
 
@@ -138,15 +138,15 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
     const { embedder, model, stream } = createWatchBliveAI();
     telemetry({ capture: { input: true, output: true }, transformers: devtoolTransformers });
     telemetry.clear();
-    const instrument = createInstrumenter([telemetry]);
+    const instrument = createInstrumenter(telemetry);
     const listRooms = instrument(
       (page: number) => this.listRooms(page),
-      WatchBliveOperation.RoomList,
+      cielOperation(WatchBliveOperation.RoomList),
     );
 
     const openRoom = instrument(
       (roomId: number) => this.openRoom(roomId),
-      WatchBliveOperation.RoomOpen,
+      cielOperation(WatchBliveOperation.RoomOpen),
     );
 
     const tools = createRuntimeTools({

@@ -1,4 +1,4 @@
-import type { Interceptor } from '@ciels/interceptor';
+import type { Interceptor } from '@cieljs/instrument';
 
 import type { LLMContext } from '#model/llm/index.ts';
 import type { AnySignalDefinition } from '#model/signal/index.ts';

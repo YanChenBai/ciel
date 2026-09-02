@@ -1,8 +1,30 @@
-import './style.css';
-
-export { default as CielDevtool } from './CielDevtool.vue';
-export * from './client/index.ts';
-export { defaultTrace } from './components/trace/model.ts';
-export type { DevtoolTraceEntry, DevtoolTraceLane } from './components/trace/model.ts';
-export * from './composables/useDevtoolSession.ts';
-export * from './session/index.ts';
+export { createDevtoolBridge } from './bridge/index.ts';
+export type {
+  CreateDevtoolBridgeOptions,
+  DevtoolBridge,
+  DevtoolPeer,
+  DevtoolTarget,
+  DevtoolTargetEvent,
+  DevtoolTargetEventSubscriber,
+  DevtoolTargetRequestHandlers,
+  DevtoolTargetRequestName,
+  Dispose,
+  MaybePromise,
+} from './bridge/index.ts';
+export { createSerializer, defineTransformer } from './serializer.ts';
+export type { TelemetrySerializer } from './serializer.ts';
+export { telemetry } from './telemetry.ts';
+export type {
+  Telemetry,
+  TelemetryCaptureOptions,
+  TelemetryConfiguration,
+  TelemetryError,
+  TelemetryEvent,
+  TelemetryEventQuery,
+  TelemetryOperation,
+  TelemetryOperationCompletedEvent,
+  TelemetryOperationFailedEvent,
+  TelemetryOperationStartedEvent,
+  TelemetrySubscriber,
+  Transformer,
+} from './types.ts';

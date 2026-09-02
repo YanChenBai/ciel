@@ -17,7 +17,7 @@ export function captureError(error: unknown): TelemetryError {
 }
 
 /**
- * 遥测快照失败时返回占位文本，绝不影响被观察的运行时。
+ * 遥测快照失败时返回占位文本 绝不影响被观察的运行时
  */
 export function captureValue(serializer: TelemetrySerializer, value: unknown): string {
   try {

@@ -1,6 +1,6 @@
+import type { Instrument } from '@cieljs/instrument';
 import { ASR, type ASROptions, type ASRResult } from '@ciels/asr';
-import type { Instrument } from '@ciels/interceptor';
-import type { Signal } from 'corex';
+import { cielOperation, type Signal } from 'corex';
 
 import { SensuOperation } from '../instrumentation.ts';
 import type { EchoDefinition, EchoPayload, SpeechSegment } from '../types.ts';
@@ -34,14 +34,14 @@ export class HearingRuntime {
       signalDefinitionId: options.origin.id,
       signalDefinitionName: options.origin.name,
     };
-    this.write = options.instrument(segment => this.asr.write(segment), {
-      ...SensuOperation.ASRInput,
-      metadata,
-    });
-    this.publishSegment = options.instrument(options.onSegment, {
-      ...SensuOperation.ASROutput,
-      metadata,
-    });
+    this.write = options.instrument(
+      segment => this.asr.write(segment),
+      cielOperation(SensuOperation.ASRInput, metadata),
+    );
+    this.publishSegment = options.instrument(
+      options.onSegment,
+      cielOperation(SensuOperation.ASROutput, metadata),
+    );
     this.unsubscribers = [
       this.asr.on('speechstart', at => {
         // One VAD interval may aggregate PCM from many Echo Signals

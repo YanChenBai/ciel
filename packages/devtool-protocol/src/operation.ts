@@ -1,3 +1,5 @@
+import type { Operation } from 'corex';
+
 import type { JsonValue, ProtocolErrorRecord, SerializedValue } from './value.ts';
 
 export type OperationStatus = 'running' | 'completed' | 'failed';
@@ -14,12 +16,9 @@ export type OperationSource =
       readonly name: string;
     };
 
-export interface OperationRecord {
+export interface OperationRecord extends Operation {
   readonly id: string;
   readonly parentId?: string;
-  readonly name: string;
-  readonly label: string;
-  readonly tag: string;
   readonly source?: OperationSource;
   readonly startedAt: number;
   readonly completedAt?: number;

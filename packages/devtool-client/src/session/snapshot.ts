@@ -11,7 +11,7 @@ function removeActiveOperation(snapshot: DevtoolSnapshot, operationId: string) {
 }
 
 /**
- * 将实时协议事件归并到 bootstrap 快照；不引入 Corex 运行时类型。
+ * 将实时协议事件归并到 bootstrap 快照 不引入 Corex 运行时类型
  */
 export function reduceDevtoolSnapshot(
   snapshot: DevtoolSnapshot,
