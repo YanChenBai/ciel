@@ -4,13 +4,15 @@ import { ButtonRoot } from '@vuetify/v0/components';
 
 import { valueText } from '@/session/value.ts';
 
-import { operationLabel, operationLane, operationTag } from './model.ts';
+import type { DevtoolTraceEntry } from './model.ts';
+import { operationColor, operationLabel, operationTag } from './model.ts';
 
-defineProps<{
+const props = defineProps<{
   emptyLabel: string;
   operations: readonly OperationRecord[];
   selectedId?: string;
   total: number;
+  trace: readonly DevtoolTraceEntry[];
 }>();
 const emit = defineEmits<{ select: [operation: OperationRecord] }>();
 
@@ -23,6 +25,10 @@ function preview(operation: OperationRecord): string {
 function formatDuration(duration?: number): string {
   if (duration === undefined) return 'Running';
   return duration < 1_000 ? `${duration} ms` : `${(duration / 1_000).toFixed(2)} s`;
+}
+
+function laneColor(operation: OperationRecord): string {
+  return operationColor(operation, props.trace);
 }
 </script>
 
@@ -40,7 +46,7 @@ function formatDuration(duration?: number): string {
         }"
         @click="emit('select', operation)"
       >
-        <span class="trace-category" :class="`trace-category-${operationLane(operation)}`">
+        <span class="trace-category" :style="{ backgroundColor: laneColor(operation) }">
           {{ operationTag(operation) }}
         </span>
         <strong class="trace-title">{{ operationLabel(operation) }}</strong>
@@ -149,26 +155,6 @@ function formatDuration(duration?: number): string {
     monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.trace-category-agent {
-  background: #94a3b8;
-}
-
-.trace-category-context {
-  background: var(--trace-context);
-}
-
-.trace-category-model {
-  background: var(--trace-model);
-}
-
-.trace-category-tool {
-  background: var(--trace-tool);
-}
-
-.trace-category-room {
-  background: var(--trace-vision);
 }
 
 .trace-title,

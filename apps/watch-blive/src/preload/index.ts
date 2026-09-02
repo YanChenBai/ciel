@@ -4,7 +4,7 @@ import type { DevtoolProviderMessage } from '@ciels/devtool-protocol';
 import { contextBridge, ipcRenderer } from 'electron';
 
 import { IPC } from '../shared/ipc.ts';
-import type { AppState, StartOptions, ViewBounds, WatchBliveApi } from '../shared/types.ts';
+import type { AppState, StartOptions, WatchBliveApi } from '../shared/types.ts';
 
 const api: WatchBliveApi = {
   account: {
@@ -20,10 +20,6 @@ const api: WatchBliveApi = {
       ipcRenderer.on(IPC.devtoolFromMain, handle);
       return () => ipcRenderer.removeListener(IPC.devtoolFromMain, handle);
     },
-  },
-  liveView: {
-    setBounds: (bounds: ViewBounds) => ipcRenderer.send(IPC.liveBounds, bounds),
-    setVisible: visible => ipcRenderer.send(IPC.liveVisible, visible),
   },
   runtime: {
     start: (options: StartOptions) => ipcRenderer.invoke(IPC.runtimeStart, options),

@@ -7,7 +7,7 @@ import type { Model } from '@earendil-works/pi-ai';
 import { streamSimple } from '@earendil-works/pi-ai/compat';
 
 export interface WatchBliveAI {
-  readonly embedder: MemoryEmbeddingModel;
+  readonly embedder?: MemoryEmbeddingModel;
   readonly model: Model<'openai-completions'>;
   readonly stream: StreamFn;
 }
@@ -16,9 +16,17 @@ export function createWatchBliveAI(environment: NodeJS.ProcessEnv = process.env)
   const apiKey = required(environment.AI_API_KEY, 'AI_API_KEY');
   const modelId = required(environment.AI_MODEL, 'AI_MODEL');
   const baseUrl = environment.AI_BASE_URL?.trim() || 'https://openrouter.ai/api/v1';
-  const provider = createOpenAICompatible({ name: 'watch-blive', apiKey, baseURL: baseUrl });
+  const embeddingModelId = environment.AI_EMBEDDING_MODEL?.trim();
+  const embedder = embeddingModelId
+    ? createOpenAICompatible({
+        name: 'watch-blive-embedding',
+        apiKey: environment.AI_EMBEDDING_API_KEY?.trim() || apiKey,
+        baseURL: environment.AI_EMBEDDING_BASE_URL?.trim() || baseUrl,
+      }).embeddingModel(embeddingModelId)
+    : undefined;
+
   return {
-    embedder: provider.embeddingModel(modelId),
+    ...(embedder ? { embedder } : {}),
     model: {
       api: 'openai-completions',
       baseUrl,

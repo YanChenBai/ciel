@@ -13,7 +13,7 @@ import { createEngramView, type Engram } from '#model/engram/index.ts';
 import type { LLMContent } from '#model/llm/index.ts';
 
 import type { ResolvedTool } from '../extensions.ts';
-import { cielOperation, CielOperationName, type Instrument } from '../instrumentation.ts';
+import { cielOperation, CielOperation, type Instrument } from '../instrumentation.ts';
 import { instrumentAgentOperations } from './instrumentation.ts';
 import { createAgentSessionKey } from './session.ts';
 import type {
@@ -51,6 +51,11 @@ interface ResolvedAgentRuntimeOptions {
   readonly stream: StreamFn;
   readonly instructions: string;
   readonly tools: readonly AgentTool<any>[] | undefined;
+}
+
+interface PendingThought {
+  cue: AnyCue;
+  readonly promise: Promise<readonly AgentMessage[]>;
 }
 
 function resolveAgentRuntimeOptions(
@@ -182,6 +187,7 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
     tools,
   } = resolveAgentRuntimeOptions(options);
   const consumer = engram.createConsumer('agent');
+  const pendingThoughts = new Map<string, PendingThought>();
   let status: AgentRuntimeStatus = 'idle';
   let queue = Promise.resolve();
   let history: AgentMessage[] = [];
@@ -257,12 +263,43 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
       return Promise.reject(new Error(`Cannot think while Agent is ${status}`));
     }
 
+    const cueMetadata = {
+      cueAt: cue.temporal.at,
+      cueDefinitionId: cue.definition.id,
+      cueDefinitionName: cue.definition.name,
+    };
+    const submitted = instrument(
+      (value: AnyCue) => value,
+      cielOperation(CielOperation.CueSubmit, cueMetadata),
+    )(cue);
+    const coalesceKey = submitted.definition.coalesce ? submitted.definition.id : undefined;
+    const pending = coalesceKey ? pendingThoughts.get(coalesceKey) : undefined;
+    if (pending) {
+      pending.cue = submitted;
+      return pending.promise;
+    }
+
+    let queued!: PendingThought;
     const thought = queue.then(() => {
+      if (coalesceKey) pendingThoughts.delete(coalesceKey);
       if (status !== 'running') {
         throw new Error('Agent stopped before queued thought started');
       }
-      return execute(cue);
+
+      const current = queued.cue;
+      const run = instrument(
+        execute,
+        cielOperation(CielOperation.AgentRun, {
+          cueAt: current.temporal.at,
+          cueDefinitionId: current.definition.id,
+          cueDefinitionName: current.definition.name,
+        }),
+      );
+      return run(current);
     });
+
+    queued = { cue: submitted, promise: thought };
+    if (coalesceKey) pendingThoughts.set(coalesceKey, queued);
 
     queue = thought.then(
       () => undefined,
@@ -272,7 +309,7 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
     return thought;
   }
 
-  const think = instrument(enqueue, cielOperation(CielOperationName.AgentThink));
+  const think = enqueue;
 
   async function stop(): Promise<void> {
     if (status === 'idle') {

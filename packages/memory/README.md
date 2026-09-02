@@ -33,7 +33,7 @@ const memory = memoryPlugin({
     label: currentRoom.name,
   }),
   store: { path: '.ciel-data/memory' },
-  embedder,
+  embedder, // 可选,未配置时使用文本候选召回
   agent: { maxTurns: 4 },
   instructions: '只记录可以确认的事实',
   projector: {
@@ -96,6 +96,9 @@ PGlite
 正文始终保存在关系表中。`memory_embeddings` 只负责候选召回，不替代原始内容。当前不会写出
 `MEMORY.md` 或每日 Markdown 文件。
 
+`embedder` 可选。配置后使用 pgvector 生成语义候选；未配置时优先使用文本命中，再用最近记忆
+补足候选，正文写入、长期 revision、Projector 和所有 Tools 仍保持可用。
+
 ## 隔离规则
 
 - Namespace 默认使用 `ciel.id`，也可由 `MemoryOptions.id` 覆盖
@@ -108,12 +111,12 @@ PGlite
 
 Memory Plugin 直接向主 Agent 贡献原生 Tools，不使用 Tool Extension。
 
-| Tool              | 作用                               |
-| ----------------- | ---------------------------------- |
-| `memory_remember` | 总结经历并写入每日记忆             |
-| `memory_update`   | 根据更正生成新的长期记忆 revision  |
-| `memory_recall`   | 向量召回候选并由 Memory Agent 整理 |
-| `memory_search`   | 确定性搜索原始记录与结构化字段     |
+| Tool              | 作用                              |
+| ----------------- | --------------------------------- |
+| `memory_remember` | 总结经历并写入每日记忆            |
+| `memory_update`   | 根据更正生成新的长期记忆 revision |
+| `memory_recall`   | 召回候选并由 Memory Agent 整理    |
+| `memory_search`   | 确定性搜索原始记录与结构化字段    |
 
 ## Projector
 
@@ -139,7 +142,7 @@ interface MemoryOptions {
   readonly id?: string;
   readonly scope?: () => MemoryScope | undefined;
   readonly store: MemoryStoreOptions | MemoryStore;
-  readonly embedder: MemoryEmbeddingModel;
+  readonly embedder?: MemoryEmbeddingModel;
   readonly instructions?: string;
   readonly prompts?: Partial<MemoryPrompts>;
   readonly agent?: Partial<AgentConfig>;

@@ -76,7 +76,9 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
   const queues = new Map<string, Promise<void>>();
   let status: 'idle' | 'running' | 'closing' | 'closed' = 'idle';
 
-  async function embed(content: string): Promise<readonly number[]> {
+  async function embed(content: string): Promise<readonly number[] | undefined> {
+    if (!options.embedder) return undefined;
+
     const result = await options.embedder.doEmbed({ values: [content] });
     const embedding = result.embeddings[0];
 
@@ -136,11 +138,12 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
           const content = await agent.consolidateLongTerm(current, item.date, entries);
 
           if (content && content !== current?.content) {
+            const embedding = await embed(content);
             await store.commitLongTerm({
               namespaceId: options.id,
               scope: item.scope,
               content,
-              embedding: await embed(content),
+              ...(embedding ? { embedding } : {}),
               basedOnDates: [item.date],
               createdAt: now(),
             });
@@ -170,12 +173,13 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
         );
         if (!summarized) return undefined;
 
+        const embedding = await embed(summarized);
         return store.appendDaily({
           namespaceId: options.id,
           scope,
           date,
           content: summarized,
-          embedding: await embed(summarized),
+          ...(embedding ? { embedding } : {}),
           occurredAt,
           createdAt: now(),
           idempotencyKey: input.idempotencyKey,
@@ -199,11 +203,12 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
         );
         if (!content || content === current?.content) return;
 
+        const embedding = await embed(content);
         await store.commitLongTerm({
           namespaceId: options.id,
           scope,
           content,
-          embedding: await embed(content),
+          ...(embedding ? { embedding } : {}),
           basedOnDates: [],
           createdAt: now(),
         });
@@ -216,14 +221,17 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
       const scope: MemoryScopeRange = input.scope ?? options.tools?.defaultRecallRange ?? 'current';
       const limit = input.limit ?? options.tools?.recallLimit ?? 5;
 
-      // 向量搜索生成较宽的候选集，再由 Memory Agent 完成最终语义筛选与排序
-      const candidates = await store.recall({
-        namespaceId: options.id,
-        currentScope: getCurrentScope(),
-        embedding: await embed(query),
-        scope,
-        limit: Math.min(limit * RECALL_CANDIDATE_MULTIPLIER, MAX_RECALL_CANDIDATES),
-      });
+      const candidateLimit = Math.min(limit * RECALL_CANDIDATE_MULTIPLIER, MAX_RECALL_CANDIDATES);
+      const embedding = await embed(query);
+      const candidates = embedding
+        ? await store.recall({
+            namespaceId: options.id,
+            currentScope: getCurrentScope(),
+            embedding,
+            scope,
+            limit: candidateLimit,
+          })
+        : await recallWithoutEmbedding(query, scope, candidateLimit);
 
       return agent.recall(query, candidates, limit);
     },
@@ -239,6 +247,39 @@ export function createMemory(options: CreateMemoryOptions): MemoryRuntime {
       });
     },
   };
+
+  async function recallWithoutEmbedding(
+    query: string,
+    scope: MemoryScopeRange,
+    limit: number,
+  ): Promise<readonly MemoryRecall[]> {
+    const searchOptions = {
+      namespaceId: options.id,
+      currentScope: getCurrentScope(),
+      scope,
+      limit,
+    } as const;
+    const matched = await store.search({ ...searchOptions, query });
+
+    if (matched.entries.length >= limit) {
+      return matched.entries.map(entry => ({ ...entry, score: 1 }));
+    }
+
+    // 文本命中优先,剩余位置由最近记忆补齐,再交给 Memory Agent 做最终筛选
+    const recent = await store.search(searchOptions);
+    const candidates = new Map(matched.entries.map(entry => [entry.id, entry]));
+    const matchedIds = new Set(candidates.keys());
+
+    for (const entry of recent.entries) {
+      if (candidates.size >= limit) break;
+      candidates.set(entry.id, entry);
+    }
+
+    return [...candidates.values()].map(entry => ({
+      ...entry,
+      score: matchedIds.has(entry.id) ? 1 : 0,
+    }));
+  }
 
   const projector = createMemoryProjector({
     namespaceId: options.id,

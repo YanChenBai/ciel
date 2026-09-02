@@ -13,13 +13,22 @@ import { computed, defineAsyncComponent, onMounted, shallowRef, watch } from 'vu
 
 import { valueText } from '@/session/value.ts';
 
-import { isVisibleTrace, operationLabel, operationLane, operationTag } from './model.ts';
+import {
+  type DevtoolTraceEntry,
+  operationLabel,
+  operationLane,
+  operationTag,
+  resolveTraceEntry,
+} from './model.ts';
 import TraceInspector from './TraceInspector.vue';
 import TraceList from './TraceList.vue';
 
 const TraceTimeline = defineAsyncComponent(() => import('./TraceTimeline.vue'));
 
-const props = defineProps<{ operations: readonly OperationRecord[] }>();
+const props = defineProps<{
+  operations: readonly OperationRecord[];
+  trace: readonly DevtoolTraceEntry[];
+}>();
 const query = shallowRef('');
 const selectedId = shallowRef('');
 const inspectorOpen = shallowRef(true);
@@ -30,7 +39,9 @@ const clock = useTimer(
   },
   { duration: 250, repeat: true },
 );
-const visible = computed(() => props.operations.filter(isVisibleTrace));
+const visible = computed(() =>
+  props.operations.filter(operation => resolveTraceEntry(operation, props.trace)),
+);
 const filtered = computed(() => {
   const normalized = query.value.trim().toLocaleLowerCase();
   if (!normalized) return visible.value;
@@ -60,14 +71,13 @@ const end = computed(() =>
   Math.max(...visible.value.map(operation => operation.completedAt ?? now.value), start.value + 1),
 );
 const toolCalls = computed(
-  () => visible.value.filter(operation => operationLane(operation) === 'tool').length,
+  () => visible.value.filter(operation => operationLane(operation).id === 'tool').length,
 );
 const emptyLabel = computed(() => (visible.value.length ? '没有匹配的步骤' : '等待执行轨迹'));
 
 watch(
-  () => props.operations,
-  operations => {
-    const semantic = operations.filter(isVisibleTrace);
+  visible,
+  semantic => {
     if (!semantic.some(operation => operation.id === selectedId.value)) {
       selectedId.value = semantic.at(-1)?.id ?? '';
     }
@@ -130,6 +140,7 @@ function exportTrace(): void {
           :operations="visible"
           :selected-id="selected?.id"
           :start="start"
+          :trace="trace"
           @select="selectOperation"
         />
         <div v-else class="trace-empty">Waiting for the first trace</div>
@@ -147,12 +158,13 @@ function exportTrace(): void {
               :operations="filtered"
               :selected-id="selected?.id"
               :total="visible.length"
+              :trace="trace"
               @select="selectOperation"
             />
           </SplitterPanel>
           <SplitterHandle label="调整检查器宽度" class="trace-splitter trace-splitter-vertical" />
           <SplitterPanel :default-size="38" :min-size="28">
-            <TraceInspector :operation="selected" @close="inspectorOpen = false" />
+            <TraceInspector :operation="selected" :trace="trace" @close="inspectorOpen = false" />
           </SplitterPanel>
         </SplitterRoot>
         <TraceList
@@ -161,6 +173,7 @@ function exportTrace(): void {
           :operations="filtered"
           :selected-id="selected?.id"
           :total="visible.length"
+          :trace="trace"
           @select="selectOperation"
         />
       </SplitterPanel>

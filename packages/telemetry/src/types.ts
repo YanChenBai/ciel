@@ -1,4 +1,5 @@
 import type { Interceptor } from '@ciels/interceptor';
+import type { CielOperationMetadata } from 'corex';
 import type { SuperJSONValue } from 'superjson';
 
 export interface Transformer<T = unknown, Serialized = SuperJSONValue> {
@@ -29,9 +30,11 @@ export interface TelemetryConfiguration {
 
 export interface TelemetryOperation {
   readonly id: string;
+  readonly label: string;
   readonly name: string;
   readonly parentOperationId?: string;
-  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly tag: string;
+  readonly metadata?: Readonly<Partial<CielOperationMetadata>>;
 }
 
 export interface TelemetryError {
@@ -78,7 +81,7 @@ export interface TelemetryEventQuery {
 
 export type TelemetrySubscriber = (event: TelemetryEvent) => void;
 
-export interface Telemetry extends Interceptor {
+export interface Telemetry extends Interceptor<CielOperationMetadata> {
   (configuration: TelemetryConfiguration): void;
   readonly throughSequence: number;
   deserialize<T = unknown>(value: string): T;

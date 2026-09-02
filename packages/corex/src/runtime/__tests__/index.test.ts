@@ -3,16 +3,20 @@ import type { AssistantMessage } from '@earendil-works/pi-ai';
 import { describe, expect, test, vi } from 'vite-plus/test';
 
 import {
+  type AnyFunction,
   type AgentMessage,
   type AgentSessionAddress,
   type AgentSessionStore,
+  CielOperation,
   defineCiel,
   defineCue,
+  defineInterceptor,
   definePercept,
   definePlugin,
   defineProjector,
   defineSensu,
   defineSignal,
+  type InstrumentContext,
   referenceSignal,
 } from '#src/index.ts';
 
@@ -269,7 +273,10 @@ test('Sensu 以独立输入输出流聚合多个 Signal，并先写入 Percept �
               contents: [{ type: 'text', text: inputs.map(input => input.payload).join(',') }],
               temporal: current.temporal,
             }),
-            cues: cueDefinition.create(current.temporal),
+            cues: cueDefinition.create({
+              kind: 'instant',
+              at: current.temporal.kind === 'instant' ? current.temporal.at : current.temporal.end,
+            }),
           });
         },
         close() {},
@@ -428,6 +435,74 @@ test('同一个 Ciel 的 think 严格串行', async () => {
   releases.shift()!();
   await second;
   expect(maximum).toBe(1);
+  await ciel.stop();
+});
+
+test('按 CueDefinition id 合并尚未开始的 think 并保留最新 Cue', async () => {
+  const releases: (() => void)[] = [];
+  const cues: string[] = [];
+  const operations: InstrumentContext[] = [];
+  const observer = defineInterceptor({
+    name: 'coalesce-observer',
+    interceptor: {
+      intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
+        if (
+          context?.name !== CielOperation.CueSubmit.name &&
+          context?.name !== CielOperation.AgentRun.name
+        ) {
+          return undefined;
+        }
+        return next =>
+          ((...args: Parameters<T>) => {
+            operations.push(context);
+            return next(...args);
+          }) as T;
+      },
+    },
+  });
+  const stream: StreamFn = async () => {
+    await new Promise<void>(resolve => releases.push(resolve));
+    return streamResult();
+  };
+  const coalesced = defineCue<string>({ name: 'coalesced', coalesce: true });
+  const sameName = defineCue<string>({ name: 'coalesced', coalesce: true });
+  const ciel = defineCiel({
+    ...createCielOptions(stream),
+    prompt(frame) {
+      cues.push(frame.cue.payload);
+      return { role: 'user', content: frame.cue.payload, timestamp: Date.now() };
+    },
+    extensions: [observer],
+  });
+
+  await ciel.start();
+  const first = ciel.think(coalesced.create(instant, 'first'));
+  await vi.waitFor(() => expect(releases).toHaveLength(1));
+
+  const second = ciel.think(coalesced.create(instant, 'second'));
+  const third = ciel.think(coalesced.create(instant, 'third'));
+  const separate = ciel.think(sameName.create(instant, 'separate'));
+  expect(second).toBe(third);
+  expect(third).not.toBe(separate);
+
+  releases.shift()!();
+  await first;
+  await vi.waitFor(() => expect(releases).toHaveLength(1));
+  expect(cues).toEqual(['first', 'third']);
+
+  releases.shift()!();
+  await Promise.all([second, third]);
+  await vi.waitFor(() => expect(releases).toHaveLength(1));
+  expect(cues).toEqual(['first', 'third', 'separate']);
+
+  releases.shift()!();
+  await separate;
+  expect(
+    operations.filter(operation => operation.name === CielOperation.CueSubmit.name),
+  ).toHaveLength(4);
+  expect(
+    operations.filter(operation => operation.name === CielOperation.AgentRun.name),
+  ).toHaveLength(3);
   await ciel.stop();
 });
 

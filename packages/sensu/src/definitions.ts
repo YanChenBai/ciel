@@ -21,6 +21,7 @@ export const Hearing = definePercept({
 export const SpeechEnded = defineCue<SpeechEndedPayload>({
   name: 'speech-ended',
   description: 'VAD 检测到一段语音结束。',
+  coalesce: true,
   prompt: '一段语音刚刚结束，请结合最新听觉上下文作出判断。',
 });
 

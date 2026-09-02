@@ -13,7 +13,7 @@ import type {
 } from '#extension';
 import type { AgentConfig } from '#runtime/agent/index.ts';
 
-import { cielOperation, CielOperationName } from './instrumentation.ts';
+import { cielOperation, CielOperation } from './instrumentation.ts';
 
 export interface ResolvedPlugin {
   readonly definition: CielPlugin;
@@ -130,7 +130,7 @@ export function resolveExtensions(
         pluginName: extension.name,
       },
     });
-    const create = instrument.with(cielOperation(CielOperationName.PluginCreate))(extension.create);
+    const create = instrument.with(cielOperation(CielOperation.PluginCreate))(extension.create);
     const plugin: ResolvedPlugin = {
       definition: extension,
       instrument,

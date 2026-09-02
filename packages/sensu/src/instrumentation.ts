@@ -1,6 +1,16 @@
-export const SensuOperationName = {
-  ASRInput: 'ciel.sensu.asr.input',
-  ASROutput: 'ciel.sensu.asr.output',
+export const SensuOperationTag = {
+  Sensu: 'SENSU',
 } as const;
 
-export type SensuOperationName = (typeof SensuOperationName)[keyof typeof SensuOperationName];
+export const SensuOperation = {
+  ASRInput: {
+    name: 'ciel.sensu.asr.input',
+    label: 'ASR Input',
+    tag: SensuOperationTag.Sensu,
+  },
+  ASROutput: {
+    name: 'ciel.sensu.asr.output',
+    label: 'ASR Output',
+    tag: SensuOperationTag.Sensu,
+  },
+} as const;

@@ -1,63 +1,125 @@
-export { createInstrumenter } from '@ciels/interceptor';
-export type {
-  AnyFunction,
-  Instrument,
-  InstrumentContext,
-  InstrumentPreset,
-  InterceptorWrapper,
-} from '@ciels/interceptor';
+import type { InstrumentContext } from '@ciels/interceptor';
 
-export const CielOperationName = {
-  AgentGenerate: 'ciel.agent.generate',
-  AgentPrompt: 'ciel.agent.prompt',
-  AgentThink: 'ciel.agent.think',
-  AgentToolExecute: 'ciel.agent.tool.execute',
-  PluginCreate: 'ciel.plugin.create',
-  PluginInitialize: 'ciel.plugin.initialize',
-  PluginActivate: 'ciel.plugin.activate',
-  PluginDeactivate: 'ciel.plugin.deactivate',
-  PluginDispose: 'ciel.plugin.dispose',
-  ProjectorProject: 'ciel.projector.project',
-  SensuCreate: 'ciel.sensu.create',
-  SensuInput: 'ciel.sensu.input',
-  SensuOutput: 'ciel.sensu.output',
-  SensuClose: 'ciel.sensu.close',
-  SignalEmit: 'ciel.signal.emit',
+export { createInstrumenter } from '@ciels/interceptor';
+export type { AnyFunction, InstrumentPreset, InterceptorWrapper } from '@ciels/interceptor';
+
+export const CielOperationTag = {
+  Agent: 'AGENT',
+  Context: 'CONTEXT',
+  Cue: 'CUE',
+  Plugin: 'PLUGIN',
+  Sensu: 'SENSU',
+  Signal: 'SIGNAL',
+  Tool: 'TOOL',
 } as const;
 
-export type CielOperationName = (typeof CielOperationName)[keyof typeof CielOperationName];
+export type CielOperationTag = (typeof CielOperationTag)[keyof typeof CielOperationTag];
 
-export const CielOperationCategoryAttribute = 'ciel.operation.category';
+export const CielOperation = {
+  CueSubmit: { name: 'ciel.cue.submit', label: 'Cue Submit', tag: CielOperationTag.Cue },
+  AgentRun: { name: 'ciel.agent.run', label: 'Agent Run', tag: CielOperationTag.Agent },
+  AgentPrompt: {
+    name: 'ciel.agent.prompt',
+    label: 'Agent Prompt',
+    tag: CielOperationTag.Context,
+  },
+  ModelGenerate: {
+    name: 'ciel.model.generate',
+    label: 'Model Generate',
+    tag: CielOperationTag.Agent,
+  },
+  ToolExecute: {
+    name: 'ciel.tool.execute',
+    label: 'Tool Execute',
+    tag: CielOperationTag.Tool,
+  },
+  PluginCreate: {
+    name: 'ciel.plugin.create',
+    label: 'Plugin Create',
+    tag: CielOperationTag.Plugin,
+  },
+  PluginInitialize: {
+    name: 'ciel.plugin.initialize',
+    label: 'Plugin Initialize',
+    tag: CielOperationTag.Plugin,
+  },
+  PluginActivate: {
+    name: 'ciel.plugin.activate',
+    label: 'Plugin Activate',
+    tag: CielOperationTag.Plugin,
+  },
+  PluginDeactivate: {
+    name: 'ciel.plugin.deactivate',
+    label: 'Plugin Deactivate',
+    tag: CielOperationTag.Plugin,
+  },
+  PluginDispose: {
+    name: 'ciel.plugin.dispose',
+    label: 'Plugin Dispose',
+    tag: CielOperationTag.Plugin,
+  },
+  ProjectorProject: {
+    name: 'ciel.projector.project',
+    label: 'Projector Project',
+    tag: CielOperationTag.Context,
+  },
+  SensuCreate: {
+    name: 'ciel.sensu.create',
+    label: 'Sensu Create',
+    tag: CielOperationTag.Sensu,
+  },
+  SensuInput: {
+    name: 'ciel.sensu.input',
+    label: 'Sensu Input',
+    tag: CielOperationTag.Sensu,
+  },
+  SensuOutput: {
+    name: 'ciel.sensu.output',
+    label: 'Sensu Output',
+    tag: CielOperationTag.Sensu,
+  },
+  SensuClose: {
+    name: 'ciel.sensu.close',
+    label: 'Sensu Close',
+    tag: CielOperationTag.Sensu,
+  },
+  SignalEmit: {
+    name: 'ciel.signal.emit',
+    label: 'Signal Emit',
+    tag: CielOperationTag.Signal,
+  },
+} as const;
 
-export type CielOperationCategory = 'agent' | 'plugin' | 'projector' | 'sensu' | 'signal' | 'tool';
+export type CielOperation = (typeof CielOperation)[keyof typeof CielOperation];
 
-const operationCategories: Readonly<Record<CielOperationName, CielOperationCategory>> = {
-  [CielOperationName.AgentGenerate]: 'agent',
-  [CielOperationName.AgentPrompt]: 'agent',
-  [CielOperationName.AgentThink]: 'agent',
-  [CielOperationName.AgentToolExecute]: 'tool',
-  [CielOperationName.PluginCreate]: 'plugin',
-  [CielOperationName.PluginInitialize]: 'plugin',
-  [CielOperationName.PluginActivate]: 'plugin',
-  [CielOperationName.PluginDeactivate]: 'plugin',
-  [CielOperationName.PluginDispose]: 'plugin',
-  [CielOperationName.ProjectorProject]: 'projector',
-  [CielOperationName.SensuCreate]: 'sensu',
-  [CielOperationName.SensuInput]: 'sensu',
-  [CielOperationName.SensuOutput]: 'sensu',
-  [CielOperationName.SensuClose]: 'sensu',
-  [CielOperationName.SignalEmit]: 'signal',
-};
+export interface CielOperationMetadata {
+  readonly capability?: string;
+  readonly cueAt?: number;
+  readonly cueDefinitionId?: string;
+  readonly cueDefinitionName?: string;
+  readonly extensionId?: string;
+  readonly extensionKind?: string;
+  readonly extensionName?: string;
+  readonly pluginId?: string;
+  readonly pluginName?: string;
+  readonly projectorKey?: string;
+  readonly projectorName?: string;
+  readonly signalDefinitionId?: string;
+  readonly signalDefinitionName?: string;
+  readonly toolLabel?: string;
+  readonly toolName?: string;
+}
+
+export type Instrument = import('@ciels/interceptor').Instrument<CielOperationMetadata>;
+export type Interceptor = import('@ciels/interceptor').Interceptor<CielOperationMetadata>;
+export type { InstrumentContext } from '@ciels/interceptor';
 
 export function cielOperation(
-  name: CielOperationName,
-  metadata: Readonly<Record<string, unknown>> = {},
-) {
+  operation: CielOperation,
+  metadata?: Readonly<Partial<CielOperationMetadata>>,
+): InstrumentContext<CielOperationMetadata> {
   return {
-    name,
-    metadata: {
-      ...metadata,
-      [CielOperationCategoryAttribute]: operationCategories[name],
-    },
+    ...operation,
+    ...(metadata ? { metadata } : {}),
   };
 }

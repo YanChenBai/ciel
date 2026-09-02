@@ -19,23 +19,23 @@ describe('buildConversationItems', () => {
       }),
     ];
     const operations = [
-      operation('thinking', 'ciel.agent.generate', {
+      operation('thinking', 'ciel.model.generate', {
         output: serialized({
           content: [{ thinking: '这时适合发一条简短弹幕', type: 'thinking' }],
           role: 'assistant',
         }),
       }),
-      operation('simulated', 'ciel.agent.tool.execute', {
+      operation('simulated', 'ciel.tool.execute', {
         attributes: { toolName: 'send_danmaku' },
         input: serialized(['call-1', { action: 'send', content: '唱得真好', reason: '演唱结束' }]),
         output: serialized({ details: { content: '唱得真好', sent: false, simulated: true } }),
       }),
-      operation('real', 'ciel.agent.tool.execute', {
+      operation('real', 'ciel.tool.execute', {
         attributes: { toolName: 'send_danmaku' },
         input: serialized(['call-2', { action: 'send', content: '好听！', reason: '自然互动' }]),
         output: serialized({ details: { content: '好听！', sent: true, simulated: false } }),
       }),
-      operation('defer', 'ciel.agent.tool.execute', {
+      operation('defer', 'ciel.tool.execute', {
         attributes: { toolName: 'send_danmaku' },
         input: serialized(['call-3', { action: 'defer', content: '', reason: '没有互动机会' }]),
         output: serialized({ details: { sent: false } }),
@@ -75,8 +75,9 @@ function operation(id: string, name: string, overrides: Partial<OperationRecord>
     1_000;
   return {
     id,
+    label: name === 'ciel.tool.execute' ? 'Tool Execute' : 'Model Generate',
     name,
-    category: name.includes('.tool.') ? 'tool' : 'agent',
+    tag: name === 'ciel.tool.execute' ? 'TOOL' : 'AGENT',
     startedAt,
     completedAt: startedAt + 100,
     durationMs: 100,

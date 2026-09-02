@@ -19,6 +19,7 @@ test('创建保留定义、载荷和时间信息的 Signal 与 Cue', () => {
   const cueDefinition = defineCue<{ readonly word: string }>({
     name: 'wake-word-mentioned',
     description: 'A wake word was mentioned',
+    coalesce: true,
     prompt: 'Respond to the latest perception.',
   });
   const signalPayload = { text: 'hello' };
@@ -47,6 +48,7 @@ test('创建保留定义、载荷和时间信息的 Signal 与 Cue', () => {
     type: DefinitionType.Cue,
     name: 'wake-word-mentioned',
     description: 'A wake word was mentioned',
+    coalesce: true,
     prompt: 'Respond to the latest perception.',
   });
 });

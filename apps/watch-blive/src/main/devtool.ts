@@ -4,7 +4,6 @@ import type { DevtoolTarget, DevtoolTargetEvent } from '@ciels/devtool-bridge';
 import type {
   AgentMessageRecord,
   EngramEntryRecord,
-  OperationCategory,
   OperationRecord,
   SerializedValue,
 } from '@ciels/devtool-protocol';
@@ -12,7 +11,6 @@ import { DevtoolEventName } from '@ciels/devtool-protocol';
 import { defineTransformer, telemetry } from '@ciels/telemetry';
 import type { TelemetryEvent } from '@ciels/telemetry';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
-import { CielOperationCategoryAttribute } from 'corex';
 import type { EngramEntry } from 'corex';
 
 import type { RuntimeController } from './runtime.ts';
@@ -232,8 +230,9 @@ function updateOperation(
   const current = map.get(event.operation.id) ?? {
     id: event.operation.id,
     ...(event.operation.parentOperationId ? { parentId: event.operation.parentOperationId } : {}),
+    label: event.operation.label,
     name: event.operation.name,
-    category: operationCategory(event.operation.metadata),
+    tag: event.operation.tag,
     startedAt: event.time,
     status: 'running' as const,
     attributes: attributes(event.operation.metadata),
@@ -262,28 +261,13 @@ function updateOperation(
   return value;
 }
 
-function operationCategory(
-  metadata: Readonly<Record<string, unknown>> | undefined,
-): OperationCategory {
-  const value = metadata?.[CielOperationCategoryAttribute];
-  return value === 'agent' ||
-    value === 'signal' ||
-    value === 'sensu' ||
-    value === 'projector' ||
-    value === 'tool' ||
-    value === 'plugin'
-    ? value
-    : 'custom';
-}
-
 function attributes(metadata: Readonly<Record<string, unknown>> | undefined) {
   return Object.fromEntries(
     Object.entries(metadata ?? {}).flatMap(([key, value]) =>
-      key !== CielOperationCategoryAttribute &&
-      (value === null ||
-        typeof value === 'string' ||
-        typeof value === 'number' ||
-        typeof value === 'boolean')
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
         ? [[key, value]]
         : [],
     ),

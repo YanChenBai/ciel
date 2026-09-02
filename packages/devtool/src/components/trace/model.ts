@@ -1,47 +1,81 @@
 import type { OperationRecord } from '@ciels/devtool-protocol';
 
-export type TraceLane = 'agent' | 'context' | 'model' | 'room' | 'tool';
+export interface DevtoolTraceLane {
+  readonly id: string;
+  readonly label: string;
+}
 
-export const traceLanes: readonly { id: TraceLane; label: string }[] = [
-  { id: 'agent', label: 'Agent' },
-  { id: 'context', label: 'Context' },
-  { id: 'model', label: 'Model' },
-  { id: 'tool', label: 'Tools' },
-  { id: 'room', label: 'Room' },
+export interface DevtoolTraceEntry {
+  readonly color?: string;
+  readonly match: string | ((operation: OperationRecord) => boolean);
+  readonly type?: 'point' | 'range';
+}
+
+export interface ResolvedTraceEntry {
+  readonly color: string;
+  readonly label: string;
+  readonly lane: DevtoolTraceLane;
+  readonly type: 'point' | 'range';
+}
+
+const fallbackColor = '#64748b';
+
+export const defaultTrace: readonly DevtoolTraceEntry[] = [
+  { match: 'ciel.cue.submit', color: '#94a3b8', type: 'point' },
+  { match: 'ciel.agent.run', color: 'var(--trace-model)' },
+  { match: 'ciel.agent.prompt', color: 'var(--trace-context)' },
+  { match: 'ciel.model.generate', color: 'var(--trace-model)' },
+  { match: 'ciel.tool.execute', color: 'var(--trace-tool)' },
 ];
 
-export function isVisibleTrace(operation: OperationRecord): boolean {
-  return (
-    operation.name === 'ciel.agent.think' ||
-    operation.name === 'ciel.agent.prompt' ||
-    operation.name === 'ciel.agent.generate' ||
-    operation.name === 'ciel.agent.tool.execute' ||
-    operation.name.startsWith('watch-blive.room.')
+export function resolveTraceEntry(
+  operation: OperationRecord,
+  trace: readonly DevtoolTraceEntry[],
+): ResolvedTraceEntry | undefined {
+  const entry = trace.find(candidate =>
+    typeof candidate.match === 'string'
+      ? operation.name === candidate.match
+      : candidate.match(operation),
   );
+  if (!entry) return;
+
+  return {
+    color: entry.color ?? fallbackColor,
+    label: operation.label,
+    lane: operationLane(operation),
+    type: entry.type ?? 'range',
+  };
 }
 
 export function operationLabel(operation: OperationRecord): string {
-  const tool = operation.attributes.toolLabel ?? operation.attributes.toolName;
-  if (typeof tool === 'string') return tool;
-  return (
-    {
-      'ciel.agent.think': 'Agent 思考',
-      'ciel.agent.prompt': 'Agent 输入',
-      'ciel.agent.generate': '模型生成',
-      'watch-blive.room.list': '获取直播间候选',
-      'watch-blive.room.open': '切换直播间',
-    }[operation.name] ?? operation.name
-  );
+  return operation.label;
 }
 
-export function operationLane(operation: OperationRecord): TraceLane {
-  if (operation.name === 'ciel.agent.think') return 'agent';
-  if (operation.name === 'ciel.agent.prompt') return 'context';
-  if (operation.name === 'ciel.agent.generate') return 'model';
-  if (operation.name === 'ciel.agent.tool.execute') return 'tool';
-  return 'room';
+export function operationLane(operation: OperationRecord): DevtoolTraceLane {
+  return {
+    id: operation.tag.toLocaleLowerCase(),
+    label: operation.tag,
+  };
 }
 
 export function operationTag(operation: OperationRecord): string {
-  return operationLane(operation).toLocaleUpperCase();
+  return operation.tag;
+}
+
+export function operationColor(
+  operation: OperationRecord,
+  trace: readonly DevtoolTraceEntry[],
+): string {
+  return resolveTraceEntry(operation, trace)?.color ?? fallbackColor;
+}
+
+export function traceLanes(operations: readonly OperationRecord[]): readonly DevtoolTraceLane[] {
+  return [
+    ...new Map(
+      operations.map(operation => {
+        const lane = operationLane(operation);
+        return [lane.id, lane] as const;
+      }),
+    ).values(),
+  ];
 }

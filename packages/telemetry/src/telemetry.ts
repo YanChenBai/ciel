@@ -8,7 +8,7 @@ import {
 } from '@ciels/interceptor';
 import { context as otelContext, metrics, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { Attributes, Counter, Histogram, Span } from '@opentelemetry/api';
-import { CielOperationName } from 'corex';
+import { CielOperation, type CielOperationMetadata } from 'corex';
 
 import { captureError, captureValue } from './capture.ts';
 import { createSerializer } from './serializer.ts';
@@ -57,7 +57,9 @@ function resolveCapture(
 function attributesOf(operation: TelemetryOperation): Attributes {
   const attributes: Attributes = {
     'ciel.operation.id': operation.id,
+    'ciel.operation.label': operation.label,
     'ciel.operation.name': operation.name,
+    'ciel.operation.tag': operation.tag,
   };
   if (operation.parentOperationId) {
     attributes['ciel.operation.parent_id'] = operation.parentOperationId;
@@ -135,11 +137,16 @@ function createTelemetry(): Telemetry {
     }
   }
 
-  function start(instrumentContext: InstrumentContext, args: readonly unknown[]): ActiveOperation {
+  function start(
+    instrumentContext: InstrumentContext<CielOperationMetadata>,
+    args: readonly unknown[],
+  ): ActiveOperation {
     const parent = storage.getStore();
     const operation: TelemetryOperation = {
       id: randomUUID(),
+      label: instrumentContext.label,
       name: instrumentContext.name,
+      tag: instrumentContext.tag,
       ...(parent ? { parentOperationId: parent.operation.id } : {}),
       ...(instrumentContext.metadata ? { metadata: { ...instrumentContext.metadata } } : {}),
     };
@@ -216,7 +223,7 @@ function createTelemetry(): Telemetry {
   }
 
   function trackStream(active: ActiveOperation, value: unknown): boolean {
-    if (active.operation.name !== CielOperationName.AgentGenerate || !hasStreamResult(value)) {
+    if (active.operation.name !== CielOperation.ModelGenerate.name || !hasStreamResult(value)) {
       return false;
     }
 
@@ -253,7 +260,7 @@ function createTelemetry(): Telemetry {
 
   function intercept<T extends AnyFunction>(
     _target: T,
-    instrumentContext?: InstrumentContext,
+    instrumentContext?: InstrumentContext<CielOperationMetadata>,
   ): InterceptorWrapper<T> | undefined {
     if (!instrumentContext) return undefined;
 

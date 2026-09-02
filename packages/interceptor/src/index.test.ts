@@ -3,6 +3,13 @@ import { describe, expect, it, vi } from 'vite-plus/test';
 import { createInstrumenter } from './index.ts';
 import type { AnyFunction, InstrumentContext, Interceptor } from './index.ts';
 
+interface TestMetadata {
+  readonly capability: string;
+  readonly pluginId: string;
+  readonly pluginName: string;
+  readonly query: string;
+}
+
 describe('interceptor', () => {
   it('未声明 interceptor 时保持原函数行为', () => {
     const target = vi.fn((value: number) => value * 2);
@@ -97,7 +104,9 @@ describe('interceptor', () => {
     };
     const instrument = createInstrumenter([interceptor]);
     const context: InstrumentContext = {
+      label: 'Signal Emit',
       name: 'corex.signal.emit',
+      tag: 'SIGNAL',
       metadata: {
         moduleId: 'stimulus-id',
       },
@@ -174,8 +183,8 @@ describe('interceptor', () => {
   });
 
   it('派生 Instrument 合并上下文并保护固定字段', () => {
-    const received: InstrumentContext[] = [];
-    const instrument = createInstrumenter([
+    const received: InstrumentContext<TestMetadata>[] = [];
+    const instrument = createInstrumenter<TestMetadata>([
       {
         intercept(_target, context) {
           if (context) received.push(context);
@@ -187,18 +196,24 @@ describe('interceptor', () => {
       metadata: { pluginId: 'trusted', pluginName: 'memory' },
     });
     const operationInstrument = pluginInstrument.with({
+      label: 'Memory Search',
       name: 'ciel.memory.search',
+      tag: 'MEMORY',
       metadata: { capability: 'memory' },
     });
 
     operationInstrument(() => undefined, {
+      label: 'Memory Search',
       name: 'ciel.memory.search',
+      tag: 'MEMORY',
       metadata: { pluginId: 'forged', query: 'hello' },
     });
 
     expect(received).toEqual([
       {
+        label: 'Memory Search',
         name: 'ciel.memory.search',
+        tag: 'MEMORY',
         metadata: {
           query: 'hello',
           capability: 'memory',
@@ -207,9 +222,13 @@ describe('interceptor', () => {
         },
       },
     ]);
-    expect(() => operationInstrument(() => undefined, { name: 'other' })).toThrow(
-      'Instrument name "ciel.memory.search" cannot be overridden with "other"',
-    );
+    expect(() =>
+      operationInstrument(() => undefined, {
+        label: 'Memory Search',
+        name: 'other',
+        tag: 'MEMORY',
+      }),
+    ).toThrow('Instrument name "ciel.memory.search" cannot be overridden with "other"');
     expect(() => operationInstrument.with({ name: 'other' })).toThrow(
       'Instrument name "ciel.memory.search" cannot be overridden with "other"',
     );

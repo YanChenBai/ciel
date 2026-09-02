@@ -58,15 +58,9 @@ export interface AppState {
   readonly danmakuDelivery: DanmakuDelivery;
   readonly error?: string;
   readonly mode: WatchMode;
+  readonly playbackUrl?: string;
   readonly room?: RoomInfo;
   readonly running: boolean;
-}
-
-export interface ViewBounds {
-  readonly height: number;
-  readonly width: number;
-  readonly x: number;
-  readonly y: number;
 }
 
 export interface WatchBliveApi {
@@ -75,10 +69,6 @@ export interface WatchBliveApi {
   readonly devtool: {
     send(message: DevtoolConsumerMessage): void;
     subscribe(listener: (message: DevtoolProviderMessage) => void): () => void;
-  };
-  readonly liveView: {
-    setBounds(bounds: ViewBounds): void;
-    setVisible(visible: boolean): void;
   };
   readonly runtime: { start(options: StartOptions): Promise<void>; stop(): Promise<void> };
   readonly state: {

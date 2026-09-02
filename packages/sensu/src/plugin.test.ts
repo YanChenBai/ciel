@@ -49,7 +49,7 @@ vi.mock('@ciels/asr', () => ({
   },
 }));
 
-const { Hearing, SensuOperationName, Sight, defineEcho, definePhoton, sensuPlugin } =
+const { Hearing, SensuOperation, Sight, SpeechEnded, defineEcho, definePhoton, sensuPlugin } =
   await import('./index.ts');
 
 const testModel = {
@@ -125,8 +125,8 @@ describe('sensuPlugin', () => {
           intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
             if (
               !context ||
-              (context.name !== SensuOperationName.ASRInput &&
-                context.name !== SensuOperationName.ASROutput)
+              (context.name !== SensuOperation.ASRInput.name &&
+                context.name !== SensuOperation.ASROutput.name)
             ) {
               return undefined;
             }
@@ -186,7 +186,7 @@ describe('sensuPlugin', () => {
     expect(operations[0]).toMatchObject({
       args: [{ data: Buffer.alloc(3_200), startAt: new Date(1_000) }],
       context: {
-        name: SensuOperationName.ASRInput,
+        ...SensuOperation.ASRInput,
         metadata: {
           pluginId: sensu.id,
           pluginName: sensu.name,
@@ -211,7 +211,7 @@ describe('sensuPlugin', () => {
         },
       ],
       context: {
-        name: SensuOperationName.ASROutput,
+        ...SensuOperation.ASROutput,
         metadata: {
           pluginId: sensu.id,
           pluginName: sensu.name,
@@ -258,6 +258,7 @@ describe('sensuPlugin', () => {
 
     asr.emitResult = false;
     try {
+      expect(SpeechEnded.coalesce).toBe(true);
       await ciel.start();
       await vi.waitFor(() => expect(ciel.messages).toHaveLength(2));
       expect(ciel.engram.entries(Hearing)).toHaveLength(0);

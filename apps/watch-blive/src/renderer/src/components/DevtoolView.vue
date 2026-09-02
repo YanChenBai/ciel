@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { CielDevtool, createDevtoolClient } from '@ciels/devtool';
 
+import { watchBliveTrace } from '../devtool-trace.ts';
+
 const client = createDevtoolClient({
   client: { name: '@ciels/watch-blive', version: '0.0.0' },
   connection: {
@@ -13,6 +15,6 @@ const client = createDevtoolClient({
 
 <template>
   <div class="embedded-devtool flex h-full min-h-0 flex-col overflow-hidden">
-    <CielDevtool :client="client" />
+    <CielDevtool :client="client" :trace="watchBliveTrace" />
   </div>
 </template>

@@ -162,7 +162,7 @@ export class PGliteMemoryStore implements MemoryStore {
   }
 
   /**
-   * 原子写入每日事实及其语义索引行
+   * 原子写入每日事实及可选的语义索引行
    */
   async appendDaily(options: AppendDailyMemoryOptions): Promise<DailyMemoryEntry> {
     const db = this.getDatabase();
@@ -206,14 +206,14 @@ export class PGliteMemoryStore implements MemoryStore {
         })
         .returning();
 
-      // `committed` 在向量行存在前隐藏关系行
-      // 两项变更仍位于同一事务中，此标记也能在未来存储行为变化时保护读取一致性
-      await tx.execute(sql`
-        INSERT INTO memory_embeddings
-          (record_id, namespace_id, scope_id, kind, embedding, created_at)
-        VALUES
-          (${id}, ${namespaceId}, ${scope.id}, 'daily', ${vectorLiteral(options.embedding)}::vector, ${options.createdAt})
-      `);
+      if (options.embedding) {
+        await tx.execute(sql`
+          INSERT INTO memory_embeddings
+            (record_id, namespace_id, scope_id, kind, embedding, created_at)
+          VALUES
+            (${id}, ${namespaceId}, ${scope.id}, 'daily', ${vectorLiteral(options.embedding)}::vector, ${options.createdAt})
+        `);
+      }
       await tx.update(dailyEntries).set({ committed: true }).where(eq(dailyEntries.id, id));
 
       return this.mapDaily({ ...row!, committed: true }, scope.label);
@@ -221,7 +221,7 @@ export class PGliteMemoryStore implements MemoryStore {
   }
 
   /**
-   * 追加下一个长期记忆 revision 及其语义索引
+   * 追加下一个长期记忆 revision 及可选的语义索引
    */
   async commitLongTerm(options: CommitLongTermMemoryOptions): Promise<LongTermMemoryRevision> {
     const db = this.getDatabase();
@@ -260,12 +260,14 @@ export class PGliteMemoryStore implements MemoryStore {
         })
         .returning();
 
-      await tx.execute(sql`
-        INSERT INTO memory_embeddings
-          (record_id, namespace_id, scope_id, kind, embedding, created_at)
-        VALUES
-          (${id}, ${namespaceId}, ${scope.id}, 'long-term', ${vectorLiteral(options.embedding)}::vector, ${options.createdAt})
-      `);
+      if (options.embedding) {
+        await tx.execute(sql`
+          INSERT INTO memory_embeddings
+            (record_id, namespace_id, scope_id, kind, embedding, created_at)
+          VALUES
+            (${id}, ${namespaceId}, ${scope.id}, 'long-term', ${vectorLiteral(options.embedding)}::vector, ${options.createdAt})
+        `);
+      }
       await tx
         .update(longTermRevisions)
         .set({ committed: true })

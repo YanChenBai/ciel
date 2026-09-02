@@ -30,7 +30,7 @@ watch(app.title, value => {
         app.error.value || app.state.value?.error
       }}</AlertDescription></AlertRoot
     >
-    <WatchView v-if="app.state.value?.running" :visible="true" />
+    <WatchView v-if="app.state.value?.running" :playback-url="app.state.value.playbackUrl" />
     <SetupView
       v-else
       v-model:area-id="app.areaId.value"

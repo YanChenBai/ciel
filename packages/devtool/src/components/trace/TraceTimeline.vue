@@ -7,13 +7,21 @@ import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch
 
 import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
 
-import { operationLabel, operationLane, traceLanes } from './model.ts';
+import {
+  type DevtoolTraceEntry,
+  operationColor,
+  operationLabel,
+  operationLane,
+  resolveTraceEntry,
+  traceLanes,
+} from './model.ts';
 
 const props = defineProps<{
   end: number;
   operations: readonly OperationRecord[];
   selectedId?: string;
   start: number;
+  trace: readonly DevtoolTraceEntry[];
 }>();
 const emit = defineEmits<{ select: [operation: OperationRecord] }>();
 const root = useTemplateRef<HTMLElement>('root');
@@ -21,24 +29,30 @@ const hovered = shallowRef(false);
 let timeline: Timeline | undefined;
 const minimumWindow = 15_000;
 
+const lanes = computed(() => traceLanes(props.operations));
 const groups = computed<DataGroup[]>(() =>
-  traceLanes.map(lane => ({
+  lanes.value.map(lane => ({
     className: `trace-group trace-group-${lane.id}`,
     content: lane.label,
     id: lane.id,
   })),
 );
 const items = computed<DataItem[]>(() =>
-  props.operations.map(operation => ({
-    className: `trace-item trace-item-${operationLane(operation)} trace-item-${operation.status}`,
-    content: '',
-    end: new Date(operation.completedAt ?? props.end),
-    group: operationLane(operation),
-    id: operation.id,
-    start: new Date(operation.startedAt),
-    title: `${operationLabel(operation)} · ${formatDuration(operation.durationMs)}`,
-    type: 'range',
-  })),
+  props.operations.map(operation => {
+    const lane = operationLane(operation);
+    const entry = resolveTraceEntry(operation, props.trace)!;
+    return {
+      className: `trace-item trace-item-${operation.status}`,
+      content: '',
+      ...(entry.type === 'range' ? { end: new Date(operation.completedAt ?? props.end) } : {}),
+      group: lane.id,
+      id: operation.id,
+      start: new Date(operation.startedAt),
+      style: `--trace-lane-color: ${operationColor(operation, props.trace)}`,
+      title: `${operationLabel(operation)} · ${formatDuration(operation.durationMs)}`,
+      type: entry.type,
+    };
+  }),
 );
 
 useResizeObserver(root, entries => {
@@ -56,8 +70,8 @@ onMounted(() => {
     format: { minorLabels: date => formatOffset(Number(date) - props.start) },
     groupHeightMode: 'auto',
     groupOrder: (left, right) =>
-      traceLanes.findIndex(lane => lane.id === left.id) -
-      traceLanes.findIndex(lane => lane.id === right.id),
+      lanes.value.findIndex(lane => lane.id === left.id) -
+      lanes.value.findIndex(lane => lane.id === right.id),
     height: Math.max(120, root.value.clientHeight),
     margin: { axis: 0, item: { horizontal: 0, vertical: 4 } },
     max: new Date(range.max),
@@ -220,30 +234,23 @@ function formatOffset(offset: number): string {
   border-radius: 1px;
   top: 6px !important;
   cursor: pointer;
+  background: var(--trace-lane-color, #64748b);
 }
 
 .trace-timeline :deep(.vis-item.trace-item .vis-item-content) {
   display: none;
 }
 
-.trace-timeline :deep(.vis-item.trace-item-agent) {
-  background: #94a3b8;
+.trace-timeline :deep(.vis-item.trace-item.vis-point) {
+  width: 8px;
+  min-width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  transform: rotate(45deg);
 }
 
-.trace-timeline :deep(.vis-item.trace-item-context) {
-  background: var(--trace-context);
-}
-
-.trace-timeline :deep(.vis-item.trace-item-model) {
-  background: var(--trace-model);
-}
-
-.trace-timeline :deep(.vis-item.trace-item-tool) {
-  background: var(--trace-tool);
-}
-
-.trace-timeline :deep(.vis-item.trace-item-room) {
-  background: var(--trace-vision);
+.trace-timeline :deep(.vis-item.trace-item.vis-point .vis-dot) {
+  display: none;
 }
 
 .trace-timeline :deep(.vis-item.trace-item-running) {

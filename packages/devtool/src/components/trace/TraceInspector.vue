@@ -6,9 +6,13 @@ import { shallowRef } from 'vue';
 import ObjectInspector from '@/components/object/ObjectInspector.vue';
 import { deserializeValue } from '@/session/value.ts';
 
-import { operationLabel, operationLane, operationTag } from './model.ts';
+import type { DevtoolTraceEntry } from './model.ts';
+import { operationColor, operationLabel, operationTag } from './model.ts';
 
-defineProps<{ operation?: OperationRecord }>();
+const props = defineProps<{
+  operation?: OperationRecord;
+  trace: readonly DevtoolTraceEntry[];
+}>();
 const emit = defineEmits<{ close: [] }>();
 const tab = shallowRef('summary');
 
@@ -27,6 +31,10 @@ function formatDuration(duration?: number): string {
   if (duration === undefined) return 'Running';
   return duration < 1_000 ? `${duration} ms` : `${(duration / 1_000).toFixed(2)} s`;
 }
+
+function laneColor(operation: OperationRecord): string {
+  return operationColor(operation, props.trace);
+}
 </script>
 
 <template>
@@ -37,7 +45,7 @@ function formatDuration(duration?: number): string {
     <header class="inspector-header">
       <span
         class="inspector-tag"
-        :class="operation ? `inspector-tag-${operationLane(operation)}` : undefined"
+        :style="operation ? { backgroundColor: laneColor(operation) } : undefined"
       >
         {{ operation ? operationTag(operation) : 'STEP' }}
       </span>
@@ -154,26 +162,6 @@ function formatDuration(duration?: number): string {
     Consolas,
     monospace;
   letter-spacing: 0.04em;
-}
-
-.inspector-tag-agent {
-  background: #94a3b8;
-}
-
-.inspector-tag-context {
-  background: var(--trace-context);
-}
-
-.inspector-tag-model {
-  background: var(--trace-model);
-}
-
-.inspector-tag-tool {
-  background: var(--trace-tool);
-}
-
-.inspector-tag-room {
-  background: var(--trace-vision);
 }
 
 .inspector-title {

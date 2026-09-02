@@ -24,7 +24,6 @@ import { createWatchBliveAI } from './ai.ts';
 import { fetchRoom, fetchRooms } from './bilibili.ts';
 import { checkRuntimeConfiguration, configurationError } from './configuration.ts';
 import { devtoolTransformers } from './devtool.ts';
-import { LiveView } from './live-view.ts';
 import { LiveAudio, LiveMedia, liveMediaPlugin, LiveVideo } from './media.ts';
 import {
   createInstructions,
@@ -41,6 +40,23 @@ const Explore = defineCue({
   name: 'blive.explore',
   prompt: EXPLORE_LIVE_ROOMS_PROMPT,
 });
+
+const WatchBliveOperationTag = {
+  Room: 'ROOM',
+} as const;
+
+const WatchBliveOperation = {
+  RoomList: {
+    name: 'watch-blive.room.list',
+    label: 'Room List',
+    tag: WatchBliveOperationTag.Room,
+  },
+  RoomOpen: {
+    name: 'watch-blive.room.open',
+    label: 'Room Open',
+    tag: WatchBliveOperationTag.Room,
+  },
+} as const;
 
 interface RuntimeEvents {
   state: [AppState];
@@ -62,13 +78,11 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
   private delivery: StartOptions['danmakuDelivery'] = 'simulate';
   private error?: string;
   private mode: StartOptions['mode'] = 'standard';
+  private playbackUrl?: string;
   private room?: RoomInfo;
   private roomStartedAt = 0;
 
-  constructor(
-    private readonly liveView: LiveView,
-    private readonly userDataPath: string,
-  ) {
+  constructor(private readonly userDataPath: string) {
     super();
   }
 
@@ -92,6 +106,7 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
       ...(this.error ? { error: this.error } : {}),
       mode: this.mode,
       ...(this.room ? { room: this.room } : {}),
+      ...(this.playbackUrl ? { playbackUrl: this.playbackUrl } : {}),
       running: this.ciel?.status === 'running',
     };
   }
@@ -124,20 +139,25 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
     telemetry({ capture: { input: true, output: true }, transformers: devtoolTransformers });
     telemetry.clear();
     const instrument = createInstrumenter([telemetry]);
-    const listRooms = instrument((page: number) => this.listRooms(page), {
-      name: 'watch-blive.room.list',
-    });
-    const openRoom = instrument((roomId: number) => this.openRoom(roomId), {
-      name: 'watch-blive.room.open',
-    });
+    const listRooms = instrument(
+      (page: number) => this.listRooms(page),
+      WatchBliveOperation.RoomList,
+    );
+
+    const openRoom = instrument(
+      (roomId: number) => this.openRoom(roomId),
+      WatchBliveOperation.RoomOpen,
+    );
+
     const tools = createRuntimeTools({
       autonomous: options.mode === 'autonomous',
       listRooms,
       openRoom,
-      sendDanmaku: content => this.liveView.sendDanmaku(content),
+      sendDanmaku: content => this.sendDanmaku(content),
       simulate: options.danmakuDelivery === 'simulate',
       onSent: content => this.recordSentDanmaku(content),
     });
+
     const ciel = defineCiel({
       id: `watch-blive:${this.account?.uid ?? 'anonymous'}`,
       instructions: createInstructions(options.mode),
@@ -194,16 +214,20 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
     await this.media.close().catch(error => this.fail(error));
     if (ciel) await ciel.stop().catch(error => this.fail(error));
     this.room = undefined;
+    this.playbackUrl = undefined;
     this.roomStartedAt = 0;
     this.roomScorePolicy.reset();
     this.candidates.clear();
-    this.liveView.setVisible(false);
     this.publish();
   }
 
   async close(): Promise<void> {
     await this.stop();
     this.removeAllListeners();
+  }
+
+  handlePlayback(request: Request): Response {
+    return this.media.handlePlayback(request);
   }
 
   private async listRooms(page: number) {
@@ -221,13 +245,18 @@ export class RuntimeController extends EventEmitter<RuntimeEvents> {
     const room = await fetchRoom(roomId);
     if (!room.live) throw new Error(`直播间 ${room.roomId} 当前未开播`);
     this.ciel?.engram.clear();
-    await this.media.open(room.roomId);
-    await this.liveView.open(room.roomId);
+    this.playbackUrl = await this.media.open(room.roomId);
     this.room = room;
     this.roomStartedAt = Date.now();
     this.roomScorePolicy.reset();
     this.publish();
     return room;
+  }
+
+  private async sendDanmaku(content: string): Promise<void> {
+    const roomId = this.room?.roomId;
+    if (!roomId) throw new Error('当前尚未进入直播间');
+    await this.accountManager.sendDanmaku(roomId, content);
   }
 
   private prompt(frame: AgentFrame): AgentMessage {

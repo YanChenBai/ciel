@@ -33,7 +33,7 @@ function asrItem(entry: EngramEntryRecord): readonly ConversationItem[] {
 }
 
 function thinkingItem(operation: OperationRecord): ConversationItem | undefined {
-  if (operation.name !== 'ciel.agent.generate' || operation.status !== 'completed') return;
+  if (operation.name !== 'ciel.model.generate' || operation.status !== 'completed') return;
   const thinking = findThinking(deserializeValue(operation.output));
   if (!thinking) return;
   return {
@@ -48,7 +48,7 @@ function thinkingItem(operation: OperationRecord): ConversationItem | undefined 
 
 function danmakuItem(operation: OperationRecord): ConversationItem | undefined {
   if (
-    operation.name !== 'ciel.agent.tool.execute' ||
+    operation.name !== 'ciel.tool.execute' ||
     operation.attributes.toolName !== 'send_danmaku' ||
     operation.status !== 'completed'
   ) {

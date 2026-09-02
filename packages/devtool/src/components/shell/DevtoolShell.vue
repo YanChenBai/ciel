@@ -4,11 +4,13 @@ import { TabsItem, TabsList, TabsPanel, TabsRoot } from '@vuetify/v0/components'
 import { shallowRef } from 'vue';
 
 import ConversationPanel from '@/components/conversation/ConversationPanel.vue';
+import type { DevtoolTraceEntry } from '@/components/trace/model.ts';
 import TracePanel from '@/components/trace/TracePanel.vue';
 
 defineProps<{
   entries: readonly EngramEntryRecord[];
   operations: readonly OperationRecord[];
+  trace: readonly DevtoolTraceEntry[];
 }>();
 
 const activeTab = shallowRef('trace');
@@ -32,7 +34,7 @@ const activeTab = shallowRef('trace');
         <ConversationPanel :entries="entries" :operations="operations" />
       </TabsPanel>
       <TabsPanel value="trace" class="dx:min-h-0 dx:flex-1 dx:overflow-hidden dx:bg-trace-surface">
-        <TracePanel :operations="operations" />
+        <TracePanel :operations="operations" :trace="trace" />
       </TabsPanel>
     </TabsRoot>
   </div>

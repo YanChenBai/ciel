@@ -87,4 +87,35 @@ export class AccountManager {
         }),
     );
   }
+
+  async sendDanmaku(roomId: number, content: string): Promise<void> {
+    const cookies = await session.defaultSession.cookies.get({
+      url: 'https://live.bilibili.com/',
+    });
+    const csrf = cookies.find(cookie => cookie.name === 'bili_jct')?.value;
+    if (!csrf) throw new Error('Bilibili 登录凭据缺少 bili_jct，无法发送弹幕');
+
+    const body = new FormData();
+    body.set('bubble', '0');
+    body.set('color', String(0xffffff));
+    body.set('csrf', csrf);
+    body.set('csrf_token', csrf);
+    body.set('fontsize', '25');
+    body.set('mode', '1');
+    body.set('msg', content);
+    body.set('rnd', String(Math.floor(Date.now() / 1_000)));
+    body.set('roomid', String(roomId));
+
+    const response = await session.defaultSession.fetch('https://api.live.bilibili.com/msg/send', {
+      body,
+      credentials: 'include',
+      headers: { Referer: `https://live.bilibili.com/${roomId}` },
+      method: 'POST',
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`Bilibili 弹幕 API HTTP ${response.status}`);
+    const result = (await response.json()) as { code?: number; message?: string };
+    if (result.code !== 0)
+      throw new Error(`Bilibili 弹幕 API ${String(result.code)}: ${result.message ?? '发送失败'}`);
+  }
 }

@@ -14,7 +14,7 @@
 
 - Photon Signal 经过采样与变化检测后形成 `Sight` Percept
 - Echo Signal 以 16 kHz PCM 流进入 VAD 与 ASR
-- VAD speech-end 始终形成 `SpeechEnded` Cue
+- VAD speech-end 始终形成 `SpeechEnded` Cue；尚未开始的同类思考会按 CueDefinition id 合并
 - 识别成功时额外形成带说话人的 `Hearing` Percept
 - Projector 将听觉时间线与视觉变化帧组合为模型上下文
 - ASR 输入、输出和 Corex 提交结果拥有完整插装边界

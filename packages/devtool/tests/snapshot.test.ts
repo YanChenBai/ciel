@@ -40,8 +40,9 @@ describe('reduceDevtoolSnapshot', () => {
   it('归并 Operation 的开始、失败与活跃计数', () => {
     const operation = {
       id: 'operation-1',
+      label: 'Agent Run',
       name: 'agent.think',
-      category: 'agent' as const,
+      tag: 'AGENT',
       startedAt: 10,
       status: 'running' as const,
       attributes: {},

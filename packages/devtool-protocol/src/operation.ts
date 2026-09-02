@@ -2,15 +2,6 @@ import type { JsonValue, ProtocolErrorRecord, SerializedValue } from './value.ts
 
 export type OperationStatus = 'running' | 'completed' | 'failed';
 
-export type OperationCategory =
-  | 'agent'
-  | 'signal'
-  | 'sensu'
-  | 'projector'
-  | 'tool'
-  | 'plugin'
-  | 'custom';
-
 export type OperationSource =
   | { readonly type: 'core' }
   | {
@@ -27,7 +18,8 @@ export interface OperationRecord {
   readonly id: string;
   readonly parentId?: string;
   readonly name: string;
-  readonly category: OperationCategory;
+  readonly label: string;
+  readonly tag: string;
   readonly source?: OperationSource;
   readonly startedAt: number;
   readonly completedAt?: number;

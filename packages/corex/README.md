@@ -27,6 +27,7 @@ Corex 将这条链路拆成稳定边界：
 - Sensu 以有状态流消费 Signal
 - Percept 记录能够进入 Engram 的真实感知
 - Cue 决定 Agent 何时思考
+- `coalesce: true` 会按 CueDefinition id 合并尚未开始的思考，并保留最新 Cue
 - Projector 将 Engram 快照整理为模型上下文
 - Plugin 组织 Extension、Tool 与生命周期
 - Interceptor 观察每一个关键运行边界

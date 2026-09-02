@@ -5,6 +5,7 @@ import type {
   InstrumentPreset,
   Interceptor,
   InterceptorWrapper,
+  MetadataShape,
 } from './types.ts';
 
 export type {
@@ -14,68 +15,86 @@ export type {
   InstrumentPreset,
   Interceptor,
   InterceptorWrapper,
+  MetadataShape,
 } from './types.ts';
 
 /**
  * 为一组 interceptor 创建相互隔离的 instrumenter
  */
-export function createInstrumenter(interceptors: readonly Interceptor[]): Instrument {
+export function createInstrumenter<TMetadata extends MetadataShape = Record<string, unknown>>(
+  interceptors: readonly Interceptor<TMetadata>[],
+): Instrument<TMetadata> {
   return createInstrument(interceptors);
 }
 
-function mergeContext(
-  preset: InstrumentPreset | undefined,
-  context: InstrumentContext | undefined,
-): InstrumentContext | undefined {
-  if (!preset) return context;
-  if (preset.name !== undefined && context?.name !== undefined && preset.name !== context.name) {
-    throw new TypeError(
-      `Instrument name "${preset.name}" cannot be overridden with "${context.name}"`,
-    );
+function assertSamePresetValue(
+  field: 'label' | 'name' | 'tag',
+  preset: string | undefined,
+  context: string | undefined,
+): void {
+  if (preset !== undefined && context !== undefined && preset !== context) {
+    throw new TypeError(`Instrument ${field} "${preset}" cannot be overridden with "${context}"`);
   }
+}
+
+function mergeContext<TMetadata extends MetadataShape>(
+  preset: InstrumentPreset<TMetadata> | undefined,
+  context: InstrumentContext<TMetadata> | undefined,
+): InstrumentContext<TMetadata> | undefined {
+  if (!preset) return context;
+  assertSamePresetValue('name', preset.name, context?.name);
+  assertSamePresetValue('label', preset.label, context?.label);
+  assertSamePresetValue('tag', preset.tag, context?.tag);
 
   const name = preset.name ?? context?.name;
-  if (name === undefined) return undefined;
+  const label = preset.label ?? context?.label;
+  const tag = preset.tag ?? context?.tag;
+  if (name === undefined && label === undefined && tag === undefined) return undefined;
+  if (name === undefined || label === undefined || tag === undefined) {
+    throw new TypeError('Instrument context requires name, label, and tag');
+  }
 
   // Preset fields represent trusted owner identity and win over call-site fields
   const metadata = {
     ...context?.metadata,
     ...preset.metadata,
-  };
+  } as Partial<TMetadata>;
 
   return {
     name,
+    label,
+    tag,
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
 }
 
-function mergePreset(
-  current: InstrumentPreset | undefined,
-  next: InstrumentPreset,
-): InstrumentPreset {
-  if (current?.name !== undefined && next.name !== undefined && current.name !== next.name) {
-    throw new TypeError(
-      `Instrument name "${current.name}" cannot be overridden with "${next.name}"`,
-    );
-  }
+function mergePreset<TMetadata extends MetadataShape>(
+  current: InstrumentPreset<TMetadata> | undefined,
+  next: InstrumentPreset<TMetadata>,
+): InstrumentPreset<TMetadata> {
+  assertSamePresetValue('name', current?.name, next.name);
+  assertSamePresetValue('label', current?.label, next.label);
+  assertSamePresetValue('tag', current?.tag, next.tag);
 
   // Earlier derivations are closer to the owner and keep priority
   return {
     name: current?.name ?? next.name,
+    label: current?.label ?? next.label,
+    tag: current?.tag ?? next.tag,
     metadata: {
       ...next.metadata,
       ...current?.metadata,
-    },
+    } as Partial<TMetadata>,
   };
 }
 
-function createInstrument(
-  interceptors: readonly Interceptor[],
-  preset?: InstrumentPreset,
-): Instrument {
+function createInstrument<TMetadata extends MetadataShape>(
+  interceptors: readonly Interceptor<TMetadata>[],
+  preset?: InstrumentPreset<TMetadata>,
+): Instrument<TMetadata> {
   const instrument = function instrument<T extends AnyFunction>(
     target: T,
-    context?: InstrumentContext,
+    context?: InstrumentContext<TMetadata>,
   ): T {
     const resolvedContext = mergeContext(preset, context);
     const wrappers: InterceptorWrapper<T>[] = [];
@@ -98,7 +117,7 @@ function createInstrument(
 
       return Reflect.apply(next, this, args);
     } as T;
-  } as Instrument;
+  } as Instrument<TMetadata>;
 
   instrument.with = next => createInstrument(interceptors, mergePreset(preset, next));
   return instrument;

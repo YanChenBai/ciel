@@ -2,7 +2,7 @@ import { ASR, type ASROptions, type ASRResult } from '@ciels/asr';
 import type { Instrument } from '@ciels/interceptor';
 import type { Signal } from 'corex';
 
-import { SensuOperationName } from '../instrumentation.ts';
+import { SensuOperation } from '../instrumentation.ts';
 import type { EchoDefinition, EchoPayload, SpeechSegment } from '../types.ts';
 
 export interface HearingRuntimeOptions {
@@ -35,11 +35,11 @@ export class HearingRuntime {
       signalDefinitionName: options.origin.name,
     };
     this.write = options.instrument(segment => this.asr.write(segment), {
-      name: SensuOperationName.ASRInput,
+      ...SensuOperation.ASRInput,
       metadata,
     });
     this.publishSegment = options.instrument(options.onSegment, {
-      name: SensuOperationName.ASROutput,
+      ...SensuOperation.ASROutput,
       metadata,
     });
     this.unsubscribers = [

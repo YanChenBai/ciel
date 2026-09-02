@@ -6,7 +6,7 @@ import {
 } from '@earendil-works/pi-ai';
 import {
   type AnyFunction,
-  CielOperationName,
+  CielOperation,
   defineCiel,
   defineCue,
   defineInterceptor,
@@ -115,6 +115,60 @@ describe('Memory runtime', () => {
     await expect(runtime.close()).resolves.toBeUndefined();
   });
 
+  it('没有 embedder 时保存正文并通过文本候选召回', async () => {
+    const outputs = ['傲慢的小肉包是一位主播。', '["daily:1"]'];
+    const searchQueries: (string | undefined)[] = [];
+    const store: MemoryStore = {
+      ...createTestStore(),
+      search: options => {
+        searchQueries.push(options.query);
+        return Promise.resolve({
+          entries: [
+            {
+              id: 'daily:1',
+              kind: 'daily',
+              scope: 'global',
+              content: '傲慢的小肉包是一位主播。',
+              date: '2026-08-30',
+              occurredAt: 100,
+              createdAt: 100,
+            },
+          ],
+        });
+      },
+      recall: () => Promise.reject(new Error('不应执行向量召回')),
+    };
+    const runtime = createMemory({
+      id: 'ciel:text-recall',
+      store,
+      agent: {
+        model: testModel,
+        stream: () => streamText(outputs.shift()!),
+        instructions: createMemoryInstructions(),
+        prompts: resolveMemoryPrompts(),
+      },
+    });
+    await runtime.start();
+
+    const remember = runtime.tools.find(tool => tool.name === 'memory_remember')!;
+    const recall = runtime.tools.find(tool => tool.name === 'memory_recall')!;
+    await remember.execute('call:remember', {
+      content: '傲慢的小肉包正在直播。',
+      scope: 'global',
+    });
+    const recalled = await recall.execute('call:recall', {
+      query: '傲慢的小肉包 主播',
+      scope: 'all',
+    });
+
+    expect(recalled.details).toMatchObject([
+      { id: 'daily:1', content: '傲慢的小肉包是一位主播。', score: 1 },
+    ]);
+    expect(searchQueries).toEqual(['傲慢的小肉包 主播', undefined]);
+    expect(outputs).toEqual([]);
+    await runtime.close();
+  });
+
   it('memory Plugin 可随 Corex 生命周期启动和关闭', async () => {
     let systemPrompt: string | undefined;
     const memory = memoryPlugin({
@@ -147,7 +201,7 @@ describe('Memory runtime', () => {
       name: 'memory-observer',
       interceptor: {
         intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
-          if (context?.name !== CielOperationName.AgentToolExecute) return undefined;
+          if (context?.name !== CielOperation.ToolExecute.name) return undefined;
           return next =>
             ((...args: Parameters<T>) => {
               operations.push(context);
@@ -190,7 +244,7 @@ describe('Memory runtime', () => {
 
     expect(operations).toHaveLength(1);
     expect(operations[0]).toMatchObject({
-      name: CielOperationName.AgentToolExecute,
+      ...CielOperation.ToolExecute,
       metadata: {
         pluginId: memory.id,
         pluginName: memory.name,

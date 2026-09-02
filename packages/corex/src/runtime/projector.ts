@@ -3,7 +3,7 @@ import { createEngramView, type EngramEntry } from '#model/engram/index.ts';
 import type { LLMContext } from '#model/llm/index.ts';
 
 import type { ResolvedProjector } from './extensions.ts';
-import { cielOperation, CielOperationName } from './instrumentation.ts';
+import { cielOperation, CielOperation } from './instrumentation.ts';
 
 export type ProjectorRunner = (
   entries: readonly EngramEntry[],
@@ -19,7 +19,7 @@ export function createProjectorRunner(definitions: readonly ResolvedProjector[])
         extension.name,
         instrument(
           extension.project,
-          cielOperation(CielOperationName.ProjectorProject, {
+          cielOperation(CielOperation.ProjectorProject, {
             projectorKey: extension.name,
             projectorName: extension.name,
           }),

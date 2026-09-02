@@ -84,6 +84,35 @@ describe('PGliteMemoryStore', () => {
     expect(all.entries.map(entry => entry.scope)).toEqual([otherRoom, room]);
   });
 
+  it('没有 embedding 时仍提交正文并支持确定性搜索', async () => {
+    const store = await createStore();
+    const daily = await store.appendDaily({
+      namespaceId: 'ciel:text-only',
+      scope: room,
+      date: '2026-08-30',
+      content: '主播傲慢的小肉包喜欢黑猫。',
+      occurredAt: 100,
+      createdAt: 100,
+    });
+    const revision = await store.commitLongTerm({
+      namespaceId: 'ciel:text-only',
+      scope: room,
+      content: '傲慢的小肉包是一位主播。',
+      basedOnDates: ['2026-08-30'],
+      createdAt: 200,
+    });
+
+    const searched = await store.search({
+      namespaceId: 'ciel:text-only',
+      currentScope: room,
+      scope: 'current',
+      query: '傲慢的小肉包',
+    });
+
+    expect(searched.entries.map(entry => entry.id)).toEqual([revision.id, daily.id]);
+    await expect(store.latestLongTerm('ciel:text-only', room)).resolves.toEqual(revision);
+  });
+
   it('保存长期 revision，并通过 pgvector 召回最相关记录', async () => {
     const store = await createStore();
     await store.appendDaily({

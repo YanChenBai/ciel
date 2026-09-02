@@ -3,20 +3,31 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, protocol } from 'electron';
 
 import { registerIpc } from './ipc.ts';
-import { LiveView } from './live-view.ts';
+import { LIVE_MEDIA_SCHEME } from './playback.ts';
 import { RuntimeController } from './runtime.ts';
 
 let mainWindow: BrowserWindow | undefined;
-let liveView: LiveView | undefined;
 let controller: RuntimeController | undefined;
 let disposeIpc: (() => void) | undefined;
 
 loadEnvironment();
 configureUserDataPath();
 configureRemoteDebugging();
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: LIVE_MEDIA_SCHEME,
+    privileges: {
+      corsEnabled: true,
+      secure: true,
+      standard: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
+  },
+]);
 
 async function createWindow(): Promise<void> {
   const window = new BrowserWindow({
@@ -37,9 +48,8 @@ async function createWindow(): Promise<void> {
   });
   mainWindow = window;
   window.setMenuBarVisibility(false);
-  liveView = new LiveView(window);
-  controller = new RuntimeController(liveView, app.getPath('userData'));
-  disposeIpc = registerIpc(window, controller, liveView);
+  controller = new RuntimeController(app.getPath('userData'));
+  disposeIpc = registerIpc(window, controller);
   window.once('ready-to-show', () => window.show());
   if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL);
   else await window.loadFile(join(import.meta.dirname, '../renderer/index.html'));
@@ -85,6 +95,11 @@ void app
   .whenReady()
   .then(async () => {
     configureDataPath();
+    protocol.handle(LIVE_MEDIA_SCHEME, request => {
+      return (
+        controller?.handlePlayback(request) ?? new Response('Runtime is not ready', { status: 503 })
+      );
+    });
     await createWindow();
     app.on('activate', () => {
       if (!mainWindow) void createWindow();
@@ -109,8 +124,6 @@ app.on('before-quit', event => {
   const active = controller;
   controller = undefined;
   const finish = (): void => {
-    liveView?.destroy();
-    liveView = undefined;
     app.exit();
   };
   void active.close().then(finish, error => {

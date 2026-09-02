@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { AlertDescription, AlertRoot, AlertTitle } from '@vuetify/v0/components';
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 
 import type { DevtoolClient } from '@/client/types.ts';
 import DevtoolShell from '@/components/shell/DevtoolShell.vue';
+import { defaultTrace, type DevtoolTraceEntry } from '@/components/trace/model.ts';
 import { useDevtoolSession } from '@/composables/useDevtoolSession.ts';
 
 const props = defineProps<{
   client: DevtoolClient;
+  trace?: readonly DevtoolTraceEntry[];
 }>();
 
 const { engramEntries, error, operations, start } = useDevtoolSession(props.client);
+const trace = computed(() => props.trace ?? defaultTrace);
 
 onMounted(() => {
   void start().catch(() => undefined);
@@ -31,5 +34,5 @@ onMounted(() => {
       </AlertDescription>
     </div>
   </AlertRoot>
-  <DevtoolShell v-else :entries="engramEntries" :operations="operations" />
+  <DevtoolShell v-else :entries="engramEntries" :operations="operations" :trace="trace" />
 </template>

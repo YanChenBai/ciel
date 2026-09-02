@@ -20,7 +20,10 @@ const emit = defineEmits<{
 
 <template>
   <header class="titlebar">
-    <div v-if="state?.running" class="no-drag flex min-w-0 flex-1 items-center gap-2">
+    <div
+      v-if="state?.running"
+      class="titlebar-status flex min-w-0 flex-1 items-center gap-2 select-none"
+    >
       <Radio class="text-primary size-[15px]" />
       <strong class="truncate text-xs font-medium">{{ title }}</strong>
       <span class="pill" :class="{ autonomous: state.mode === 'autonomous' }">
@@ -46,6 +49,8 @@ const emit = defineEmits<{
             v-if="state.account.face"
             :src="state.account.face"
             :alt="state.account.name"
+            draggable="false"
+            referrerpolicy="no-referrer"
             class="size-5 rounded-full" /><span class="text-[11px] leading-none">{{
             state.account.name
           }}</span

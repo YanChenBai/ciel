@@ -67,10 +67,13 @@ async function writeSpeechSegment(output: SensuOutput, segment: SpeechSegment): 
 
   return output.write({
     ...(percept ? { percepts: percept } : {}),
-    cues: SpeechEnded.create(temporal, {
-      origin: segment.origin,
-      ...(result ? { result } : {}),
-    }),
+    cues: SpeechEnded.create(
+      { kind: 'instant', at: segment.endAt.getTime() },
+      {
+        origin: segment.origin,
+        ...(result ? { result } : {}),
+      },
+    ),
   });
 }
 

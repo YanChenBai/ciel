@@ -102,6 +102,9 @@ input {
   .no-drag {
     -webkit-app-region: no-drag;
   }
+  .titlebar-status {
+    -webkit-app-region: drag;
+  }
   .pill {
     border: 1px solid rgb(255 255 255 / 10%);
     border-radius: var(--radius-pill);

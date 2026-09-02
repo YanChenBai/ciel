@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { SplitterHandle, SplitterPanel, SplitterRoot } from '@vuetify/v0/components';
-import { toRef, useTemplateRef } from 'vue';
 
-import { useLiveView } from '../composables/useLiveView.ts';
 import DevtoolView from './DevtoolView.vue';
+import LivePlayer from './LivePlayer.vue';
 
-const props = defineProps<{ visible: boolean }>();
-const host = useTemplateRef<HTMLElement>('host');
-useLiveView(host, toRef(props, 'visible'));
+defineProps<{ playbackUrl?: string }>();
 </script>
 
 <template>
@@ -16,7 +13,7 @@ useLiveView(host, toRef(props, 'visible'));
     class="bg-live flex h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden"
   >
     <SplitterPanel :default-size="56" :min-size="36" class="h-full min-h-0 min-w-0">
-      <div ref="host" class="h-full min-h-0 min-w-0" />
+      <LivePlayer :src="playbackUrl" />
     </SplitterPanel>
     <SplitterHandle
       label="调整直播区域宽度"

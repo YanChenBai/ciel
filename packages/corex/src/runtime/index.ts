@@ -13,15 +13,20 @@ import {
   resolveExtensions,
   type ResolvedPlugin,
 } from './extensions.ts';
-import { cielOperation, CielOperationName, createInstrumenter } from './instrumentation.ts';
+import {
+  cielOperation,
+  CielOperation,
+  createInstrumenter,
+  type CielOperation as CielOperationDescriptor,
+} from './instrumentation.ts';
 import { createLifecycle } from './lifecycle/index.ts';
 import { createProjectorRunner } from './projector.ts';
 import { installSensu, type SensuRuntime } from './sensu.ts';
 import type { Ciel, DefineCielOptions } from './types.ts';
 
 export type { Ciel, CielStatus, DefineCielOptions, Think } from './types.ts';
-export { CielOperationCategoryAttribute, CielOperationName } from './instrumentation.ts';
-export type { CielOperationCategory } from './instrumentation.ts';
+export { CielOperation, CielOperationTag } from './instrumentation.ts';
+export type { CielOperationMetadata } from './instrumentation.ts';
 export type {
   AgentConfig,
   AgentContext,
@@ -84,10 +89,10 @@ async function settle(actions: readonly (() => Promise<void>)[], errors: unknown
 
 function lifecycleOperation(
   plugin: ResolvedPlugin,
-  name: CielOperationName,
+  operation: CielOperationDescriptor,
   action: () => unknown,
 ) {
-  return plugin.instrument.with(cielOperation(name))(action);
+  return plugin.instrument.with(cielOperation(operation))(action);
 }
 
 export function defineCiel(options: DefineCielOptions): Ciel {
@@ -134,7 +139,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
       for (const plugin of extensions.plugins) {
         initialized.push(plugin);
         if (plugin.instance.initialize) {
-          await lifecycleOperation(plugin, CielOperationName.PluginInitialize, () =>
+          await lifecycleOperation(plugin, CielOperation.PluginInitialize, () =>
             plugin.instance.initialize!(),
           )();
         }
@@ -153,7 +158,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
       for (const plugin of extensions.plugins) {
         activated.push(plugin);
         if (!plugin.instance.activate) continue;
-        const emitSignal = plugin.instrument.with(cielOperation(CielOperationName.SignalEmit))(
+        const emitSignal = plugin.instrument.with(cielOperation(CielOperation.SignalEmit))(
           async (signal: AnySignal) => {
             if (!acceptSignals) {
               throw new Error(
@@ -163,7 +168,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
             await signalBus.emitSignal(signal);
           },
         );
-        await lifecycleOperation(plugin, CielOperationName.PluginActivate, () =>
+        await lifecycleOperation(plugin, CielOperation.PluginActivate, () =>
           plugin.instance.activate!({ emitSignal }),
         )();
       }
@@ -178,7 +183,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
           .reverse()
           .map(plugin => async () => {
             if (plugin.instance.deactivate) {
-              await lifecycleOperation(plugin, CielOperationName.PluginDeactivate, () =>
+              await lifecycleOperation(plugin, CielOperation.PluginDeactivate, () =>
                 plugin.instance.deactivate!(),
               )();
             }
@@ -206,7 +211,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
           .reverse()
           .map(plugin => async () => {
             if (plugin.instance.dispose) {
-              await lifecycleOperation(plugin, CielOperationName.PluginDispose, () =>
+              await lifecycleOperation(plugin, CielOperation.PluginDispose, () =>
                 plugin.instance.dispose!(),
               )();
             }

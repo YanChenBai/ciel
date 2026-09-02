@@ -10,13 +10,28 @@ Ciel 下一代 Devtool 的渐进式实现。
 - bootstrap 快照与实时事件通过协议 Cursor 合并，UI 不直接管理连接竞态。
 
 ```ts
-import { CielDevtool, createDevtoolClient } from '@ciels/devtool';
+import {
+  CielDevtool,
+  createDevtoolClient,
+  defaultTrace,
+  type DevtoolTraceEntry,
+} from '@ciels/devtool';
 
 const client = createDevtoolClient({
   connection,
   createId: crypto.randomUUID,
   client: { name: 'my-devtool-host' },
 });
+
+const trace: readonly DevtoolTraceEntry[] = [
+  ...defaultTrace,
+  {
+    match: operation => operation.name.startsWith('my-app.room.'),
+    lane: { id: 'room', label: 'Room', color: '#f472b6' },
+    label: operation => operation.name,
+  },
+];
 ```
 
-`connection` 由宿主实现；本包不会提供具体传输 Adapter。
+`connection` 由宿主实现；本包不会提供具体传输 Adapter。将 `trace` 传给
+`<CielDevtool :client="client" :trace="trace" />`；列表中未匹配的 operation 不会显示。

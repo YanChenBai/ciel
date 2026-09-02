@@ -4,8 +4,7 @@ import { expect, test, vi } from 'vite-plus/test';
 
 import {
   type AnyFunction,
-  CielOperationCategoryAttribute,
-  CielOperationName,
+  CielOperation,
   defineCiel,
   defineCue,
   defineInterceptor,
@@ -18,6 +17,16 @@ import { assistantMessage, streamResult, testModel } from './helpers.ts';
 
 const cue = defineCue({ name: 'instrument', prompt: 'Run the instrumented agent.' });
 const instant = { kind: 'instant', at: 1 } as const;
+const InternalOperationTag = {
+  Plugin: 'PLUGIN',
+} as const;
+const InternalOperation = {
+  Run: {
+    name: 'ciel.plugin.internal',
+    label: 'Plugin Internal',
+    tag: InternalOperationTag.Plugin,
+  },
+} as const;
 
 test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async () => {
   const calls: InstrumentContext[] = [];
@@ -96,26 +105,42 @@ test('插装 Agent、Tool、Projector 与四阶段 Plugin 生命周期', async (
   await ciel.stop();
 
   expect(calls.map(context => context.name)).toEqual([
-    CielOperationName.PluginCreate,
-    CielOperationName.PluginInitialize,
-    CielOperationName.PluginActivate,
-    CielOperationName.AgentThink,
-    CielOperationName.ProjectorProject,
-    CielOperationName.AgentPrompt,
-    CielOperationName.AgentGenerate,
-    CielOperationName.AgentToolExecute,
-    CielOperationName.AgentGenerate,
-    CielOperationName.PluginDeactivate,
-    CielOperationName.PluginDispose,
+    CielOperation.PluginCreate.name,
+    CielOperation.PluginInitialize.name,
+    CielOperation.PluginActivate.name,
+    CielOperation.CueSubmit.name,
+    CielOperation.AgentRun.name,
+    CielOperation.ProjectorProject.name,
+    CielOperation.AgentPrompt.name,
+    CielOperation.ModelGenerate.name,
+    CielOperation.ToolExecute.name,
+    CielOperation.ModelGenerate.name,
+    CielOperation.PluginDeactivate.name,
+    CielOperation.PluginDispose.name,
   ]);
-  expect(calls.find(context => context.name === CielOperationName.AgentToolExecute)).toEqual({
-    name: CielOperationName.AgentToolExecute,
+  expect(calls.find(context => context.name === CielOperation.ToolExecute.name)).toEqual({
+    ...CielOperation.ToolExecute,
     metadata: {
       pluginId: capability.id,
       pluginName: capability.name,
-      [CielOperationCategoryAttribute]: 'tool',
       toolLabel: tool.label,
       toolName: tool.name,
+    },
+  });
+  expect(calls.find(context => context.name === CielOperation.CueSubmit.name)).toEqual({
+    ...CielOperation.CueSubmit,
+    metadata: {
+      cueAt: instant.at,
+      cueDefinitionId: cue.id,
+      cueDefinitionName: cue.name,
+    },
+  });
+  expect(calls.find(context => context.name === CielOperation.AgentRun.name)).toEqual({
+    ...CielOperation.AgentRun,
+    metadata: {
+      cueAt: instant.at,
+      cueDefinitionId: cue.id,
+      cueDefinitionName: cue.name,
     },
   });
 });
@@ -126,7 +151,7 @@ test('Plugin 使用派生 instrument 合并身份与内部操作 metadata', () =
     name: 'observer',
     interceptor: {
       intercept<T extends AnyFunction>(_target: T, context?: InstrumentContext) {
-        if (context?.name !== 'ciel.plugin.internal') return undefined;
+        if (context?.name !== InternalOperation.Run.name) return undefined;
         return next =>
           ((...args: Parameters<T>) => {
             calls.push(context);
@@ -140,11 +165,11 @@ test('Plugin 使用派生 instrument 合并身份与内部操作 metadata', () =
     name: 'capability',
     create(context) {
       const internal = context.instrument.with({
-        name: 'ciel.plugin.internal',
+        ...InternalOperation.Run,
         metadata: { capability: 'test' },
       });
       run = internal((value: number) => value * 2, {
-        name: 'ciel.plugin.internal',
+        ...InternalOperation.Run,
         metadata: { pluginId: 'forged', operation: 'double' },
       });
       return {};
@@ -161,7 +186,7 @@ test('Plugin 使用派生 instrument 合并身份与内部操作 metadata', () =
   expect(run(2)).toBe(4);
   expect(calls).toEqual([
     {
-      name: 'ciel.plugin.internal',
+      ...InternalOperation.Run,
       metadata: {
         operation: 'double',
         capability: 'test',

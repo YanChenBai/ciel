@@ -70,7 +70,7 @@ export function createMemoryTools(
   const recall: AgentTool = {
     name: 'memory_recall',
     label: 'Recall memory',
-    description: '按语义召回相关记忆；跨场景检索必须显式使用 all。',
+    description: '召回相关记忆；跨场景检索必须显式使用 all。',
     parameters: recallParameters,
     async execute(_toolCallId, input) {
       const request = input as RecallMemoryInput;

@@ -67,7 +67,7 @@ export interface MemorySearchPage {
 
 export interface MemoryRecall extends MemorySearchResult {
   /**
-   * Store 在 Agent 重排前提供的向量相似度分数
+   * Store 在 Agent 重排前提供的候选相关度分数
    */
   readonly score: number;
 }
@@ -112,7 +112,7 @@ export interface AppendDailyMemoryOptions {
   readonly scope: MemoryScopeValue;
   readonly date: string;
   readonly content: string;
-  readonly embedding: readonly number[];
+  readonly embedding?: readonly number[];
   readonly occurredAt: number;
   readonly createdAt: number;
   readonly idempotencyKey?: string;
@@ -122,7 +122,7 @@ export interface CommitLongTermMemoryOptions {
   readonly namespaceId: string;
   readonly scope: MemoryScopeValue;
   readonly content: string;
-  readonly embedding: readonly number[];
+  readonly embedding?: readonly number[];
   readonly basedOnDates: readonly string[];
   readonly createdAt: number;
 }
@@ -214,7 +214,7 @@ export interface MemoryOptions {
   readonly id?: string;
   readonly scope?: () => MemoryScope | undefined;
   readonly store: MemoryStoreOptions | MemoryStore;
-  readonly embedder: MemoryEmbeddingModel;
+  readonly embedder?: MemoryEmbeddingModel;
   readonly instructions?: string;
   readonly prompts?: Partial<MemoryPrompts>;
   readonly agent?: Partial<AgentConfig>;
