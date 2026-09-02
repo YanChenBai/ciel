@@ -7,6 +7,7 @@ import type { LLMContext } from '#model/llm/index.ts';
 import type { Percept } from '#model/percept/index.ts';
 import type { AnySignal, AnySignalDefinition, EmitSignal, SignalOf } from '#model/signal/index.ts';
 import type { AgentConfig } from '#runtime/agent/index.ts';
+import type { Ciel } from '#runtime/types.ts';
 import type { MaybePromise } from '#shared/async.ts';
 import type { CielMetadata } from '#shared/metadata.ts';
 
@@ -93,6 +94,7 @@ export interface PluginCreateContext {
 }
 
 export interface PluginRuntimeContext {
+  readonly ciel: Ciel;
   readonly emitSignal: EmitSignal;
 }
 

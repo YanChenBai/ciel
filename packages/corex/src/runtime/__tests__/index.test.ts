@@ -97,6 +97,27 @@ test('按四阶段生命周期启动、排空并逆序释放 Plugin', async () =
   ]);
 });
 
+test('Plugin 激活时接收所属 Ciel 运行时', async () => {
+  let activatedWith: unknown;
+  const runtimePlugin = definePlugin(() => ({
+    name: 'runtime-context',
+    create: () => ({
+      activate({ ciel }) {
+        activatedWith = ciel;
+      },
+    }),
+  }));
+  const ciel = defineCiel({
+    ...createCielOptions(),
+    extensions: [runtimePlugin()],
+  });
+
+  await ciel.start();
+
+  expect(activatedWith).toBe(ciel);
+  await ciel.stop();
+});
+
 test('Plugin 继承 Agent 配置并分别提供 Tool 与 Projector Extension', async () => {
   const execute = vi.fn(async () => ({
     content: [{ type: 'text' as const, text: 'remembered' }],

@@ -99,7 +99,7 @@ function isFailedAssistantMessage(value: unknown): value is {
   return value.stopReason === 'error' || value.stopReason === 'aborted';
 }
 
-function createTelemetry(): Telemetry {
+export function createTelemetry(): Telemetry {
   const bufferSize = 1_000;
   let capture = resolveCapture(undefined);
   const serializer = createSerializer();

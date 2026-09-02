@@ -1,38 +1,34 @@
 # @ciels/devtool
 
-Corex 的层级 operation telemetry 与传输无关 Devtool bridge。
+Corex Devtools 扩展。
 
-本包提供：
-
-- 基于 `@cieljs/instrument` 的 telemetry interceptor
-- 输入输出捕获与 SuperJSON transformer
-- OpenTelemetry span、counter 和 histogram 投影
-- Devtool target、peer 和 bridge 协议适配
+应用只需提供负责收发协议消息的 adapter，并把 `devtools()` 放入 `extensions`：
 
 ```ts
-import { createDevtoolBridge, telemetry } from '@ciels/devtool';
-import { defineCiel, defineInterceptor } from 'corex';
-
-telemetry({ capture: true });
+import { devtools } from '@ciels/devtool';
+import { defineCiel } from 'corex';
 
 const ciel = defineCiel({
   instructions,
   model,
-  extensions: [
-    defineInterceptor({
-      name: 'devtool',
-      interceptor: telemetry,
-    }),
-  ],
-});
-
-const bridge = createDevtoolBridge({
-  createId: crypto.randomUUID,
-  epoch: crypto.randomUUID(),
-  target,
+  extensions: [devtools({ adapter, capture: true })],
 });
 ```
 
-`currentOperation()` 返回当前异步调用链内最深的 operation。`operation(id)`、`parentOf(id)` 和 `events()` 用于查询已记录数据。Bridge 不绑定 WebSocket、IPC 或其他具体传输。
+Adapter 不绑定具体传输，可以使用 Electron IPC、WebSocket 或其他双向消息通道：
+
+```ts
+const adapter = {
+  send(message) {
+    transport.send(message);
+  },
+  subscribe(receive) {
+    transport.on('message', receive);
+    return () => transport.off('message', receive);
+  },
+};
+```
+
+扩展内部统一管理 operation telemetry、运行时 target、协议 bridge 和连接生命周期。`createDevtoolBridge` 与 `telemetry` 仍作为兼容和底层定制 API 导出。
 
 默认不捕获动态输入输出。只有本地调试明确需要时才启用 `capture`。

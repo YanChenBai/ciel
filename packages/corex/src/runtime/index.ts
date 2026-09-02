@@ -170,7 +170,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
           },
         );
         await lifecycleOperation(plugin, CielOperation.PluginActivate, () =>
-          plugin.instance.activate!({ emitSignal }),
+          plugin.instance.activate!({ ciel, emitSignal }),
         )();
       }
     },
@@ -225,7 +225,7 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     },
   });
 
-  return {
+  const ciel: Ciel = {
     get status() {
       return lifecycle.status;
     },
@@ -239,4 +239,6 @@ export function defineCiel(options: DefineCielOptions): Ciel {
     start: () => lifecycle.start(),
     stop: () => lifecycle.stop(),
   };
+
+  return ciel;
 }
